@@ -1,7 +1,7 @@
 {
   "name": "echoverse-desktop",
   "productName": "EchoVerse",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "EchoVerse desktop voice and chat app",
   "main": "electron/main.cjs",
   "type": "module",

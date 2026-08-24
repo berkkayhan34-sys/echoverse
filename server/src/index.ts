@@ -11,13 +11,13 @@ app.use(express.json());
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.1.0",
+    version: "1.2.0",
     ok: true,
     time: new Date().toISOString()
   });
 });
 
-app.get("/health", (_req, res) => res.json({ ok: true, version: "1.1.0" }));
+app.get("/health", (_req, res) => res.json({ ok: true, version: "1.2.0" }));
 
 const httpServer = http.createServer(app);
 
@@ -41,8 +41,23 @@ type Guild = {
   createdAt: string;
 };
 
+type SpotifyPartyState = {
+  guildId: string;
+  leaderSocketId: string;
+  leaderUsername: string;
+  active: boolean;
+  trackUri?: string;
+  trackName?: string;
+  artistName?: string;
+  albumImage?: string;
+  positionMs?: number;
+  isPlaying?: boolean;
+  updatedAt?: number;
+};
+
 const users = new Map<string, User>();
 const guilds = new Map<string, Guild>();
+const spotifyParties = new Map<string, SpotifyPartyState>();
 
 guilds.set("echoverse", {
   id: "echoverse",
@@ -86,8 +101,18 @@ function leaveCurrentRoom(socket: any, user: User) {
   if (!user.roomId) return;
 
   const oldRoom = user.roomId;
+  const oldGuild = user.guildId;
+
   socket.leave(oldRoom);
   socket.to(oldRoom).emit("peer-left", { socketId: socket.id });
+
+  if (oldGuild) {
+    const party = spotifyParties.get(oldGuild);
+    if (party?.leaderSocketId === socket.id) {
+      spotifyParties.delete(oldGuild);
+      io.to(oldRoom).emit("spotify:party-ended");
+    }
+  }
 
   user.roomId = undefined;
   user.guildId = undefined;
@@ -166,6 +191,11 @@ io.on("connection", socket => {
       username: user.username
     });
 
+    const party = spotifyParties.get(safeGuild);
+    if (party?.active) {
+      socket.emit("spotify:party-state", party);
+    }
+
     broadcastPresence(roomId);
   });
 
@@ -213,6 +243,52 @@ io.on("connection", socket => {
     if (cmd === "!help") bot("Komutlar: !ping, !roll, !help");
   });
 
+  socket.on("spotify:party-start", ({ guildId }) => {
+    const user = users.get(socket.id);
+    if (!user || user.guildId !== guildId || !user.roomId) return;
+
+    const state: SpotifyPartyState = {
+      guildId,
+      leaderSocketId: socket.id,
+      leaderUsername: user.username,
+      active: true,
+      updatedAt: Date.now()
+    };
+
+    spotifyParties.set(guildId, state);
+    io.to(user.roomId).emit("spotify:party-state", state);
+  });
+
+  socket.on("spotify:party-stop", ({ guildId }) => {
+    const user = users.get(socket.id);
+    const party = spotifyParties.get(guildId);
+
+    if (!user || !party || party.leaderSocketId !== socket.id) return;
+
+    spotifyParties.delete(guildId);
+    io.to(roomFor(guildId)).emit("spotify:party-ended");
+  });
+
+  socket.on("spotify:sync", ({ guildId, state }) => {
+    const user = users.get(socket.id);
+    const party = spotifyParties.get(guildId);
+
+    if (!user || !party || party.leaderSocketId !== socket.id) return;
+
+    const next: SpotifyPartyState = {
+      ...party,
+      ...state,
+      guildId,
+      leaderSocketId: socket.id,
+      leaderUsername: user.username,
+      active: true,
+      updatedAt: Date.now()
+    };
+
+    spotifyParties.set(guildId, next);
+    socket.to(roomFor(guildId)).emit("spotify:sync", next);
+  });
+
   socket.on("webrtc-offer", ({ to, sdp }) => {
     io.to(String(to)).emit("webrtc-offer", { from: socket.id, sdp });
   });
@@ -227,8 +303,16 @@ io.on("connection", socket => {
 
   socket.on("disconnect", () => {
     const user = users.get(socket.id);
-    if (user?.roomId) {
+
+    if (user?.roomId && user.guildId) {
       const oldRoom = user.roomId;
+      const party = spotifyParties.get(user.guildId);
+
+      if (party?.leaderSocketId === socket.id) {
+        spotifyParties.delete(user.guildId);
+        io.to(oldRoom).emit("spotify:party-ended");
+      }
+
       socket.to(oldRoom).emit("peer-left", { socketId: socket.id });
       users.delete(socket.id);
       broadcastPresence(oldRoom);
@@ -241,5 +325,5 @@ io.on("connection", socket => {
 const PORT = Number(process.env.PORT || 3001);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`EchoVerse Server v1.1 listening on ${PORT}`);
+  console.log(`EchoVerse Server v1.2 listening on ${PORT}`);
 });
