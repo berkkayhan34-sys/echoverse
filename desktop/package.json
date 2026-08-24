@@ -13,7 +13,8 @@
     "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64",
     "release:win": "npm run build && electron-builder --win nsis --x64",
     "release:mac:intel": "npm run build && electron-builder --mac dmg zip --x64",
-    "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64"
+    "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64",
+    "release:mac:all": "npm run build && electron-builder --mac dmg zip --x64 --arm64"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",
