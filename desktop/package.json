@@ -1,0 +1,72 @@
+{
+  "name": "echoverse-desktop",
+  "productName": "EchoVerse",
+  "version": "1.0.0",
+  "description": "EchoVerse desktop voice and chat app",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
+    "build": "vite build",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:mac:x64": "npm run build && electron-builder --mac dmg --x64",
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.14",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.echoverse.desktop",
+    "productName": "EchoVerse",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "config.json",
+        "to": "config.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.social-networking",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "EchoVerse ${version}"
+    }
+  },
+  "author": "EchoVerse"
+}
