@@ -120,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.5");
+  const [appVersion, setAppVersion] = useState("1.6.6");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -2132,7 +2132,7 @@ export default function App() {
           </button>
 
           <div className="v16-qol">
-          <button onClick={checkForUpdates}>Güncellemeleri kontrol et</button>
+          <button onClick={checkForUpdates}>Güncelleme kontrolü</button>
           {updateProgress > 0 && updateProgress < 100 && <progress max="100" value={updateProgress} />}
           <button onClick={testMicrophone}>Mikrofon testi</button><span>Mic {micTestLevel}%</span>
           <button onClick={testOutput}>Output test sesi</button>

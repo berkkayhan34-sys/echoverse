@@ -28,8 +28,8 @@ jobs:
       - name: Verify Windows updater files
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.5.exe" | Select-Object -First 1
-          $blockmap = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.5.exe.blockmap" | Select-Object -First 1
+          $installer = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.6.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.6.exe.blockmap" | Select-Object -First 1
           $latest = Get-ChildItem "desktop/release" -Filter "latest.yml" | Select-Object -First 1
 
           if (!$installer) { throw "Windows installer missing" }
@@ -121,8 +121,8 @@ jobs:
       - name: Verify release payload
         run: |
           find release -maxdepth 3 -type f -print
-          test -f "release/windows/EchoVerse-Setup-1.6.5.exe"
-          test -f "release/windows/EchoVerse-Setup-1.6.5.exe.blockmap"
+          test -f "release/windows/EchoVerse-Setup-1.6.6.exe"
+          test -f "release/windows/EchoVerse-Setup-1.6.6.exe.blockmap"
           test -f release/windows/latest.yml
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
