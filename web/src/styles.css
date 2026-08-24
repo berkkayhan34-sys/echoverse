@@ -1344,3 +1344,247 @@ body::after {
   .top-actions { gap: 3px; }
   .top-actions > button { padding: 6px; font-size: 11px; }
 }
+
+
+/* EchoVerse v1.6.2 — Discord-style DM + exclusive private calls */
+.content.dm-mode {
+  display: flex;
+  min-width: 0;
+}
+
+.dm-fullpage {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: 62px auto 1fr 72px;
+  background: #10141b;
+}
+
+.dm-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 18px;
+  border-bottom: 1px solid #252b36;
+  background: #121720;
+}
+
+.dm-page-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dm-page-user .avatar {
+  width: 38px;
+  height: 38px;
+}
+
+.dm-page-user > div:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.dm-page-user small {
+  color: #7f899b;
+  margin-top: 2px;
+}
+
+.dm-back {
+  border: 0;
+  background: #262d39;
+  color: white;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.dm-page-actions button {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: white;
+  background: #2a3240;
+  font-weight: 700;
+}
+
+.dm-page-actions .call-connected {
+  background: #9d3545;
+}
+
+.private-call-stage {
+  min-height: 150px;
+  border-bottom: 1px solid #242b36;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at center, rgba(98,82,218,.16), transparent 55%),
+    #0c1016;
+  padding: 18px;
+}
+
+.private-call-stage h2 {
+  margin: 8px 0 3px;
+}
+
+.private-call-stage p {
+  margin: 0;
+  color: #8791a3;
+}
+
+.call-stage-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #313846;
+  font-size: 20px;
+  font-weight: 800;
+  box-shadow: 0 0 0 4px rgba(102,88,237,.14);
+}
+
+.call-stage-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.private-call-stage.calling .call-stage-avatar {
+  animation: echoverse-call-pulse 1.6s infinite ease-in-out;
+}
+
+@keyframes echoverse-call-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(102,88,237,.15); }
+  50% { box-shadow: 0 0 0 15px rgba(102,88,237,.03); }
+}
+
+.private-call-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.private-call-controls button {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 13px;
+  background: #2a3240;
+  color: white;
+}
+
+.private-call-controls .hangup {
+  background: #a43747;
+}
+
+.dm-thread {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+}
+
+.dm-empty {
+  margin-top: 40px;
+  color: #cfd5df;
+}
+
+.dm-empty p {
+  color: #7e8898;
+}
+
+.avatar.large {
+  width: 72px;
+  height: 72px;
+  font-size: 20px;
+}
+
+.dm-discord-message {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  padding: 7px 8px;
+  margin: 1px 0;
+  border-radius: 6px;
+}
+
+.dm-discord-message:hover {
+  background: rgba(255,255,255,.025);
+}
+
+.dm-discord-message .avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.dm-discord-body {
+  min-width: 0;
+}
+
+.dm-discord-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.dm-discord-meta b {
+  color: #eef1f5;
+}
+
+.dm-discord-meta small {
+  color: #606b7c;
+  font-size: 10px;
+}
+
+.dm-discord-text {
+  color: #cbd1dc;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 2px;
+}
+
+.dm-page-composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid #252b36;
+  background: #10141b;
+}
+
+.dm-page-composer input {
+  border: 0;
+  outline: none;
+  border-radius: 10px;
+  background: #202632;
+  color: white;
+  padding: 13px 14px;
+  font-size: 13px;
+}
+
+.dm-page-composer button {
+  border: 0;
+  border-radius: 10px;
+  background: #6658ed;
+  color: white;
+  padding: 0 16px;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .dm-page-header {
+    padding: 0 10px;
+  }
+
+  .dm-thread {
+    padding: 12px;
+  }
+
+  .dm-page-composer {
+    padding: 10px;
+  }
+}
