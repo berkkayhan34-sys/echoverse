@@ -32,15 +32,26 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:win
 
-      - name: Verify Windows updater metadata
+      - name: Verify Windows auto-update assets
         shell: powershell
         run: |
-          if (!(Test-Path "desktop/release/latest.yml")) {
-            Write-Error "latest.yml was not generated. Windows auto-update cannot work."
-            exit 1
+          $installer = Get-ChildItem "desktop/release" -Filter "*.exe" | Where-Object { $_.Name -like "EchoVerse Setup*" } | Select-Object -First 1
+          $blockmap = Get-ChildItem "desktop/release" -Filter "*.exe.blockmap" | Select-Object -First 1
+          $latest = "desktop/release/latest.yml"
+
+          if (!$installer) { throw "Windows installer missing" }
+          if (!$blockmap) { throw "Windows blockmap missing" }
+          if (!(Test-Path $latest)) { throw "latest.yml missing - auto update would be broken" }
+
+          Write-Host "Installer:" $installer.Name
+          Write-Host "Blockmap:" $blockmap.Name
+          Write-Host "latest.yml:"
+          Get-Content $latest
+
+          $latestText = Get-Content $latest -Raw
+          if ($latestText -notmatch "1\.6\.4") {
+            throw "latest.yml does not advertise v1.6.4"
           }
-          Get-Content "desktop/release/latest.yml"
-          Get-ChildItem "desktop/release" -File | Select-Object Name, Length
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -75,7 +86,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:intel
 
-      - name: Upload macOS Intel artifacts
+      - name: Upload macOS Intel
         uses: actions/upload-artifact@v4
         with:
           name: mac-intel-release
@@ -108,7 +119,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:arm64
 
-      - name: Upload macOS Apple Silicon artifacts
+      - name: Upload macOS Apple Silicon
         uses: actions/upload-artifact@v4
         with:
           name: mac-arm64-release
@@ -120,10 +131,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs:
-      - windows
-      - mac-intel
-      - mac-arm64
+    needs: [windows, mac-intel, mac-arm64]
     runs-on: ubuntu-latest
 
     steps:
@@ -145,10 +153,12 @@ jobs:
           name: mac-arm64-release
           path: release/mac-arm64
 
-      - name: Show release files
-        run: find release -maxdepth 3 -type f -print
+      - name: Verify release payload
+        run: |
+          find release -maxdepth 3 -type f -print
+          test -f release/windows/latest.yml
 
-      - name: Publish release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}

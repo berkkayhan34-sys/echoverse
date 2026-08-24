@@ -24,25 +24,34 @@ jobs:
         working-directory: desktop
         run: npm install
 
-      - name: Build Windows test installer
+      - name: Build Windows
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
 
-      - name: Verify updater metadata
+      - name: Verify v1.6.4 updater metadata
         shell: powershell
         run: |
           if (!(Test-Path "desktop/release/latest.yml")) {
-            Write-Error "latest.yml missing"
-            exit 1
+            throw "latest.yml missing"
           }
-          Get-Content "desktop/release/latest.yml"
 
-      - name: Upload Windows test installer
+          $latest = Get-Content "desktop/release/latest.yml" -Raw
+          Write-Host $latest
+
+          if ($latest -notmatch "1\.6\.4") {
+            throw "latest.yml version is not 1.6.4"
+          }
+
+          if (!(Get-ChildItem "desktop/release" -Filter "*.exe.blockmap")) {
+            throw "Windows blockmap missing"
+          }
+
+      - name: Upload Windows test artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EchoVerse-v1.6.3-Windows-Test
+          name: EchoVerse-v1.6.4-Windows-Test
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap

@@ -118,7 +118,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.3");
+  const [appVersion, setAppVersion] = useState("1.6.4");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -148,6 +148,9 @@ export default function App() {
   const [viewMode, setViewMode] = useState<"server" | "dm">("server");
   const [callState, setCallState] = useState<"idle" | "calling" | "ringing" | "connected">("idle");
   const [ringbackPlaying, setRingbackPlaying] = useState(false);
+  const [callSeconds, setCallSeconds] = useState(0);
+  const [connectionMessage, setConnectionMessage] = useState("");
+
 
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
   const [dmText, setDmText] = useState("");
@@ -188,7 +191,57 @@ export default function App() {
   const speakingIntervals = useRef<Map<string, number>>(new Map());
   const ringAudio = useRef<HTMLAudioElement | null>(null);
   const ringbackAudio = useRef<HTMLAudioElement | null>(null);
+  const activeDmFriendRef = useRef<FriendUser | null>(null);
+  const accountRef = useRef<Account | null>(null);
+  const viewModeRef = useRef<"server" | "dm">("server");
+  const dmThreadRef = useRef<HTMLDivElement | null>(null);
+  const typingStopTimer = useRef<number | null>(null);
+  const callTimer = useRef<number | null>(null);
 
+
+
+  useEffect(() => {
+    activeDmFriendRef.current = activeDmFriend;
+  }, [activeDmFriend]);
+
+  useEffect(() => {
+    accountRef.current = account;
+  }, [account]);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!dmThreadRef.current) return;
+    dmThreadRef.current.scrollTo({
+      top: dmThreadRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [dmMessages, activeDmFriend?.id]);
+
+  useEffect(() => {
+    if (callState === "connected") {
+      setCallSeconds(0);
+      if (callTimer.current) window.clearInterval(callTimer.current);
+      callTimer.current = window.setInterval(() => {
+        setCallSeconds(v => v + 1);
+      }, 1000);
+    } else {
+      if (callTimer.current) {
+        window.clearInterval(callTimer.current);
+        callTimer.current = null;
+      }
+      setCallSeconds(0);
+    }
+
+    return () => {
+      if (callTimer.current) {
+        window.clearInterval(callTimer.current);
+        callTimer.current = null;
+      }
+    };
+  }, [callState]);
 
   useEffect(() => {
     (async () => {
@@ -259,6 +312,7 @@ export default function App() {
 
     s.on("connect", () => {
       setConnected(true);
+      setConnectionMessage("");
       setError("");
 
       const token = localStorage.getItem("echoverse_token");
@@ -283,10 +337,14 @@ export default function App() {
       }
     });
 
-    s.on("disconnect", () => setConnected(false));
+    s.on("disconnect", () => {
+      setConnected(false);
+      setConnectionMessage("Bağlantı kesildi. Yeniden bağlanılıyor…");
+    });
 
     s.on("connect_error", err => {
       setConnected(false);
+      setConnectionMessage("EchoVerse sunucusuna yeniden bağlanmaya çalışıyor…");
       setError(`Sunucuya bağlanılamadı: ${err.message}`);
     });
 
@@ -314,29 +372,51 @@ export default function App() {
     });
 
     s.on("dm:message", (msg: DmMessage) => {
-      setDmMessages(prev => {
-        if (
-          activeDmFriend &&
-          (msg.senderId === activeDmFriend.id || msg.recipientId === activeDmFriend.id)
-        ) {
-          return [...prev, msg];
-        }
-        return prev;
-      });
+      const currentFriend = activeDmFriendRef.current;
+      const currentAccount = accountRef.current;
+      const isOpenConversation =
+        viewModeRef.current === "dm" &&
+        !!currentFriend &&
+        (msg.senderId === currentFriend.id || msg.recipientId === currentFriend.id);
 
-      if (account && msg.senderId !== account.id) {
-        if (!activeDmFriend || activeDmFriend.id !== msg.senderId) {
-          setUnreadDm(prev => ({ ...prev, [msg.senderId]: (prev[msg.senderId] || 0) + 1 }));
-        }
-        window.echoverse?.notify?.({
-          title: msg.senderUsername || "Yeni mesaj",
-          body: msg.body
+      if (isOpenConversation) {
+        setDmMessages(prev => {
+          if (prev.some(existing => existing.id === msg.id)) return prev;
+          return [...prev, msg];
         });
+
+        if (currentFriend) {
+          setUnreadDm(prev => ({ ...prev, [currentFriend.id]: 0 }));
+        }
+      }
+
+      if (currentAccount && msg.senderId !== currentAccount.id) {
+        if (!isOpenConversation) {
+          setUnreadDm(prev => ({
+            ...prev,
+            [msg.senderId]: (prev[msg.senderId] || 0) + 1
+          }));
+
+          window.echoverse?.notify?.({
+            title: msg.senderUsername || "Yeni mesaj",
+            body: msg.body
+          });
+        }
       }
     });
 
     s.on("call:incoming", async (call: IncomingCall) => {
       await prepareForPrivateCall();
+
+      const caller =
+        friends.find(f => f.id === call.fromAccountId) || {
+          id: call.fromAccountId,
+          username: call.fromUsername,
+          avatarData: call.fromAvatarData
+        };
+
+      setActiveDmFriend(caller);
+      setViewMode("dm");
       setIncomingCall(call);
       setCallState("ringing");
       startRingtone();
@@ -694,10 +774,25 @@ export default function App() {
   }
 
   function openDm(friend: FriendUser) {
+    if (typingStopTimer.current) {
+      window.clearTimeout(typingStopTimer.current);
+      typingStopTimer.current = null;
+    }
+
+    if (activeDmFriendRef.current) {
+      socket?.emit("dm:typing", {
+        friendId: activeDmFriendRef.current.id,
+        typing: false
+      });
+    }
+
     setActiveDmFriend(friend);
     setViewMode("dm");
     setShowFriends(false);
     setDmMessages([]);
+    setDmText("");
+    setReplyTo(null);
+    setUnreadDm(prev => ({ ...prev, [friend.id]: 0 }));
 
     socket?.emit("dm:history", { friendId: friend.id }, (result: any) => {
       if (result?.ok) setDmMessages(result.messages || []);
@@ -790,8 +885,23 @@ export default function App() {
   function setPresenceStatus(status: "online"|"idle"|"dnd"|"invisible") {
     setMyStatus(status); socket?.emit("presence:set",{status});
   }
-  function sendTyping(typing:boolean) {
-    if(activeDmFriend) socket?.emit("dm:typing",{friendId:activeDmFriend.id,typing});
+  function sendTyping(typing: boolean) {
+    const friend = activeDmFriendRef.current;
+    if (!friend || !socket) return;
+
+    socket.emit("dm:typing", { friendId: friend.id, typing });
+
+    if (typingStopTimer.current) {
+      window.clearTimeout(typingStopTimer.current);
+      typingStopTimer.current = null;
+    }
+
+    if (typing) {
+      typingStopTimer.current = window.setTimeout(() => {
+        socket.emit("dm:typing", { friendId: friend.id, typing: false });
+        typingStopTimer.current = null;
+      }, 1400);
+    }
   }
   function reactDm(messageId:string, emoji:string) { socket?.emit("dm:react",{messageId,emoji}); }
 
@@ -854,6 +964,30 @@ export default function App() {
     setRingbackPlaying(false);
   }
 
+  function playCallEndTone() {
+    try {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(260, ctx.currentTime + 0.32);
+      gain.gain.setValueAtTime(0.04, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+      window.setTimeout(() => { try { ctx.close(); } catch {} }, 600);
+    } catch {}
+  }
+
+  function formatCallTime(total: number) {
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
   async function prepareForPrivateCall() {
     // Private call and server voice are mutually exclusive.
     if (joined) {
@@ -881,6 +1015,10 @@ export default function App() {
 
   async function callFriend(friend: FriendUser) {
     if (!socket) return;
+    if (callState !== "idle" || privateCallPeer || incomingCall) {
+      setError("Zaten aktif veya bekleyen bir özel arama var.");
+      return;
+    }
 
     await prepareForPrivateCall();
 
@@ -953,6 +1091,7 @@ export default function App() {
     setCallState("idle");
     stopRingtone();
     stopRingback();
+    playCallEndTone();
   }
 
   async function refreshSpotifyStatus() {
@@ -2074,6 +2213,12 @@ export default function App() {
   return (
     <div className="app">
       {updaterBanner()}
+      {connectionMessage && (
+        <div className="connection-status-banner">
+          <span className="connection-dot" />
+          {connectionMessage}
+        </div>
+      )}
       <aside className="servers">
         <div className="server-logo">
           E
@@ -2330,8 +2475,11 @@ export default function App() {
             <header className="dm-page-header">
               <div className="dm-page-user">
                 <button className="dm-back" onClick={() => {
+                  sendTyping(false);
                   setViewMode("server");
                   setActiveDmFriend(null);
+                  setDmText("");
+                  setReplyTo(null);
                 }}>←</button>
 
                 <div className="avatar">
@@ -2393,7 +2541,7 @@ export default function App() {
                   {callState === "calling"
                     ? "Aranıyor…"
                     : callState === "connected"
-                      ? "Özel konuşma bağlı"
+                      ? `Özel konuşma • ${formatCallTime(callSeconds)}`
                       : "Gelen arama"}
                 </p>
 
@@ -2410,7 +2558,7 @@ export default function App() {
               </div>
             )}
 
-            <div className="dm-thread">
+            <div className="dm-thread" ref={dmThreadRef}>
               {dmMessages.length === 0 && (
                 <div className="dm-empty">
                   <div className="avatar large">
@@ -2461,7 +2609,12 @@ export default function App() {
                   setDmText(e.target.value);
                   sendTyping(true);
                 }}
-                onKeyDown={e => e.key === "Enter" && sendDm()}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendDm();
+                  }
+                }}
                 placeholder={`${activeDmFriend.username} kişisine mesaj gönder`}
               />
               <button onClick={sendDm}>Gönder</button>
@@ -2889,7 +3042,12 @@ export default function App() {
                   </div>
 
                   <div className="friend-actions">
-                    <button onClick={() => openDm(f)}>💬</button>
+                    <button className="dm-open-button" onClick={() => openDm(f)}>
+                      💬
+                      {(unreadDm[f.id] || 0) > 0 && (
+                        <span className="dm-unread-badge">{Math.min(unreadDm[f.id], 99)}</span>
+                      )}
+                    </button>
                     <button onClick={() => callFriend(f)}>📞</button>
                     <button onClick={() => removeFriend(f.id)}>🗑</button>
                   </div>
@@ -2922,7 +3080,9 @@ export default function App() {
         <div className="private-call-bar">
           <span>
             📞 {privateCallPeer.username}
-            {ringing ? " aranıyor…" : " ile özel konuşma"}
+            {ringing
+              ? " aranıyor…"
+              : ` ile özel konuşma • ${formatCallTime(callSeconds)}`}
           </span>
           <button onClick={() => stopPrivateCall(true)}>Aramayı Bitir</button>
         </div>

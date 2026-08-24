@@ -16,7 +16,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.6.3",
+    version: "1.6.4",
     ok: true,
     database: process.env.DATABASE_URL ? "postgres" : "memory",
     time: new Date().toISOString()
@@ -26,7 +26,7 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    version: "1.6.3",
+    version: "1.6.4",
     database: process.env.DATABASE_URL ? "postgres" : "memory"
   });
 });
@@ -1322,7 +1322,7 @@ const PORT = Number(process.env.PORT || 3001);
 initDatabase()
   .then(() => {
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`EchoVerse Server v1.6.3 listening on ${PORT}`);
+      console.log(`EchoVerse Server v1.6.4 listening on ${PORT}`);
     });
   })
   .catch(err => {
