@@ -10,35 +10,46 @@ jobs:
   windows-test:
     name: Windows Test Build
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install
+
       - name: Build Windows
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
+
       - name: Verify updater metadata
         shell: pwsh
         run: |
-          if (!(Test-Path "desktop/release/EchoVerse-Setup-1.6.6.exe")) { throw "Installer missing" }
-          if (!(Test-Path "desktop/release/EchoVerse-Setup-1.6.6.exe.blockmap")) { throw "Blockmap missing" }
-          if (!(Test-Path "desktop/release/latest.yml")) { throw "latest.yml missing" }
+          $installer = "desktop/release/EchoVerse-Setup-1.6.6.exe"
+          $blockmap = "desktop/release/EchoVerse-Setup-1.6.6.exe.blockmap"
+          $latest = "desktop/release/latest.yml"
 
-          $content = Get-Content "desktop/release/latest.yml" -Raw
+          if (!(Test-Path $installer)) { throw "Installer missing" }
+          if (!(Test-Path $blockmap)) { throw "Blockmap missing" }
+          if (!(Test-Path $latest)) { throw "latest.yml missing" }
+
+          $content = Get-Content $latest -Raw
+          Write-Host $content
+
           if ($content -notmatch "version:\s*1\.6\.6") { throw "Version mismatch" }
-          if ($content -notmatch "EchoVerse-Setup-1\.6\.5\.exe") { throw "Installer filename mismatch" }
+          if ($content -notmatch "EchoVerse-Setup-1\.6\.6\.exe") { throw "Installer filename mismatch" }
+
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-v1.6.6-Windows-Test
           path: |
-            desktop/release/*.exe
-            desktop/release/*.blockmap
+            desktop/release/EchoVerse-Setup-1.6.6.exe
+            desktop/release/EchoVerse-Setup-1.6.6.exe.blockmap
             desktop/release/latest.yml
           if-no-files-found: error
-
