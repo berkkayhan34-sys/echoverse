@@ -5,7 +5,8 @@ const {
   session,
   desktopCapturer,
   shell,
-  safeStorage
+  safeStorage,
+  systemPreferences
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
@@ -16,6 +17,7 @@ const crypto = require("crypto");
 let mainWindow = null;
 let spotifyTokens = null;
 let spotifyLoginServer = null;
+let selectedDisplaySourceId = null;
 
 const SPOTIFY_CALLBACK_PORT = 43821;
 const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
@@ -179,6 +181,50 @@ async function activeSpotifyDevice() {
 }
 
 ipcMain.handle("echoverse:getConfig", () => readConfig());
+
+ipcMain.handle("capture:screenPermission", () => {
+  if (process.platform !== "darwin") return "granted";
+  try {
+    return systemPreferences.getMediaAccessStatus("screen");
+  } catch {
+    return "unknown";
+  }
+});
+
+ipcMain.handle("capture:listSources", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true
+  });
+
+  return sources.map(source => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail && !source.thumbnail.isEmpty()
+      ? source.thumbnail.toDataURL()
+      : "",
+    appIcon: source.appIcon && !source.appIcon.isEmpty()
+      ? source.appIcon.toDataURL()
+      : ""
+  }));
+});
+
+ipcMain.handle("capture:selectSource", (_evt, sourceId) => {
+  selectedDisplaySourceId = String(sourceId || "");
+  return { ok: true };
+});
+
+ipcMain.handle("capture:openScreenSettings", async () => {
+  if (process.platform === "darwin") {
+    await shell.openExternal(
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+    );
+  }
+  return { ok: true };
+});
+
+ipcMain.handle("echoverse:getVersion", () => app.getVersion());
 
 ipcMain.handle("spotify:status", async () => {
   const cfg = readConfig();
@@ -451,23 +497,34 @@ async function setupScreenCapture() {
           fetchWindowIcons: false
         });
 
-        const screen = sources.find(s => s.id.startsWith("screen:")) || sources[0];
+        let source = null;
 
-        if (!screen) {
+        if (selectedDisplaySourceId) {
+          source = sources.find(s => s.id === selectedDisplaySourceId) || null;
+        }
+
+        source =
+          source ||
+          sources.find(s => s.id.startsWith("screen:")) ||
+          sources[0] ||
+          null;
+
+        selectedDisplaySourceId = null;
+
+        if (!source) {
           callback({});
           return;
         }
 
         callback({
-          video: screen,
-          audio: process.platform === "win32" ? "loopback" : undefined
+          video: source
         });
       } catch (err) {
         console.error("Display capture failed:", err);
+        selectedDisplaySourceId = null;
         callback({});
       }
-    },
-    { useSystemPicker: true }
+    }
   );
 }
 

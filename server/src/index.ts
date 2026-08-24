@@ -11,13 +11,13 @@ app.use(express.json());
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.2.0",
+    version: "1.3.0",
     ok: true,
     time: new Date().toISOString()
   });
 });
 
-app.get("/health", (_req, res) => res.json({ ok: true, version: "1.2.0" }));
+app.get("/health", (_req, res) => res.json({ ok: true, version: "1.3.0" }));
 
 const httpServer = http.createServer(app);
 
@@ -325,5 +325,5 @@ io.on("connection", socket => {
 const PORT = Number(process.env.PORT || 3001);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`EchoVerse Server v1.2 listening on ${PORT}`);
+  console.log(`EchoVerse Server v1.3 listening on ${PORT}`);
 });

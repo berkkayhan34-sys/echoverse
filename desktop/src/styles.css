@@ -725,3 +725,188 @@ button {
 .channels .user-panel {
   margin-top: 0;
 }
+
+
+/* EchoVerse v1.3 */
+.voice-user-row {
+  border-radius: 9px;
+  padding: 2px 4px 5px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+}
+
+.voice-user-row.speaking,
+.member-card.speaking {
+  border-color: rgba(49, 211, 111, .8);
+  background: rgba(49, 211, 111, .08);
+  box-shadow: 0 0 0 1px rgba(49, 211, 111, .15), 0 0 14px rgba(49, 211, 111, .15);
+}
+
+.voice-peer-controls {
+  display: grid;
+  grid-template-columns: 28px 1fr 34px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 3px 0 17px;
+}
+
+.voice-peer-controls button {
+  border: 0;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: #252b37;
+  color: white;
+  padding: 0;
+}
+
+.voice-peer-controls button.peer-muted {
+  background: #59242c;
+}
+
+.voice-peer-controls input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  accent-color: #7463ff;
+}
+
+.voice-peer-controls span {
+  text-align: right;
+  color: #8a94a7;
+  font-size: 9px;
+}
+
+.local-video,
+.remote-video {
+  cursor: zoom-in;
+  transition: box-shadow .14s ease, transform .14s ease;
+}
+
+.speaking-video {
+  box-shadow:
+    0 0 0 3px #31d36f,
+    0 0 24px rgba(49, 211, 111, .45) !important;
+}
+
+.video-maximized {
+  position: fixed !important;
+  inset: 14px !important;
+  z-index: 1000 !important;
+  width: calc(100vw - 28px) !important;
+  height: calc(100vh - 28px) !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  background: #050608 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 30px 120px rgba(0,0,0,.75) !important;
+  cursor: zoom-out !important;
+}
+
+.screen-picker-modal {
+  width: min(940px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+}
+
+.screen-picker-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.screen-picker-header h2 {
+  margin-bottom: 4px;
+}
+
+.screen-picker-header p {
+  margin: 0;
+  color: #838da0;
+}
+
+.screen-picker-header > button {
+  border: 0;
+  background: #282e3a;
+  color: white;
+  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+}
+
+.screen-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.screen-source-card {
+  border: 1px solid #303747;
+  border-radius: 12px;
+  background: #11151c;
+  color: #dce1ea;
+  padding: 8px;
+  text-align: left;
+}
+
+.screen-source-card:hover {
+  border-color: #7565ff;
+  background: #181d27;
+}
+
+.screen-source-preview {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #090b0f;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.screen-source-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.screen-source-preview span {
+  font-size: 30px;
+}
+
+.screen-source-card > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.screen-permission-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 12px;
+  border-radius: 9px;
+  background: #4a3020;
+  color: #ffd6a6;
+  font-size: 12px;
+}
+
+.screen-permission-warning button {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #79502f;
+  color: white;
+}
+
+@media (max-width: 1050px) {
+  .voice-peer-controls {
+    grid-template-columns: 27px 1fr 32px;
+  }
+}

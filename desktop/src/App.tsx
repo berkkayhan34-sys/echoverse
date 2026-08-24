@@ -22,6 +22,13 @@ type Guild = {
   createdAt: string;
 };
 
+type ScreenSource = {
+  id: string;
+  name: string;
+  thumbnail?: string;
+  appIcon?: string;
+};
+
 type SpotifyState = {
   guildId?: string;
   leaderSocketId?: string;
@@ -65,9 +72,15 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
+  const [appVersion, setAppVersion] = useState("1.3.0");
+  const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
+  const [showScreenPicker, setShowScreenPicker] = useState(false);
+  const [screenPermission, setScreenPermission] = useState("");
 
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
   const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({});
+  const [speakingPeers, setSpeakingPeers] = useState<Record<string, boolean>>({});
+  const [localSpeaking, setLocalSpeaking] = useState(false);
 
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifyName, setSpotifyName] = useState("");
@@ -86,6 +99,8 @@ export default function App() {
   const remoteVideoHost = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const spotifyLeaderTimer = useRef<number | null>(null);
+  const audioContext = useRef<AudioContext | null>(null);
+  const speakingIntervals = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     (async () => {
@@ -103,6 +118,11 @@ export default function App() {
       );
 
       await refreshSpotifyStatus();
+
+      try {
+        const version = await window.echoverse?.getVersion?.();
+        if (version) setAppVersion(version);
+      } catch {}
     })();
 
     window.echoverse?.onUpdateStatus?.((status: string) => {
@@ -227,6 +247,112 @@ export default function App() {
       audio.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume / 100));
     }
   }, [peerVolumes, peerMuted]);
+
+  useEffect(() => {
+    const host = remoteVideoHost.current;
+    if (!host) return;
+
+    for (const [peerId, isSpeaking] of Object.entries(speakingPeers)) {
+      host
+        .querySelector<HTMLVideoElement>(`video[data-peer="${peerId}"]`)
+        ?.classList.toggle("speaking-video", !!isSpeaking);
+    }
+  }, [speakingPeers]);
+
+  useEffect(() => {
+    const closeFocused = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        document
+          .querySelectorAll(".video-maximized")
+          .forEach(el => el.classList.remove("video-maximized"));
+      }
+    };
+
+    window.addEventListener("keydown", closeFocused);
+    return () => window.removeEventListener("keydown", closeFocused);
+  }, []);
+
+
+  function getAudioContext() {
+    if (!audioContext.current) {
+      audioContext.current = new AudioContext();
+    }
+    return audioContext.current;
+  }
+
+  function stopSpeakingMonitor(peerId: string) {
+    const interval = speakingIntervals.current.get(peerId);
+    if (interval !== undefined) {
+      window.clearInterval(interval);
+      speakingIntervals.current.delete(peerId);
+    }
+
+    if (peerId === "local") {
+      setLocalSpeaking(false);
+    } else {
+      setSpeakingPeers(prev => {
+        if (!(peerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
+    }
+  }
+
+  function startSpeakingMonitor(peerId: string, stream: MediaStream) {
+    stopSpeakingMonitor(peerId);
+
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    try {
+      const ctx = getAudioContext();
+      const source = ctx.createMediaStreamSource(
+        new MediaStream([audioTrack])
+      );
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.72;
+      source.connect(analyser);
+
+      const data = new Uint8Array(analyser.fftSize);
+      let last = false;
+
+      const interval = window.setInterval(() => {
+        if (audioTrack.readyState === "ended") {
+          stopSpeakingMonitor(peerId);
+          return;
+        }
+
+        analyser.getByteTimeDomainData(data);
+
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const value = (data[i] - 128) / 128;
+          sum += value * value;
+        }
+
+        const rms = Math.sqrt(sum / data.length);
+        const speaking = rms > 0.035;
+
+        if (speaking === last) return;
+        last = speaking;
+
+        if (peerId === "local") {
+          setLocalSpeaking(speaking);
+        } else {
+          setSpeakingPeers(prev => ({
+            ...prev,
+            [peerId]: speaking
+          }));
+        }
+      }, 90);
+
+      speakingIntervals.current.set(peerId, interval);
+    } catch (err) {
+      console.warn("Speaking monitor error", err);
+    }
+  }
 
   async function refreshSpotifyStatus() {
     try {
@@ -370,6 +496,7 @@ export default function App() {
     });
 
     localStream.current = stream;
+    startSpeakingMonitor("local", stream);
     return stream;
   }
 
@@ -432,6 +559,7 @@ export default function App() {
         }
 
         audio.srcObject = streamForTrack;
+        startSpeakingMonitor(peerId, streamForTrack);
 
         const volume = peerVolumes[peerId] ?? 100;
         audio.volume = peerMuted[peerId]
@@ -473,6 +601,7 @@ export default function App() {
   }
 
   function removePeer(peerId: string) {
+    stopSpeakingMonitor(peerId);
     pcs.current.get(peerId)?.close();
     pcs.current.delete(peerId);
     videoSenders.current.delete(peerId);
@@ -510,6 +639,16 @@ export default function App() {
       video.autoplay = true;
       video.playsInline = true;
       video.className = "remote-video";
+      video.title = "Büyütmek için tıkla • ESC ile çık";
+      video.onclick = () => {
+        document
+          .querySelectorAll(".video-maximized")
+          .forEach(el => {
+            if (el !== video) el.classList.remove("video-maximized");
+          });
+
+        video.classList.toggle("video-maximized");
+      };
       host.appendChild(video);
     }
 
@@ -675,6 +814,10 @@ export default function App() {
   }
 
   function stopAllMedia() {
+    for (const peerId of [...speakingIntervals.current.keys()]) {
+      stopSpeakingMonitor(peerId);
+    }
+
     stopCameraAndScreen();
 
     localStream.current
@@ -830,14 +973,48 @@ export default function App() {
       }
 
       setScreenOn(false);
-
-      await setOutboundVideo(
-        cameraTrack.current
-      );
+      await setOutboundVideo(cameraTrack.current);
       return;
     }
 
     try {
+      const permission = await window.echoverse?.screenPermission?.();
+      setScreenPermission(permission || "");
+
+      const sources = await window.echoverse?.listScreenSources?.();
+
+      if (!sources || sources.length === 0) {
+        if (
+          permission === "denied" ||
+          permission === "restricted" ||
+          permission === "not-determined"
+        ) {
+          setError(
+            "macOS ekran kaydı izni gerekli. Sistem Ayarları → Gizlilik ve Güvenlik → Ekran ve Sistem Ses Kaydı bölümünden EchoVerse'e izin ver, sonra EchoVerse'i tamamen kapatıp tekrar aç."
+          );
+          await window.echoverse?.openScreenSettings?.();
+        } else {
+          setError("Paylaşılabilecek ekran/pencere bulunamadı.");
+        }
+        return;
+      }
+
+      setScreenSources(sources);
+      setShowScreenPicker(true);
+    } catch (err: any) {
+      setError(
+        `Ekran kaynakları alınamadı: ${
+          err?.message || "bilinmeyen hata"
+        }`
+      );
+    }
+  }
+
+  async function beginScreenShare(source: ScreenSource) {
+    try {
+      await window.echoverse?.selectScreenSource?.(source.id);
+      setShowScreenPicker(false);
+
       const display =
         await navigator.mediaDevices.getDisplayMedia({
           video: {
@@ -846,39 +1023,44 @@ export default function App() {
           audio: false
         });
 
-      const track =
-        display.getVideoTracks()[0];
+      const track = display.getVideoTracks()[0];
 
       if (!track) {
-        throw new Error(
-          "Ekran kaynağı seçilmedi."
-        );
+        throw new Error("Ekran kaynağı açılamadı.");
       }
 
       screenTrack.current = track;
       setScreenOn(true);
-
       await setOutboundVideo(track);
 
       track.onended = async () => {
-        if (
-          screenTrack.current?.id !==
-          track.id
-        ) return;
+        if (screenTrack.current?.id !== track.id) return;
 
         screenTrack.current = null;
         setScreenOn(false);
-
-        await setOutboundVideo(
-          cameraTrack.current
-        );
+        await setOutboundVideo(cameraTrack.current);
       };
     } catch (err: any) {
-      setError(
-        `Ekran paylaşımı açılamadı: ${
-          err?.message || "iptal edildi"
-        }`
-      );
+      setShowScreenPicker(false);
+
+      const permission = await window.echoverse?.screenPermission?.();
+      setScreenPermission(permission || "");
+
+      if (
+        permission === "denied" ||
+        permission === "restricted"
+      ) {
+        setError(
+          "macOS EchoVerse'e ekran kaydı izni vermemiş. Sistem Ayarları → Gizlilik ve Güvenlik → Ekran ve Sistem Ses Kaydı → EchoVerse'i aç ve uygulamayı yeniden başlat."
+        );
+        await window.echoverse?.openScreenSettings?.();
+      } else {
+        setError(
+          `Ekran paylaşımı açılamadı: ${
+            err?.message || "iptal edildi"
+          }`
+        );
+      }
     }
   }
 
@@ -1153,15 +1335,56 @@ export default function App() {
           </button>
 
           <div className="voice-users">
-            {presence.map(p => (
-              <div
-                className="voice-user"
-                key={p.socketId}
-              >
-                <span className="mini-dot" />
-                {p.username}
-              </div>
-            ))}
+            {presence.map(p => {
+              const isSelf = p.socketId === socket?.id;
+              const speaking = isSelf
+                ? localSpeaking && !muted
+                : !!speakingPeers[p.socketId] && !peerMuted[p.socketId];
+
+              return (
+                <div
+                  className={`voice-user-row ${speaking ? "speaking" : ""}`}
+                  key={p.socketId}
+                >
+                  <div className="voice-user">
+                    <span className="mini-dot" />
+                    {p.username}
+                    {isSelf ? " (sen)" : ""}
+                  </div>
+
+                  {!isSelf && (
+                    <div className="voice-peer-controls">
+                      <button
+                        className={peerMuted[p.socketId] ? "peer-muted" : ""}
+                        onClick={() => togglePeerMute(p.socketId)}
+                        title="Sadece sende sustur"
+                      >
+                        {peerMuted[p.socketId] ? "🔇" : "🔊"}
+                      </button>
+
+                      <input
+                        type="range"
+                        min="0"
+                        max="200"
+                        value={peerVolumes[p.socketId] ?? 100}
+                        onChange={e =>
+                          setPeerVolume(
+                            p.socketId,
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+
+                      <span>
+                        {peerMuted[p.socketId]
+                          ? "M"
+                          : `${peerVolumes[p.socketId] ?? 100}%`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1265,7 +1488,7 @@ export default function App() {
 
           <div className="user-info">
             <b>{username}</b>
-            <small>Voice connected</small>
+            <small>Voice connected • v{appVersion}</small>
           </div>
 
           <button onClick={toggleMute}>
@@ -1296,7 +1519,7 @@ export default function App() {
             playsInline
             className={
               cameraOn || screenOn
-                ? "local-video"
+                ? `local-video ${localSpeaking && !muted ? "speaking-video" : ""}`
                 : "hidden"
             }
           />
@@ -1472,7 +1695,11 @@ export default function App() {
 
           return (
             <div
-              className="member-card"
+              className={`member-card ${
+                (isSelf ? localSpeaking && !muted : speakingPeers[p.socketId] && !peerMuted[p.socketId])
+                  ? "speaking"
+                  : ""
+              }`}
               key={p.socketId}
             >
               <div className="member">
@@ -1559,6 +1786,51 @@ export default function App() {
           </div>
         </div>
       </aside>
+
+
+      {showScreenPicker && (
+        <div className="modal-backdrop screen-picker-backdrop">
+          <div className="modal screen-picker-modal">
+            <div className="screen-picker-header">
+              <div>
+                <h2>Ekran veya pencere paylaş</h2>
+                <p>Paylaşmak istediğin kaynağı seç.</p>
+              </div>
+              <button onClick={() => setShowScreenPicker(false)}>✕</button>
+            </div>
+
+            {screenPermission === "denied" && (
+              <div className="screen-permission-warning">
+                macOS ekran kaydı izni kapalı.
+                <button
+                  onClick={() => window.echoverse?.openScreenSettings?.()}
+                >
+                  Sistem Ayarlarını Aç
+                </button>
+              </div>
+            )}
+
+            <div className="screen-source-grid">
+              {screenSources.map(source => (
+                <button
+                  className="screen-source-card"
+                  key={source.id}
+                  onClick={() => beginScreenShare(source)}
+                >
+                  <div className="screen-source-preview">
+                    {source.thumbnail ? (
+                      <img src={source.thumbnail} alt="" />
+                    ) : (
+                      <span>🖥️</span>
+                    )}
+                  </div>
+                  <span>{source.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className="modal-backdrop">
