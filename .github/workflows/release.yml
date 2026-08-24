@@ -21,8 +21,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
         working-directory: desktop
@@ -44,7 +42,6 @@ jobs:
             desktop/release/latest.yml
           if-no-files-found: error
 
-
   mac-intel:
     name: macOS Intel
     runs-on: macos-15-intel
@@ -57,8 +54,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
         working-directory: desktop
@@ -81,7 +76,6 @@ jobs:
             desktop/release/latest-mac.yml
           if-no-files-found: error
 
-
   mac-arm64:
     name: macOS ARM64
     runs-on: macos-latest
@@ -94,8 +88,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
         working-directory: desktop
@@ -117,7 +109,6 @@ jobs:
             desktop/release/*.blockmap
             desktop/release/latest-mac.yml
           if-no-files-found: error
-
 
   publish:
     name: Publish GitHub Release
@@ -148,7 +139,7 @@ jobs:
           path: release/mac-arm64
 
       - name: Show release files
-        run: find release -type f -maxdepth 3 -print
+        run: find release -maxdepth 3 -type f -print
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
