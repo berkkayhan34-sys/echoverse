@@ -15,6 +15,31 @@ type Account = {
   avatarData?: string | null;
 };
 
+type FriendUser = {
+  id: string;
+  username: string;
+  avatarData?: string | null;
+  friendshipId?: string;
+};
+
+type DmMessage = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  createdAt: string;
+  senderUsername?: string;
+  senderAvatarData?: string | null;
+};
+
+type IncomingCall = {
+  callId: string;
+  fromAccountId: string;
+  fromSocketId: string;
+  fromUsername: string;
+  fromAvatarData?: string | null;
+};
+
 type ChatMessage = {
   id: string;
   username: string;
@@ -87,7 +112,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.4.0");
+  const [appVersion, setAppVersion] = useState("1.5.0");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -96,6 +121,31 @@ export default function App() {
   const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({});
   const [speakingPeers, setSpeakingPeers] = useState<Record<string, boolean>>({});
   const [localSpeaking, setLocalSpeaking] = useState(false);
+
+  const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedInput, setSelectedInput] = useState(
+    () => localStorage.getItem("echoverse_input_device") || ""
+  );
+  const [selectedOutput, setSelectedOutput] = useState(
+    () => localStorage.getItem("echoverse_output_device") || ""
+  );
+  const [showAudioSettings, setShowAudioSettings] = useState(false);
+
+  const [showFriends, setShowFriends] = useState(false);
+  const [friends, setFriends] = useState<FriendUser[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [friendSearchResults, setFriendSearchResults] = useState<FriendUser[]>([]);
+  const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
+  const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
+  const [dmText, setDmText] = useState("");
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [privateCallPeer, setPrivateCallPeer] = useState<FriendUser | null>(null);
+  const [privateCallSocketId, setPrivateCallSocketId] = useState("");
+  const [privateCallId, setPrivateCallId] = useState("");
+  const [ringing, setRinging] = useState(false);
 
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifyName, setSpotifyName] = useState("");
@@ -116,6 +166,7 @@ export default function App() {
   const spotifyLeaderTimer = useRef<number | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const speakingIntervals = useRef<Map<string, number>>(new Map());
+  const ringAudio = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -175,6 +226,8 @@ export default function App() {
           setUsername(result.account.username);
           setAccount(result.account);
           setIdentified(true);
+          loadFriends(s);
+          refreshAudioDevices();
         });
       }
     });
@@ -187,6 +240,68 @@ export default function App() {
     });
 
     s.on("guild:list", (list: Guild[]) => setGuilds(list));
+
+    s.on("friends:changed", () => {
+      loadFriends(s);
+    });
+
+    s.on("friends:request-received", (friend: FriendUser) => {
+      loadFriends(s);
+      window.echoverse?.notify?.({
+        title: "Yeni arkadaşlık isteği",
+        body: `${friend.username} seni arkadaş olarak eklemek istiyor.`
+      });
+    });
+
+    s.on("dm:message", (msg: DmMessage) => {
+      setDmMessages(prev => {
+        if (
+          activeDmFriend &&
+          (msg.senderId === activeDmFriend.id || msg.recipientId === activeDmFriend.id)
+        ) {
+          return [...prev, msg];
+        }
+        return prev;
+      });
+
+      if (account && msg.senderId !== account.id) {
+        window.echoverse?.notify?.({
+          title: msg.senderUsername || "Yeni mesaj",
+          body: msg.body
+        });
+      }
+    });
+
+    s.on("call:incoming", (call: IncomingCall) => {
+      setIncomingCall(call);
+      startRingtone();
+
+      window.echoverse?.notify?.({
+        title: "EchoVerse araması",
+        body: `${call.fromUsername} seni arıyor.`
+      });
+    });
+
+    s.on("call:answered", async (result: any) => {
+      setRinging(false);
+      stopRingtone();
+
+      if (!result.accept) {
+        setPrivateCallPeer(null);
+        setPrivateCallSocketId("");
+        setPrivateCallId("");
+        setError("Arama reddedildi.");
+        return;
+      }
+
+      setPrivateCallSocketId(result.responderSocketId);
+      await createPeer(s, result.responderSocketId, true);
+    });
+
+    s.on("call:ended", () => {
+      stopPrivateCall(false);
+    });
+
 
     s.on("chat-message", (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
@@ -395,6 +510,244 @@ export default function App() {
     }
   }
 
+
+  async function refreshAudioDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setAudioInputs(devices.filter(d => d.kind === "audioinput"));
+      setAudioOutputs(devices.filter(d => d.kind === "audiooutput"));
+    } catch {}
+  }
+
+  async function switchInput(deviceId: string) {
+    setSelectedInput(deviceId);
+    localStorage.setItem("echoverse_input_device", deviceId);
+
+    const old = localStream.current;
+    const next = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      },
+      video: false
+    });
+
+    const newTrack = next.getAudioTracks()[0];
+    newTrack.enabled = !muted;
+
+    for (const pc of pcs.current.values()) {
+      const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+      if (sender) {
+        await sender.replaceTrack(newTrack);
+      }
+    }
+
+    old?.getAudioTracks().forEach(t => t.stop());
+    localStream.current = next;
+    startSpeakingMonitor("local", next);
+  }
+
+  async function switchOutput(deviceId: string) {
+    setSelectedOutput(deviceId);
+    localStorage.setItem("echoverse_output_device", deviceId);
+
+    for (const audio of remoteAudio.current.values()) {
+      const sinkable = audio as HTMLAudioElement & {
+        setSinkId?: (id: string) => Promise<void>;
+      };
+
+      if (sinkable.setSinkId) {
+        try {
+          await sinkable.setSinkId(deviceId);
+        } catch {}
+      }
+    }
+  }
+
+  async function loadFriends(s = socket) {
+    if (!s) return;
+
+    s.emit("friends:list", {}, (result: any) => {
+      if (!result?.ok) return;
+      setFriends(result.accepted || []);
+      setIncomingRequests(result.incoming || []);
+      setOutgoingRequests(result.outgoing || []);
+    });
+  }
+
+  function searchFriends() {
+    if (!socket || !friendSearch.trim()) {
+      setFriendSearchResults([]);
+      return;
+    }
+
+    socket.emit("friends:search", { query: friendSearch }, (result: any) => {
+      if (result?.ok) setFriendSearchResults(result.results || []);
+    });
+  }
+
+  function sendFriendRequest(targetId: string) {
+    socket?.emit("friends:request", { targetId }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || "İstek gönderilemedi.");
+        return;
+      }
+      setFriendSearchResults([]);
+      setFriendSearch("");
+      loadFriends();
+    });
+  }
+
+  function respondFriendRequest(friendshipId: string, accept: boolean) {
+    socket?.emit(
+      "friends:respond",
+      { friendshipId, accept },
+      (result: any) => {
+        if (!result?.ok) {
+          setError(result?.error || "İstek işlenemedi.");
+          return;
+        }
+        loadFriends();
+      }
+    );
+  }
+
+  function removeFriend(targetId: string) {
+    socket?.emit("friends:remove", { targetId }, () => {
+      loadFriends();
+      if (activeDmFriend?.id === targetId) {
+        setActiveDmFriend(null);
+        setDmMessages([]);
+      }
+    });
+  }
+
+  function openDm(friend: FriendUser) {
+    setActiveDmFriend(friend);
+    setShowFriends(false);
+    setDmMessages([]);
+
+    socket?.emit("dm:history", { friendId: friend.id }, (result: any) => {
+      if (result?.ok) setDmMessages(result.messages || []);
+    });
+  }
+
+  function sendDm() {
+    if (!socket || !activeDmFriend || !dmText.trim()) return;
+
+    const body = dmText.trim();
+    setDmText("");
+
+    socket.emit(
+      "dm:send",
+      { friendId: activeDmFriend.id, body },
+      (result: any) => {
+        if (!result?.ok) {
+          setError(result?.error || "Mesaj gönderilemedi.");
+        }
+      }
+    );
+  }
+
+  function startRingtone() {
+    stopRingtone();
+
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = 740;
+      gain.gain.value = 0.035;
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+
+      const audio = {
+        pause: () => {
+          try { osc.stop(); } catch {}
+          try { ctx.close(); } catch {}
+        }
+      } as unknown as HTMLAudioElement;
+
+      ringAudio.current = audio;
+    } catch {}
+  }
+
+  function stopRingtone() {
+    try { ringAudio.current?.pause(); } catch {}
+    ringAudio.current = null;
+  }
+
+  function callFriend(friend: FriendUser) {
+    if (!socket) return;
+
+    setPrivateCallPeer(friend);
+    setRinging(true);
+
+    socket.emit("call:start", { friendId: friend.id }, (result: any) => {
+      if (!result?.ok) {
+        setRinging(false);
+        setPrivateCallPeer(null);
+        setError(result?.error || "Arama başlatılamadı.");
+        return;
+      }
+
+      setPrivateCallId(result.callId);
+      setPrivateCallSocketId(result.targetSocketId);
+    });
+  }
+
+  async function answerIncomingCall(accept: boolean) {
+    if (!socket || !incomingCall) return;
+
+    stopRingtone();
+
+    socket.emit("call:answer", {
+      callId: incomingCall.callId,
+      toSocketId: incomingCall.fromSocketId,
+      accept
+    });
+
+    if (accept) {
+      setPrivateCallPeer({
+        id: incomingCall.fromAccountId,
+        username: incomingCall.fromUsername,
+        avatarData: incomingCall.fromAvatarData
+      });
+      setPrivateCallSocketId(incomingCall.fromSocketId);
+      setPrivateCallId(incomingCall.callId);
+      await createPeer(socket, incomingCall.fromSocketId, false);
+    }
+
+    setIncomingCall(null);
+  }
+
+  function stopPrivateCall(sendEvent = true) {
+    if (sendEvent && socket && privateCallSocketId) {
+      socket.emit("call:end", {
+        toSocketId: privateCallSocketId,
+        callId: privateCallId
+      });
+    }
+
+    if (privateCallSocketId) {
+      removePeer(privateCallSocketId);
+    }
+
+    setPrivateCallPeer(null);
+    setPrivateCallSocketId("");
+    setPrivateCallId("");
+    setRinging(false);
+    setIncomingCall(null);
+    stopRingtone();
+  }
+
   async function refreshSpotifyStatus() {
     try {
       const status = await window.echoverse?.spotifyStatus?.();
@@ -528,6 +881,7 @@ export default function App() {
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        deviceId: selectedInput ? { exact: selectedInput } : undefined,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
@@ -600,6 +954,15 @@ export default function App() {
         }
 
         audio.srcObject = streamForTrack;
+
+        const sinkable = audio as HTMLAudioElement & {
+          setSinkId?: (id: string) => Promise<void>;
+        };
+
+        if (selectedOutput && sinkable.setSinkId) {
+          sinkable.setSinkId(selectedOutput).catch(() => {});
+        }
+
         startSpeakingMonitor(peerId, streamForTrack);
 
         const volume = peerVolumes[peerId] ?? 100;
@@ -748,6 +1111,8 @@ export default function App() {
       setAccount(result.account);
       setUsername(result.account.username);
       setIdentified(true);
+      loadFriends(socket);
+      refreshAudioDevices();
       setAuthPassword("");
       setError("");
 
@@ -1748,8 +2113,25 @@ export default function App() {
             </span>
           </div>
 
-          <div className="top-state">
-            ✨ Noise suppression
+          <div className="top-actions">
+            <button onClick={() => {
+              refreshAudioDevices();
+              setShowAudioSettings(true);
+            }}>
+              ⚙ Ses
+            </button>
+
+            <button onClick={() => {
+              loadFriends();
+              setShowFriends(true);
+            }}>
+              👥 Arkadaşlar
+              {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
+            </button>
+
+            <div className="top-state">
+              ✨ Noise suppression
+            </div>
           </div>
         </header>
 
@@ -1924,6 +2306,54 @@ export default function App() {
         )}
       </main>
 
+
+      {activeDmFriend && (
+        <aside className="dm-panel">
+          <div className="dm-header">
+            <div className="dm-friend">
+              <div className="avatar">
+                {activeDmFriend.avatarData ? (
+                  <img src={activeDmFriend.avatarData} alt="" />
+                ) : (
+                  activeDmFriend.username.slice(0, 2).toUpperCase()
+                )}
+              </div>
+              <div>
+                <b>{activeDmFriend.username}</b>
+                <small>Direct Message</small>
+              </div>
+            </div>
+
+            <div className="dm-header-actions">
+              <button onClick={() => callFriend(activeDmFriend)}>📞</button>
+              <button onClick={() => setActiveDmFriend(null)}>✕</button>
+            </div>
+          </div>
+
+          <div className="dm-messages">
+            {dmMessages.map(m => {
+              const mine = m.senderId === account?.id;
+              return (
+                <div className={`dm-message ${mine ? "mine" : ""}`} key={m.id}>
+                  <div>{m.body}</div>
+                  <small>{new Date(m.createdAt).toLocaleTimeString()}</small>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="dm-composer">
+            <input
+              value={dmText}
+              onChange={e => setDmText(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && sendDm()}
+              placeholder={`${activeDmFriend.username} kişisine mesaj`}
+            />
+            <button onClick={sendDm}>Gönder</button>
+          </div>
+        </aside>
+      )}
+
       <aside className="members">
         <div className="members-title">
           ONLINE — {presence.length}
@@ -2029,6 +2459,153 @@ export default function App() {
         </div>
       </aside>
 
+
+
+      {showAudioSettings && (
+        <div className="modal-backdrop">
+          <div className="modal audio-settings-modal">
+            <h2>Ses Ayarları</h2>
+
+            <label>Mikrofon / Input</label>
+            <select
+              value={selectedInput}
+              onChange={e => switchInput(e.target.value)}
+            >
+              <option value="">Sistem varsayılanı</option>
+              {audioInputs.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+
+            <label>Hoparlör / Output</label>
+            <select
+              value={selectedOutput}
+              onChange={e => switchOutput(e.target.value)}
+            >
+              <option value="">Sistem varsayılanı</option>
+              {audioOutputs.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Hoparlör ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+
+            <div className="modal-actions">
+              <button onClick={() => setShowAudioSettings(false)}>Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFriends && (
+        <div className="modal-backdrop">
+          <div className="modal friends-modal">
+            <div className="friends-header">
+              <h2>Arkadaşlar</h2>
+              <button onClick={() => setShowFriends(false)}>✕</button>
+            </div>
+
+            <div className="friend-search-row">
+              <input
+                value={friendSearch}
+                onChange={e => setFriendSearch(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && searchFriends()}
+                placeholder="Kullanıcı adı ara"
+              />
+              <button onClick={searchFriends}>Ara</button>
+            </div>
+
+            {friendSearchResults.length > 0 && (
+              <div className="friend-section">
+                <h3>Arama sonucu</h3>
+                {friendSearchResults.map(f => (
+                  <div className="friend-row" key={f.id}>
+                    <div className="friend-user">
+                      <div className="avatar">
+                        {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                      </div>
+                      <b>{f.username}</b>
+                    </div>
+                    <button onClick={() => sendFriendRequest(f.id)}>＋ Ekle</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {incomingRequests.length > 0 && (
+              <div className="friend-section">
+                <h3>Gelen istekler</h3>
+                {incomingRequests.map(f => (
+                  <div className="friend-row" key={f.id}>
+                    <div className="friend-user">
+                      <div className="avatar">
+                        {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                      </div>
+                      <b>{f.username}</b>
+                    </div>
+                    <div className="friend-actions">
+                      <button onClick={() => respondFriendRequest(f.friendshipId!, true)}>✓</button>
+                      <button onClick={() => respondFriendRequest(f.friendshipId!, false)}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="friend-section">
+              <h3>Arkadaşlarım</h3>
+              {friends.length === 0 && <small>Henüz arkadaşın yok.</small>}
+
+              {friends.map(f => (
+                <div className="friend-row" key={f.id}>
+                  <div className="friend-user">
+                    <div className="avatar">
+                      {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                    </div>
+                    <b>{f.username}</b>
+                  </div>
+
+                  <div className="friend-actions">
+                    <button onClick={() => openDm(f)}>💬</button>
+                    <button onClick={() => callFriend(f)}>📞</button>
+                    <button onClick={() => removeFriend(f.id)}>🗑</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {incomingCall && (
+        <div className="incoming-call">
+          <div className="call-avatar">
+            {incomingCall.fromAvatarData ? (
+              <img src={incomingCall.fromAvatarData} alt="" />
+            ) : (
+              incomingCall.fromUsername.slice(0,2).toUpperCase()
+            )}
+          </div>
+          <div className="call-info">
+            <b>{incomingCall.fromUsername}</b>
+            <span>Seni arıyor…</span>
+          </div>
+          <button className="answer-call" onClick={() => answerIncomingCall(true)}>📞</button>
+          <button className="reject-call" onClick={() => answerIncomingCall(false)}>✕</button>
+        </div>
+      )}
+
+      {privateCallPeer && (
+        <div className="private-call-bar">
+          <span>
+            📞 {privateCallPeer.username}
+            {ringing ? " aranıyor…" : " ile özel konuşma"}
+          </span>
+          <button onClick={() => stopPrivateCall(true)}>Aramayı Bitir</button>
+        </div>
+      )}
 
       {showScreenPicker && (
         <div className="modal-backdrop screen-picker-backdrop">

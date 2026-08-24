@@ -6,7 +6,11 @@ const {
   desktopCapturer,
   shell,
   safeStorage,
-  systemPreferences
+  systemPreferences,
+  Tray,
+  Menu,
+  nativeImage,
+  Notification
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
@@ -15,6 +19,8 @@ const http = require("http");
 const crypto = require("crypto");
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 let spotifyTokens = null;
 let spotifyLoginServer = null;
 let selectedDisplaySourceId = null;
@@ -181,6 +187,18 @@ async function activeSpotifyDevice() {
 }
 
 ipcMain.handle("echoverse:getConfig", () => readConfig());
+
+ipcMain.handle("echoverse:notify", (_evt, { title, body }) => {
+  try {
+    if (Notification.isSupported()) {
+      new Notification({
+        title: String(title || "EchoVerse"),
+        body: String(body || "")
+      }).show();
+    }
+  } catch {}
+  return { ok: true };
+});
 
 ipcMain.handle("capture:screenPermission", () => {
   if (process.platform !== "darwin") return "granted";
@@ -528,6 +546,57 @@ async function setupScreenCapture() {
   );
 }
 
+
+function createTray() {
+  if (tray) return;
+
+  let icon = nativeImage.createEmpty();
+
+  if (process.platform === "darwin") {
+    icon = nativeImage.createFromBuffer(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAIklEQVR42mNgGAWjYBSMglEwCkbB////P4bRMApGwSgYBaNgFAwAAGm6Axf2zQwkAAAAAElFTkSuQmCC",
+        "base64"
+      )
+    );
+    icon.setTemplateImage(true);
+  }
+
+  tray = new Tray(icon);
+  tray.setToolTip("EchoVerse");
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "EchoVerse'ü Aç",
+      click: () => {
+        if (!mainWindow) createWindow();
+        mainWindow?.show();
+        mainWindow?.focus();
+      }
+    },
+    { type: "separator" },
+    {
+      label: "Tamamen Kapat",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(menu);
+
+  tray.on("click", () => {
+    if (!mainWindow) createWindow();
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow?.show();
+      mainWindow?.focus();
+    }
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1450,
@@ -556,17 +625,41 @@ function createWindow() {
   }
 
   mainWindow.webContents.once("did-finish-load", setupAutoUpdater);
+
+  mainWindow.on("close", event => {
+    if (isQuitting) return;
+
+    event.preventDefault();
+    mainWindow.hide();
+
+    if (process.platform === "darwin") {
+      app.dock?.hide();
+    }
+  });
+
+  mainWindow.on("show", () => {
+    if (process.platform === "darwin") {
+      app.dock?.show();
+    }
+  });
 }
 
 app.whenReady().then(() => {
   loadSpotifyTokens();
+  createTray();
   createWindow();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!mainWindow) createWindow();
+    mainWindow?.show();
+    mainWindow?.focus();
   });
 });
 
+app.on("before-quit", () => {
+  isQuitting = true;
+});
+
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // Keep EchoVerse alive in tray/menu bar.
 });

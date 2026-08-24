@@ -16,7 +16,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.4.0",
+    version: "1.5.0",
     ok: true,
     database: process.env.DATABASE_URL ? "postgres" : "memory",
     time: new Date().toISOString()
@@ -26,7 +26,7 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    version: "1.4.0",
+    version: "1.5.0",
     database: process.env.DATABASE_URL ? "postgres" : "memory"
   });
 });
@@ -106,6 +106,20 @@ const spotifyParties = new Map<string, SpotifyPartyState>();
 
 // Fallback only. Use Render PostgreSQL for persistence.
 const memoryAccounts = new Map<string, Account>();
+const memoryFriendships = new Map<string, {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: "pending" | "accepted" | "blocked";
+  createdAt: string;
+}>();
+const memoryDmMessages: Array<{
+  id: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  createdAt: string;
+}> = [];
 
 guilds.set("echoverse", {
   id: "echoverse",
@@ -180,7 +194,34 @@ async function initDatabase() {
     )
   `);
 
-  console.log("EchoVerse accounts: PostgreSQL ready");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS echoverse_friendships (
+      id TEXT PRIMARY KEY,
+      requester_id TEXT NOT NULL REFERENCES echoverse_users(id) ON DELETE CASCADE,
+      addressee_id TEXT NOT NULL REFERENCES echoverse_users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK (status IN ('pending','accepted','blocked')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(requester_id, addressee_id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS echoverse_dm_messages (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL REFERENCES echoverse_users(id) ON DELETE CASCADE,
+      recipient_id TEXT NOT NULL REFERENCES echoverse_users(id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS echoverse_dm_pair_idx
+    ON echoverse_dm_messages(sender_id, recipient_id, created_at)
+  `);
+
+  console.log("EchoVerse accounts/friends/DM: PostgreSQL ready");
 }
 
 async function accountById(id: string): Promise<Account | null> {
@@ -299,6 +340,219 @@ async function updateAvatar(accountId: string, avatarData: string | null) {
   );
 
   return accountById(accountId);
+}
+
+
+function friendshipKey(a: string, b: string) {
+  return [a, b].sort().join(":");
+}
+
+async function publicUserById(id: string) {
+  const account = await accountById(id);
+  if (!account) return null;
+  return {
+    id: account.id,
+    username: account.username,
+    avatarData: account.avatarData
+  };
+}
+
+async function findUsersByUsername(query: string, selfId: string) {
+  const clean = String(query || "").trim().toLowerCase().slice(0, 40);
+  if (!clean) return [];
+
+  if (!pool) {
+    return [...memoryAccounts.values()]
+      .filter(a =>
+        a.id !== selfId &&
+        a.username.toLowerCase().includes(clean)
+      )
+      .slice(0, 20)
+      .map(a => ({
+        id: a.id,
+        username: a.username,
+        avatarData: a.avatarData
+      }));
+  }
+
+  const result = await pool.query(
+    `SELECT id, username, avatar_data
+     FROM echoverse_users
+     WHERE id <> $1 AND LOWER(username) LIKE $2
+     ORDER BY username
+     LIMIT 20`,
+    [selfId, `%${clean}%`]
+  );
+
+  return result.rows.map(row => ({
+    id: row.id,
+    username: row.username,
+    avatarData: row.avatar_data || null
+  }));
+}
+
+async function friendshipBetween(a: string, b: string) {
+  if (!pool) {
+    return memoryFriendships.get(friendshipKey(a, b)) || null;
+  }
+
+  const result = await pool.query(
+    `SELECT id, requester_id, addressee_id, status, created_at
+     FROM echoverse_friendships
+     WHERE
+       (requester_id = $1 AND addressee_id = $2)
+       OR
+       (requester_id = $2 AND addressee_id = $1)
+     LIMIT 1`,
+    [a, b]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function listFriendState(accountId: string) {
+  if (!pool) {
+    const accepted: any[] = [];
+    const incoming: any[] = [];
+    const outgoing: any[] = [];
+
+    for (const f of memoryFriendships.values()) {
+      if (f.status === "accepted" &&
+          (f.requesterId === accountId || f.addresseeId === accountId)) {
+        const otherId = f.requesterId === accountId ? f.addresseeId : f.requesterId;
+        const other = await publicUserById(otherId);
+        if (other) accepted.push(other);
+      } else if (f.status === "pending" && f.addresseeId === accountId) {
+        const other = await publicUserById(f.requesterId);
+        if (other) incoming.push({ ...other, friendshipId: f.id });
+      } else if (f.status === "pending" && f.requesterId === accountId) {
+        const other = await publicUserById(f.addresseeId);
+        if (other) outgoing.push({ ...other, friendshipId: f.id });
+      }
+    }
+
+    return { accepted, incoming, outgoing };
+  }
+
+  const result = await pool.query(
+    `SELECT f.id, f.requester_id, f.addressee_id, f.status,
+            u1.username AS requester_username,
+            u1.avatar_data AS requester_avatar,
+            u2.username AS addressee_username,
+            u2.avatar_data AS addressee_avatar
+     FROM echoverse_friendships f
+     JOIN echoverse_users u1 ON u1.id = f.requester_id
+     JOIN echoverse_users u2 ON u2.id = f.addressee_id
+     WHERE f.requester_id = $1 OR f.addressee_id = $1`,
+    [accountId]
+  );
+
+  const accepted: any[] = [];
+  const incoming: any[] = [];
+  const outgoing: any[] = [];
+
+  for (const row of result.rows) {
+    if (row.status === "accepted") {
+      if (row.requester_id === accountId) {
+        accepted.push({
+          id: row.addressee_id,
+          username: row.addressee_username,
+          avatarData: row.addressee_avatar || null
+        });
+      } else {
+        accepted.push({
+          id: row.requester_id,
+          username: row.requester_username,
+          avatarData: row.requester_avatar || null
+        });
+      }
+    } else if (row.status === "pending" && row.addressee_id === accountId) {
+      incoming.push({
+        id: row.requester_id,
+        username: row.requester_username,
+        avatarData: row.requester_avatar || null,
+        friendshipId: row.id
+      });
+    } else if (row.status === "pending" && row.requester_id === accountId) {
+      outgoing.push({
+        id: row.addressee_id,
+        username: row.addressee_username,
+        avatarData: row.addressee_avatar || null,
+        friendshipId: row.id
+      });
+    }
+  }
+
+  return { accepted, incoming, outgoing };
+}
+
+async function areFriends(a: string, b: string) {
+  const f = await friendshipBetween(a, b);
+  const status = f?.status;
+  return status === "accepted";
+}
+
+async function storeDm(senderId: string, recipientId: string, body: string) {
+  const msg = {
+    id: crypto.randomUUID(),
+    senderId,
+    recipientId,
+    body,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!pool) {
+    memoryDmMessages.push(msg);
+    return msg;
+  }
+
+  await pool.query(
+    `INSERT INTO echoverse_dm_messages
+      (id, sender_id, recipient_id, body, created_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [msg.id, senderId, recipientId, body, msg.createdAt]
+  );
+
+  return msg;
+}
+
+async function loadDmHistory(a: string, b: string) {
+  if (!pool) {
+    return memoryDmMessages
+      .filter(m =>
+        (m.senderId === a && m.recipientId === b) ||
+        (m.senderId === b && m.recipientId === a)
+      )
+      .slice(-200);
+  }
+
+  const result = await pool.query(
+    `SELECT id, sender_id, recipient_id, body, created_at
+     FROM (
+       SELECT id, sender_id, recipient_id, body, created_at
+       FROM echoverse_dm_messages
+       WHERE
+         (sender_id = $1 AND recipient_id = $2)
+         OR
+         (sender_id = $2 AND recipient_id = $1)
+       ORDER BY created_at DESC
+       LIMIT 200
+     ) q
+     ORDER BY created_at ASC`,
+    [a, b]
+  );
+
+  return result.rows.map(row => ({
+    id: row.id,
+    senderId: row.sender_id,
+    recipientId: row.recipient_id,
+    body: row.body,
+    createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+  }));
+}
+
+function socketForAccount(accountId: string) {
+  return [...users.values()].find(u => u.accountId === accountId);
 }
 
 function guildList() {
@@ -528,6 +782,278 @@ io.on("connection", socket => {
     socket.emit("guild:list", guildList());
   });
 
+
+  socket.on("friends:search", async ({ query }, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
+      return;
+    }
+
+    try {
+      const results = await findUsersByUsername(query, user.accountId);
+      callback?.({ ok: true, results });
+    } catch (err) {
+      console.error("friends search error", err);
+      callback?.({ ok: false, error: "Kullanıcı araması başarısız." });
+    }
+  });
+
+  socket.on("friends:list", async (_payload, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
+      return;
+    }
+
+    try {
+      const state = await listFriendState(user.accountId);
+      callback?.({ ok: true, ...state });
+    } catch (err) {
+      console.error("friends list error", err);
+      callback?.({ ok: false, error: "Arkadaşlar alınamadı." });
+    }
+  });
+
+  socket.on("friends:request", async ({ targetId }, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
+      return;
+    }
+
+    const target = await accountById(String(targetId || ""));
+    if (!target || target.id === user.accountId) {
+      callback?.({ ok: false, error: "Kullanıcı bulunamadı." });
+      return;
+    }
+
+    const existing = await friendshipBetween(user.accountId, target.id);
+    if (existing) {
+      callback?.({ ok: false, error: "Bu kullanıcıyla zaten bir arkadaşlık/istek kaydı var." });
+      return;
+    }
+
+    const id = crypto.randomUUID();
+
+    if (!pool) {
+      memoryFriendships.set(friendshipKey(user.accountId, target.id), {
+        id,
+        requesterId: user.accountId,
+        addresseeId: target.id,
+        status: "pending",
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      await pool.query(
+        `INSERT INTO echoverse_friendships
+          (id, requester_id, addressee_id, status)
+         VALUES ($1, $2, $3, 'pending')`,
+        [id, user.accountId, target.id]
+      );
+    }
+
+    const targetSocket = socketForAccount(target.id);
+    if (targetSocket) {
+      io.to(targetSocket.socketId).emit("friends:changed");
+      io.to(targetSocket.socketId).emit("friends:request-received", {
+        id: user.accountId,
+        username: user.username,
+        avatarData: user.avatarData
+      });
+    }
+
+    socket.emit("friends:changed");
+    callback?.({ ok: true });
+  });
+
+  socket.on("friends:respond", async ({ friendshipId, accept }, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
+      return;
+    }
+
+    const id = String(friendshipId || "");
+
+    if (!pool) {
+      const row = [...memoryFriendships.values()].find(f => f.id === id);
+      if (!row || row.addresseeId !== user.accountId || row.status !== "pending") {
+        callback?.({ ok: false, error: "İstek bulunamadı." });
+        return;
+      }
+
+      if (accept) {
+        row.status = "accepted";
+        memoryFriendships.set(friendshipKey(row.requesterId, row.addresseeId), row);
+      } else {
+        memoryFriendships.delete(friendshipKey(row.requesterId, row.addresseeId));
+      }
+
+      const otherSocket = socketForAccount(row.requesterId);
+      if (otherSocket) io.to(otherSocket.socketId).emit("friends:changed");
+    } else {
+      const result = await pool.query(
+        `SELECT requester_id, addressee_id, status
+         FROM echoverse_friendships
+         WHERE id = $1
+         LIMIT 1`,
+        [id]
+      );
+
+      const row = result.rows[0];
+      if (!row || row.addressee_id !== user.accountId || row.status !== "pending") {
+        callback?.({ ok: false, error: "İstek bulunamadı." });
+        return;
+      }
+
+      if (accept) {
+        await pool.query(
+          `UPDATE echoverse_friendships
+           SET status = 'accepted', updated_at = NOW()
+           WHERE id = $1`,
+          [id]
+        );
+      } else {
+        await pool.query(
+          `DELETE FROM echoverse_friendships WHERE id = $1`,
+          [id]
+        );
+      }
+
+      const otherSocket = socketForAccount(row.requester_id);
+      if (otherSocket) io.to(otherSocket.socketId).emit("friends:changed");
+    }
+
+    socket.emit("friends:changed");
+    callback?.({ ok: true });
+  });
+
+  socket.on("friends:remove", async ({ targetId }, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
+      return;
+    }
+
+    const target = String(targetId || "");
+
+    if (!pool) {
+      memoryFriendships.delete(friendshipKey(user.accountId, target));
+    } else {
+      await pool.query(
+        `DELETE FROM echoverse_friendships
+         WHERE
+           (requester_id = $1 AND addressee_id = $2)
+           OR
+           (requester_id = $2 AND addressee_id = $1)`,
+        [user.accountId, target]
+      );
+    }
+
+    const otherSocket = socketForAccount(target);
+    if (otherSocket) io.to(otherSocket.socketId).emit("friends:changed");
+    socket.emit("friends:changed");
+
+    callback?.({ ok: true });
+  });
+
+  socket.on("dm:history", async ({ friendId }, callback) => {
+    const user = users.get(socket.id);
+    const friend = String(friendId || "");
+
+    if (!user?.accountId || !(await areFriends(user.accountId, friend))) {
+      callback?.({ ok: false, error: "Arkadaş değilsiniz." });
+      return;
+    }
+
+    const messages = await loadDmHistory(user.accountId, friend);
+    callback?.({ ok: true, messages });
+  });
+
+  socket.on("dm:send", async ({ friendId, body }, callback) => {
+    const user = users.get(socket.id);
+    const friend = String(friendId || "");
+    const clean = sanitizeText(body);
+
+    if (!user?.accountId || !clean) {
+      callback?.({ ok: false, error: "Mesaj gönderilemedi." });
+      return;
+    }
+
+    if (!(await areFriends(user.accountId, friend))) {
+      callback?.({ ok: false, error: "Arkadaş değilsiniz." });
+      return;
+    }
+
+    const msg = await storeDm(user.accountId, friend, clean);
+
+    const payload = {
+      ...msg,
+      senderUsername: user.username,
+      senderAvatarData: user.avatarData
+    };
+
+    socket.emit("dm:message", payload);
+
+    const friendSocket = socketForAccount(friend);
+    if (friendSocket) {
+      io.to(friendSocket.socketId).emit("dm:message", payload);
+    }
+
+    callback?.({ ok: true, message: payload });
+  });
+
+  socket.on("call:start", async ({ friendId }, callback) => {
+    const user = users.get(socket.id);
+    const friend = String(friendId || "");
+
+    if (!user?.accountId || !(await areFriends(user.accountId, friend))) {
+      callback?.({ ok: false, error: "Arama için arkadaş olmanız gerekiyor." });
+      return;
+    }
+
+    const friendSocket = socketForAccount(friend);
+    if (!friendSocket) {
+      callback?.({ ok: false, error: "Kullanıcı çevrimdışı." });
+      return;
+    }
+
+    const callId = crypto.randomUUID();
+
+    io.to(friendSocket.socketId).emit("call:incoming", {
+      callId,
+      fromAccountId: user.accountId,
+      fromSocketId: socket.id,
+      fromUsername: user.username,
+      fromAvatarData: user.avatarData
+    });
+
+    callback?.({
+      ok: true,
+      callId,
+      targetSocketId: friendSocket.socketId
+    });
+  });
+
+  socket.on("call:answer", ({ callId, toSocketId, accept }) => {
+    const user = users.get(socket.id);
+    if (!user) return;
+
+    io.to(String(toSocketId)).emit("call:answered", {
+      callId,
+      accept: !!accept,
+      responderSocketId: socket.id,
+      responderAccountId: user.accountId || user.userId,
+      responderUsername: user.username,
+      responderAvatarData: user.avatarData
+    });
+  });
+
+  socket.on("call:end", ({ toSocketId, callId }) => {
+    io.to(String(toSocketId)).emit("call:ended", { callId });
+  });
+
   socket.on("guild:create", ({ name }, callback) => {
     const user = users.get(socket.id);
     if (!user) {
@@ -746,7 +1272,7 @@ const PORT = Number(process.env.PORT || 3001);
 initDatabase()
   .then(() => {
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`EchoVerse Server v1.4 listening on ${PORT}`);
+      console.log(`EchoVerse Server v1.5 listening on ${PORT}`);
     });
   })
   .catch(err => {

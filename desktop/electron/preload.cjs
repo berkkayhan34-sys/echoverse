@@ -18,5 +18,6 @@ contextBridge.exposeInMainWorld("echoverse", {
   listScreenSources: () => ipcRenderer.invoke("capture:listSources"),
   selectScreenSource: (sourceId) => ipcRenderer.invoke("capture:selectSource", sourceId),
   openScreenSettings: () => ipcRenderer.invoke("capture:openScreenSettings"),
-  getVersion: () => ipcRenderer.invoke("echoverse:getVersion")
+  getVersion: () => ipcRenderer.invoke("echoverse:getVersion"),
+  notify: (payload) => ipcRenderer.invoke("echoverse:notify", payload)
 });

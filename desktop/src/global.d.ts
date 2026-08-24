@@ -30,6 +30,7 @@ declare global {
       selectScreenSource?: (sourceId: string) => Promise<{ ok: boolean }>;
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       getVersion?: () => Promise<string>;
+      notify?: (payload: { title: string; body: string }) => Promise<{ ok: boolean }>;
     };
   }
 }
