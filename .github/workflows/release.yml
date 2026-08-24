@@ -10,51 +10,153 @@ permissions:
 
 jobs:
   windows:
+    name: Windows
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: desktop
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - run: npm install
-      - name: Publish Windows
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Windows
+        working-directory: desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run release:win
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run release:win -- --publish never
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error
+
 
   mac-intel:
+    name: macOS Intel
     runs-on: macos-15-intel
-    defaults:
-      run:
-        working-directory: desktop
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - run: npm install
-      - name: Publish Intel Mac
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build macOS Intel
+        working-directory: desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run release:mac:x64
+        run: npm run release:mac:intel -- --publish never
+
+      - name: Upload macOS Intel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-intel-release
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+
 
   mac-arm64:
+    name: macOS ARM64
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: desktop
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - run: npm install
-      - name: Publish Apple Silicon Mac
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build macOS ARM64
+        working-directory: desktop
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run release:mac:arm64
+        run: npm run release:mac:arm64 -- --publish never
+
+      - name: Upload macOS ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64-release
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - windows
+      - mac-intel
+      - mac-arm64
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: release/windows
+
+      - name: Download macOS Intel
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-intel-release
+          path: release/mac-intel
+
+      - name: Download macOS ARM64
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-arm64-release
+          path: release/mac-arm64
+
+      - name: Show release files
+        run: find release -type f -maxdepth 3 -print
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: EchoVerse ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/windows/*
+            release/mac-intel/*
+            release/mac-arm64/*
