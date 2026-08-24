@@ -41,3 +41,4 @@ jobs:
             desktop/release/*.blockmap
             desktop/release/latest.yml
           if-no-files-found: error
+
