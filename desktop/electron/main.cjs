@@ -487,7 +487,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", info => {
-    sendUpdateStatus(`EchoVerse ${info.version} hazır. Yeniden başlatılıyor…`);
+    sendUpdateStatus(`EchoVerse ${info.version} hazır. Uygulama yeniden başlatılarak güncellenecek…`);
     setTimeout(() => {
       autoUpdater.quitAndInstall(false, true);
     }, 1800);
