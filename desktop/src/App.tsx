@@ -5,11 +5,20 @@ type PeerInfo = {
   socketId: string;
   userId: string;
   username: string;
+  avatarData?: string | null;
+};
+
+type Account = {
+  id: string;
+  email: string;
+  username: string;
+  avatarData?: string | null;
 };
 
 type ChatMessage = {
   id: string;
   username: string;
+  avatarData?: string | null;
   text: string;
   createdAt: string;
   bot?: boolean;
@@ -55,6 +64,12 @@ export default function App() {
   const [username, setUsername] = useState(
     () => localStorage.getItem("echoverse_username") || ""
   );
+  const [account, setAccount] = useState<Account | null>(null);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const [connected, setConnected] = useState(false);
   const [identified, setIdentified] = useState(false);
   const [joined, setJoined] = useState(false);
@@ -72,7 +87,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.3.0");
+  const [appVersion, setAppVersion] = useState("1.4.0");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -143,6 +158,25 @@ export default function App() {
     s.on("connect", () => {
       setConnected(true);
       setError("");
+
+      const token = localStorage.getItem("echoverse_token");
+
+      if (token) {
+        s.emit("auth:resume", { token }, (result: any) => {
+          if (!result?.ok) {
+            localStorage.removeItem("echoverse_token");
+            setAccount(null);
+            setIdentified(false);
+            return;
+          }
+
+          localStorage.setItem("echoverse_token", result.token);
+          localStorage.setItem("echoverse_username", result.account.username);
+          setUsername(result.account.username);
+          setAccount(result.account);
+          setIdentified(true);
+        });
+      }
     });
 
     s.on("disconnect", () => setConnected(false));
@@ -178,6 +212,13 @@ export default function App() {
 
     s.on("webrtc-offer", async ({ from, sdp }) => {
       const pc = await createPeer(s, from, false);
+
+      try {
+        if (pc.signalingState !== "stable") {
+          await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
+        }
+      } catch {}
+
       await pc.setRemoteDescription(sdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -570,10 +611,11 @@ export default function App() {
       }
 
       if (evt.track.kind === "video") {
-        attachRemoteVideo(
-          peerId,
-          streamForTrack
-        );
+        attachRemoteVideo(peerId, evt.track);
+
+        evt.track.onunmute = () => {
+          attachRemoteVideo(peerId, evt.track);
+        };
       }
     };
 
@@ -623,7 +665,7 @@ export default function App() {
 
   function attachRemoteVideo(
     peerId: string,
-    stream: MediaStream
+    track: MediaStreamTrack
   ) {
     const host = remoteVideoHost.current;
     if (!host) return;
@@ -638,6 +680,7 @@ export default function App() {
       video.dataset.peer = peerId;
       video.autoplay = true;
       video.playsInline = true;
+      video.muted = true;
       video.className = "remote-video";
       video.title = "Büyütmek için tıkla • ESC ile çık";
       video.onclick = () => {
@@ -652,57 +695,180 @@ export default function App() {
       host.appendChild(video);
     }
 
-    video.srcObject = stream;
+    const videoOnlyStream = new MediaStream([track]);
+    video.srcObject = videoOnlyStream;
+    video.play().catch(() => {});
+  }
+
+  async function authSubmit() {
+    if (!socket || !connected || authBusy) return;
+
+    const email = authEmail.trim();
+    const password = authPassword;
+
+    if (!email || !password) {
+      setError("E-posta ve şifreyi doldur.");
+      return;
+    }
+
+    if (authMode === "register" && authUsername.trim().length < 3) {
+      setError("Kullanıcı adı en az 3 karakter olmalı.");
+      return;
+    }
+
+    setAuthBusy(true);
+    setError("");
+
+    const event = authMode === "register"
+      ? "auth:register"
+      : "auth:login";
+
+    const payload = authMode === "register"
+      ? {
+          email,
+          username: authUsername.trim(),
+          password
+        }
+      : {
+          email,
+          password
+        };
+
+    socket.emit(event, payload, async (result: any) => {
+      setAuthBusy(false);
+
+      if (!result?.ok) {
+        setError(result?.error || "İşlem başarısız.");
+        return;
+      }
+
+      localStorage.setItem("echoverse_token", result.token);
+      localStorage.setItem("echoverse_username", result.account.username);
+
+      setAccount(result.account);
+      setUsername(result.account.username);
+      setIdentified(true);
+      setAuthPassword("");
+      setError("");
+
+      try {
+        await ensureMicrophone();
+      } catch (err: any) {
+        setError(
+          `Giriş yapıldı ama mikrofon açılamadı: ${
+            err?.message || "izin verilmedi"
+          }`
+        );
+      }
+    });
+  }
+
+  function logout() {
+    socket?.emit("auth:logout");
+    localStorage.removeItem("echoverse_token");
+    localStorage.removeItem("echoverse_username");
+    setAccount(null);
+    setIdentified(false);
+    setJoined(false);
+    setActiveGuild(null);
+    setPresence([]);
+    setMessages([]);
+  }
+
+  async function resizeAvatar(file: File) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Dosya okunamadı."));
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.readAsDataURL(file);
+    });
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Görsel açılamadı."));
+      image.src = dataUrl;
+    });
+
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Görsel işlenemedi.");
+
+    const crop = Math.min(img.width, img.height);
+    const sx = (img.width - crop) / 2;
+    const sy = (img.height - crop) / 2;
+
+    ctx.drawImage(
+      img,
+      sx,
+      sy,
+      crop,
+      crop,
+      0,
+      0,
+      size,
+      size
+    );
+
+    return canvas.toDataURL("image/jpeg", 0.82);
+  }
+
+  async function changeAvatar(file?: File) {
+    if (!socket || !file) return;
+
+    try {
+      const avatarData = await resizeAvatar(file);
+      const token = localStorage.getItem("echoverse_token");
+
+      socket.emit(
+        "profile:set-avatar",
+        { token, avatarData },
+        (result: any) => {
+          if (!result?.ok) {
+            setError(result?.error || "Profil fotoğrafı değiştirilemedi.");
+            return;
+          }
+
+          setAccount(result.account);
+          setError("");
+        }
+      );
+    } catch (err: any) {
+      setError(err?.message || "Profil fotoğrafı değiştirilemedi.");
+    }
   }
 
   async function identify() {
-    if (!socket || !connected) {
-      setError("Sunucu bağlantısı hazır değil.");
+    if (!socket || !connected) return;
+
+    const token = localStorage.getItem("echoverse_token");
+
+    if (!token) {
+      setIdentified(false);
       return;
     }
 
-    const clean =
-      username.trim().slice(0, 28);
-
-    if (!clean) {
-      setError("Bir kullanıcı adı yaz.");
-      return;
-    }
-
-    try {
-      await ensureMicrophone();
-
-      localStorage.setItem(
-        "echoverse_username",
-        clean
-      );
-
-      let userId = localStorage.getItem(
-        "echoverse_user_id"
-      );
-
-      if (!userId) {
-        userId = crypto.randomUUID();
-        localStorage.setItem(
-          "echoverse_user_id",
-          userId
-        );
+    socket.emit("auth:resume", { token }, async (result: any) => {
+      if (!result?.ok) {
+        localStorage.removeItem("echoverse_token");
+        setIdentified(false);
+        setAccount(null);
+        return;
       }
 
-      socket.emit("identify", {
-        userId,
-        username: clean
-      });
-
+      localStorage.setItem("echoverse_token", result.token);
+      setAccount(result.account);
+      setUsername(result.account.username);
       setIdentified(true);
-      setError("");
-    } catch (err: any) {
-      setError(
-        `Mikrofon açılamadı: ${
-          err?.message || "izin verilmedi"
-        }`
-      );
-    }
+
+      try {
+        await ensureMicrophone();
+      } catch {}
+    });
   }
 
   async function joinGuild(guild: Guild) {
@@ -898,6 +1064,30 @@ export default function App() {
     }
   }
 
+  async function renegotiateVideo() {
+    if (!socket) return;
+
+    for (const [peerId, pc] of pcs.current.entries()) {
+      try {
+        if (pc.signalingState !== "stable") continue;
+
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+
+        await pc.setLocalDescription(offer);
+
+        socket.emit("webrtc-offer", {
+          to: peerId,
+          sdp: offer
+        });
+      } catch (err) {
+        console.warn("Video renegotiation failed", peerId, err);
+      }
+    }
+  }
+
   async function setOutboundVideo(
     track: MediaStreamTrack | null
   ) {
@@ -918,6 +1108,10 @@ export default function App() {
           ? new MediaStream([track])
           : null;
     }
+
+    // Chromium/macOS interop: renegotiate after replacing a previously
+    // inactive video sender so the receiver immediately renders the track.
+    await renegotiateVideo();
   }
 
   async function toggleCamera() {
@@ -1067,61 +1261,85 @@ export default function App() {
   if (!identified) {
     return (
       <div className="welcome-page">
-        <div className="welcome-card">
+        <div className="welcome-card auth-card">
           <div className="logo-orb">E</div>
           <h1>EchoVerse</h1>
-          <p>
-            Arkadaşlarınla konuş, yazış,
-            izle.
-          </p>
+          <p>Arkadaşlarınla konuş, yazış, izle.</p>
 
-          <div
-            className={`server-state ${
-              connected
-                ? "online"
-                : "offline"
-            }`}
-          >
+          <div className={`server-state ${connected ? "online" : "offline"}`}>
             <span className="dot" />
-            {connected
-              ? "EchoVerse sunucusu online"
-              : "Sunucuya bağlanıyor..."}
+            {connected ? "EchoVerse sunucusu online" : "Sunucuya bağlanıyor..."}
           </div>
 
-          <label>Kullanıcı adı</label>
+          <div className="auth-tabs">
+            <button
+              className={authMode === "login" ? "active" : ""}
+              onClick={() => {
+                setAuthMode("login");
+                setError("");
+              }}
+            >
+              Giriş Yap
+            </button>
 
+            <button
+              className={authMode === "register" ? "active" : ""}
+              onClick={() => {
+                setAuthMode("register");
+                setError("");
+              }}
+            >
+              Kayıt Ol
+            </button>
+          </div>
+
+          {authMode === "register" && (
+            <>
+              <label>Kullanıcı adı</label>
+              <input
+                value={authUsername}
+                maxLength={28}
+                onChange={e => setAuthUsername(e.target.value)}
+                placeholder="Kullanıcı adın"
+              />
+            </>
+          )}
+
+          <label>E-posta</label>
           <input
-            value={username}
-            maxLength={28}
-            onChange={e =>
-              setUsername(e.target.value)
-            }
+            type="email"
+            value={authEmail}
+            onChange={e => setAuthEmail(e.target.value)}
+            placeholder="mail@example.com"
+          />
+
+          <label>Şifre</label>
+          <input
+            type="password"
+            value={authPassword}
+            onChange={e => setAuthPassword(e.target.value)}
             onKeyDown={e => {
-              if (e.key === "Enter")
-                identify();
+              if (e.key === "Enter") authSubmit();
             }}
-            placeholder="Kullanıcı adın"
+            placeholder="En az 6 karakter"
           />
 
           <button
             className="primary"
-            onClick={identify}
-            disabled={!connected}
+            onClick={authSubmit}
+            disabled={!connected || authBusy}
           >
-            Devam Et
+            {authBusy
+              ? "Bekle…"
+              : authMode === "register"
+                ? "Hesap Oluştur"
+                : "Giriş Yap"}
           </button>
 
-          {updateStatus && (
-            <div className="update-box">
-              {updateStatus}
-            </div>
-          )}
+          {updateStatus && <div className="update-box">{updateStatus}</div>}
+          {error && <div className="error-box">{error}</div>}
 
-          {error && (
-            <div className="error-box">
-              {error}
-            </div>
-          )}
+          <small className="auth-version">EchoVerse v{appVersion}</small>
         </div>
       </div>
     );
@@ -1347,7 +1565,11 @@ export default function App() {
                   key={p.socketId}
                 >
                   <div className="voice-user">
-                    <span className="mini-dot" />
+                    {p.avatarData ? (
+                      <img className="voice-avatar" src={p.avatarData} alt="" />
+                    ) : (
+                      <span className="mini-dot" />
+                    )}
                     {p.username}
                     {isSelf ? " (sen)" : ""}
                   </div>
@@ -1480,19 +1702,39 @@ export default function App() {
         </div>
 
         <div className="user-panel">
-          <div className="user-avatar">
-            {username
-              .slice(0, 2)
-              .toUpperCase()}
-          </div>
+          <label
+            className="user-avatar avatar-upload-label"
+            title="Profil fotoğrafını değiştir"
+          >
+            {account?.avatarData ? (
+              <img src={account.avatarData} alt="" />
+            ) : (
+              username.slice(0, 2).toUpperCase()
+            )}
+
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={e => {
+                const file = e.target.files?.[0];
+                changeAvatar(file);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
 
           <div className="user-info">
             <b>{username}</b>
             <small>Voice connected • v{appVersion}</small>
           </div>
 
-          <button onClick={toggleMute}>
+          <button onClick={toggleMute} title="Mikrofon">
             {muted ? "🔇" : "🎙️"}
+          </button>
+
+          <button onClick={logout} title="Çıkış yap">
+            ↪
           </button>
         </div>
       </aside>
@@ -1551,16 +1793,14 @@ export default function App() {
               className="message"
               key={m.id}
             >
-              <div
-                className={`avatar ${
-                  m.bot ? "bot" : ""
-                }`}
-              >
-                {m.bot
-                  ? "EB"
-                  : m.username
-                      .slice(0, 2)
-                      .toUpperCase()}
+              <div className={`avatar ${m.bot ? "bot" : ""}`}>
+                {!m.bot && m.avatarData ? (
+                  <img src={m.avatarData} alt="" />
+                ) : (
+                  m.bot
+                    ? "EB"
+                    : m.username.slice(0, 2).toUpperCase()
+                )}
               </div>
 
               <div className="message-body">
@@ -1704,9 +1944,11 @@ export default function App() {
             >
               <div className="member">
                 <div className="avatar">
-                  {p.username
-                    .slice(0, 2)
-                    .toUpperCase()}
+                  {p.avatarData ? (
+                    <img src={p.avatarData} alt="" />
+                  ) : (
+                    p.username.slice(0, 2).toUpperCase()
+                  )}
                 </div>
 
                 <span>

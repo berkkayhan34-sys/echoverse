@@ -910,3 +910,83 @@ button {
     grid-template-columns: 27px 1fr 32px;
   }
 }
+
+
+/* EchoVerse v1.4 — accounts & avatars */
+.auth-card {
+  width: min(460px, 92vw);
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 4px;
+  margin: 14px 0 18px;
+  border-radius: 11px;
+  background: #0c0f15;
+  border: 1px solid #292f3d;
+}
+
+.auth-tabs button {
+  border: 0;
+  padding: 9px;
+  border-radius: 8px;
+  background: transparent;
+  color: #8993a5;
+}
+
+.auth-tabs button.active {
+  background: #6658ed;
+  color: white;
+  font-weight: 800;
+}
+
+.auth-version {
+  display: block;
+  text-align: center;
+  margin-top: 15px;
+  color: #525b6d;
+}
+
+.user-avatar,
+.avatar {
+  overflow: hidden;
+}
+
+.user-avatar img,
+.avatar img,
+.voice-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-upload-label {
+  cursor: pointer;
+  outline: 2px solid transparent;
+  transition: outline-color .15s ease;
+}
+
+.avatar-upload-label:hover {
+  outline-color: #7868ff;
+}
+
+.voice-avatar {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.voice-user {
+  display: flex;
+  align-items: center;
+}
+
+/* Remote screen/video is explicitly muted. Audio is handled separately,
+   which prevents macOS Chromium autoplay from blocking Windows shares. */
+.remote-video {
+  background: #050608;
+}
