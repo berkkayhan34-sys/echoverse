@@ -10,48 +10,32 @@ jobs:
   windows-test:
     name: Windows Test Build
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-
       - name: Install dependencies
         working-directory: desktop
         run: npm install
-
       - name: Build Windows
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
-
-      - name: Verify v1.6.4 updater metadata
-        shell: powershell
+      - name: Verify updater metadata
+        shell: pwsh
         run: |
-          if (!(Test-Path "desktop/release/latest.yml")) {
-            throw "latest.yml missing"
-          }
+          if (!(Test-Path "desktop/release/EchoVerse-Setup-1.6.5.exe")) { throw "Installer missing" }
+          if (!(Test-Path "desktop/release/EchoVerse-Setup-1.6.5.exe.blockmap")) { throw "Blockmap missing" }
+          if (!(Test-Path "desktop/release/latest.yml")) { throw "latest.yml missing" }
 
-          $latest = Get-Content "desktop/release/latest.yml" -Raw
-          Write-Host $latest
-
-          if ($latest -notmatch "1\.6\.4") {
-            throw "latest.yml version is not 1.6.4"
-          }
-
-          if (!(Get-ChildItem "desktop/release" -Filter "*.exe.blockmap")) {
-            throw "Windows blockmap missing"
-          }
-
-      - name: Upload Windows test artifact
-        uses: actions/upload-artifact@v4
+          $content = Get-Content "desktop/release/latest.yml" -Raw
+          if ($content -notmatch "version:\s*1\.6\.5") { throw "Version mismatch" }
+          if ($content -notmatch "EchoVerse-Setup-1\.6\.5\.exe") { throw "Installer filename mismatch" }
+      - uses: actions/upload-artifact@v4
         with:
-          name: EchoVerse-v1.6.4-Windows-Test
+          name: EchoVerse-v1.6.5-Windows-Test
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap

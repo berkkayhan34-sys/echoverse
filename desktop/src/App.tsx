@@ -33,9 +33,11 @@ type DmMessage = {
   senderAvatarData?: string | null;
   replyToId?: string | null;
   editedAt?: string;
-  attachmentName?: string;
-  attachmentData?: string;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
+  attachmentData?: string | null;
   reactions?: Record<string, string[]>;
+  deletedAt?: string | null;
 };
 
 type IncomingCall = {
@@ -118,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.4");
+  const [appVersion, setAppVersion] = useState("1.6.5");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -150,6 +152,12 @@ export default function App() {
   const [ringbackPlaying, setRingbackPlaying] = useState(false);
   const [callSeconds, setCallSeconds] = useState(0);
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [dmAttachment, setDmAttachment] = useState<{name:string; mime:string; data:string} | null>(null);
+  const [editingDm, setEditingDm] = useState<DmMessage | null>(null);
+  const [deafened, setDeafened] = useState(false);
+  const [pushToTalk, setPushToTalk] = useState(false);
+  const [pttPressed, setPttPressed] = useState(false);
+
 
 
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
@@ -197,6 +205,8 @@ export default function App() {
   const dmThreadRef = useRef<HTMLDivElement | null>(null);
   const typingStopTimer = useRef<number | null>(null);
   const callTimer = useRef<number | null>(null);
+  const dmFileInputRef = useRef<HTMLInputElement | null>(null);
+
 
 
 
@@ -242,6 +252,41 @@ export default function App() {
       }
     };
   }, [callState]);
+
+  useEffect(() => {
+    if (!pushToTalk) return;
+
+    const updateTracks = (enabled: boolean) => {
+      localStream.current?.getAudioTracks().forEach(track => {
+        track.enabled = enabled && !deafened;
+      });
+    };
+
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== "KeyV" || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT","TEXTAREA"].includes(target.tagName)) return;
+      setPttPressed(true);
+      updateTracks(true);
+    };
+
+    const up = (event: KeyboardEvent) => {
+      if (event.code !== "KeyV") return;
+      setPttPressed(false);
+      updateTracks(false);
+    };
+
+    // Push-to-talk: hold V
+    updateTracks(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      if (!muted && !deafened) updateTracks(true);
+    };
+  }, [pushToTalk, deafened, muted]);
 
   useEffect(() => {
     (async () => {
@@ -363,6 +408,28 @@ export default function App() {
       setDmMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
     });
 
+    s.on("dm:updated", (message: DmMessage) => {
+      setDmMessages(prev => prev.map(m => m.id === message.id ? { ...m, ...message } : m));
+    });
+
+    s.on("dm:deleted", ({ messageId, deletedAt }: any) => {
+      setDmMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, body: "", deletedAt, attachmentName: null, attachmentMime: null, attachmentData: null }
+          : m
+      ));
+    });
+
+    s.on("call:missed", () => {
+      stopRingtone();
+      setIncomingCall(null);
+      setCallState("idle");
+      window.echoverse?.notify?.({
+        title: "Cevapsız EchoVerse araması",
+        body: "Bir özel aramayı kaçırdın."
+      });
+    });
+
     s.on("friends:request-received", (friend: FriendUser) => {
       loadFriends(s);
       window.echoverse?.notify?.({
@@ -437,7 +504,7 @@ export default function App() {
         setPrivateCallPeer(null);
         setPrivateCallSocketId("");
         setPrivateCallId("");
-        setError("Arama reddedildi.");
+        setError(result?.reason === "timeout" ? "Arama cevaplanmadı." : "Arama reddedildi.");
         return;
       }
 
@@ -800,22 +867,109 @@ export default function App() {
   }
 
   function sendDm() {
-    if (!socket || !activeDmFriend || !dmText.trim()) return;
+    if (!socket || !activeDmFriend) return;
 
     const body = dmText.trim();
+
+    if (editingDm) {
+      if (!body) return;
+      socket.emit("dm:edit", { messageId: editingDm.id, body }, (result: any) => {
+        if (!result?.ok) setError(result?.error || "Mesaj düzenlenemedi.");
+      });
+      setEditingDm(null);
+      setDmText("");
+      return;
+    }
+
+    if (!body && !dmAttachment) return;
+
+    const outgoingAttachment = dmAttachment;
     setDmText("");
+    setDmAttachment(null);
     setReplyTo(null);
-    socket?.emit("dm:typing", { friendId: activeDmFriend.id, typing: false });
+    socket.emit("dm:typing", { friendId: activeDmFriend.id, typing: false });
 
     socket.emit(
       "dm:send",
-      { friendId: activeDmFriend.id, body, replyToId: replyTo?.id || null },
+      {
+        friendId: activeDmFriend.id,
+        body,
+        replyToId: replyTo?.id || null,
+        attachment: outgoingAttachment
+      },
       (result: any) => {
         if (!result?.ok) {
           setError(result?.error || "Mesaj gönderilemedi.");
         }
       }
     );
+  }
+
+  function editDm(message: DmMessage) {
+    if (message.senderId !== account?.id || message.deletedAt) return;
+    setEditingDm(message);
+    setReplyTo(null);
+    setDmAttachment(null);
+    setDmText(message.body);
+  }
+
+  function deleteDm(message: DmMessage) {
+    if (!socket || message.senderId !== account?.id || message.deletedAt) return;
+    if (!window.confirm("Bu mesaj silinsin mi?")) return;
+
+    socket.emit("dm:delete", { messageId: message.id }, (result: any) => {
+      if (!result?.ok) setError(result?.error || "Mesaj silinemedi.");
+    });
+  }
+
+  async function chooseDmFile(file: File | null) {
+    if (!file) return;
+
+    const MAX = 4 * 1024 * 1024;
+    if (file.size > MAX) {
+      setError("DM dosyaları en fazla 4 MB olabilir.");
+      return;
+    }
+
+    try {
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+
+      setDmAttachment({
+        name: file.name.slice(0, 180),
+        mime: file.type || "application/octet-stream",
+        data
+      });
+    } catch {
+      setError("Dosya okunamadı.");
+    }
+  }
+
+  function downloadAttachment(message: DmMessage) {
+    if (!message.attachmentData || !message.attachmentName) return;
+    const link = document.createElement("a");
+    link.href = message.attachmentData;
+    link.download = message.attachmentName;
+    link.click();
+  }
+
+  function toggleDeafen() {
+    const next = !deafened;
+    setDeafened(next);
+
+    remoteAudio.current.forEach((audio, peerId) => {
+      audio.volume = next
+        ? 0
+        : (peerMuted[peerId] ? 0 : (peerVolumes[peerId] ?? 100) / 100);
+    });
+
+    localStream.current?.getAudioTracks().forEach(track => {
+      track.enabled = next ? false : (!muted && !pushToTalk);
+    });
   }
 
   async function checkForUpdates() {
@@ -1731,11 +1885,9 @@ export default function App() {
 
     const next = !muted;
 
-    stream.getAudioTracks().forEach(
-      track => {
-        track.enabled = !next;
-      }
-    );
+    stream.getAudioTracks().forEach(track => {
+      track.enabled = !next && !deafened && !pushToTalk;
+    });
 
     setMuted(next);
   }
@@ -2507,6 +2659,26 @@ export default function App() {
               </div>
 
               <div className="dm-page-actions">
+                <input
+                  className="dm-header-search"
+                  value={dmSearch}
+                  onChange={e => setDmSearch(e.target.value)}
+                  placeholder="Mesaj ara"
+                />
+                <button
+                  className="dm-block-button"
+                  title="Kullanıcıyı engelle"
+                  onClick={() => {
+                    if (!socket || !activeDmFriend) return;
+                    if (!window.confirm(`${activeDmFriend.username} engellensin mi?`)) return;
+                    socket.emit("friends:block", { targetId: activeDmFriend.id }, (result:any) => {
+                      if (!result?.ok) return setError(result?.error || "Engellenemedi.");
+                      setViewMode("server");
+                      setActiveDmFriend(null);
+                      loadFriends();
+                    });
+                  }}
+                >🚫</button>
                 <button
                   className={callState === "connected" ? "call-connected" : ""}
                   onClick={() => {
@@ -2550,6 +2722,16 @@ export default function App() {
                     <button onClick={toggleMute}>
                       {muted ? "🔇 Mikrofonu Aç" : "🎙️ Mikrofon"}
                     </button>
+                    <button onClick={toggleDeafen}>
+                      {deafened ? "🔊 Sesi Aç" : "🎧 Deafen"}
+                    </button>
+                    <button
+                      className={pushToTalk ? "active" : ""}
+                      onClick={() => setPushToTalk(v => !v)}
+                      title="Push-to-talk açıkken konuşmak için V tuşunu basılı tut"
+                    >
+                      {pushToTalk ? (pttPressed ? "🟢 Konuşuyorsun" : "⌨ V ile Konuş") : "🎙 Voice Activity"}
+                    </button>
                     <button className="hangup" onClick={() => stopPrivateCall(true)}>
                       ☎ Kapat
                     </button>
@@ -2573,51 +2755,183 @@ export default function App() {
                 </div>
               )}
 
-              {dmMessages.map(m => {
-                const mine = m.senderId === account?.id;
+              {dmMessages
+                .filter(m => {
+                  const query = dmSearch.trim().toLowerCase();
+                  if (!query) return true;
+                  return (
+                    m.body?.toLowerCase().includes(query) ||
+                    m.attachmentName?.toLowerCase().includes(query)
+                  );
+                })
+                .map((m, index, filtered) => {
+                  const mine = m.senderId === account?.id;
+                  const previous = index > 0 ? filtered[index - 1] : null;
+                  const currentDate = new Date(m.createdAt);
+                  const previousDate = previous ? new Date(previous.createdAt) : null;
+                  const showDate =
+                    !previousDate ||
+                    previousDate.toDateString() !== currentDate.toDateString();
 
-                return (
-                  <div className={`dm-discord-message ${mine ? "mine" : ""}`} key={m.id}>
-                    <div className="avatar">
-                      {mine && account?.avatarData ? (
-                        <img src={account.avatarData} alt="" />
-                      ) : !mine && activeDmFriend.avatarData ? (
-                        <img src={activeDmFriend.avatarData} alt="" />
-                      ) : (
-                        (mine ? username : activeDmFriend.username).slice(0,2).toUpperCase()
+                  const replied = m.replyToId
+                    ? dmMessages.find(candidate => candidate.id === m.replyToId)
+                    : null;
+
+                  return (
+                    <React.Fragment key={m.id}>
+                      {showDate && (
+                        <div className="dm-date-divider">
+                          <span>
+                            {currentDate.toDateString() === new Date().toDateString()
+                              ? "Bugün"
+                              : currentDate.toLocaleDateString()}
+                          </span>
+                        </div>
                       )}
-                    </div>
 
-                    <div className="dm-discord-body">
-                      <div className="dm-discord-meta">
-                        <b>{mine ? username : activeDmFriend.username}</b>
-                        <small>{new Date(m.createdAt).toLocaleString()}</small>
+                      <div className={`dm-discord-message ${mine ? "mine" : ""} ${m.deletedAt ? "deleted" : ""}`}>
+                        <div className="avatar">
+                          {mine && account?.avatarData ? (
+                            <img src={account.avatarData} alt="" />
+                          ) : !mine && activeDmFriend.avatarData ? (
+                            <img src={activeDmFriend.avatarData} alt="" />
+                          ) : (
+                            (mine ? username : activeDmFriend.username).slice(0,2).toUpperCase()
+                          )}
+                        </div>
+
+                        <div className="dm-discord-body">
+                          <div className="dm-discord-meta">
+                            <b>{mine ? username : activeDmFriend.username}</b>
+                            <small>{currentDate.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small>
+                            {m.editedAt && !m.deletedAt && <small>(düzenlendi)</small>}
+                          </div>
+
+                          {replied && (
+                            <div className="dm-reply-preview">
+                              ↪ {replied.deletedAt ? "Silinmiş mesaj" : replied.body || replied.attachmentName || "Mesaj"}
+                            </div>
+                          )}
+
+                          {m.deletedAt ? (
+                            <div className="dm-deleted-text">Mesaj silindi.</div>
+                          ) : (
+                            <>
+                              {m.body && <div className="dm-discord-text">{m.body}</div>}
+
+                              {m.attachmentData && m.attachmentName && (
+                                <div className="dm-attachment">
+                                  {m.attachmentMime?.startsWith("image/") ? (
+                                    <img
+                                      src={m.attachmentData}
+                                      alt={m.attachmentName}
+                                      onClick={() => window.open(m.attachmentData || "", "_blank")}
+                                    />
+                                  ) : (
+                                    <div className="dm-file-icon">📎</div>
+                                  )}
+                                  <div>
+                                    <b>{m.attachmentName}</b>
+                                    <button onClick={() => downloadAttachment(m)}>İndir</button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="dm-reactions">
+                                {Object.entries(m.reactions || {}).map(([emoji, ids]) => (
+                                  <button
+                                    key={emoji}
+                                    className={ids.includes(account?.id || "") ? "mine" : ""}
+                                    onClick={() => reactDm(m.id, emoji)}
+                                  >
+                                    {emoji} {ids.length}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+
+                          {!m.deletedAt && (
+                            <div className="dm-message-actions">
+                              <button onClick={() => setReplyTo(m)}>↩ Yanıtla</button>
+                              {["👍","❤️","😂","🔥"].map(emoji => (
+                                <button key={emoji} onClick={() => reactDm(m.id, emoji)}>{emoji}</button>
+                              ))}
+                              {mine && <button onClick={() => editDm(m)}>✏ Düzenle</button>}
+                              {mine && <button className="danger" onClick={() => deleteDm(m)}>🗑 Sil</button>}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="dm-discord-text">{m.body}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                    </React.Fragment>
+                  );
+                })}
             </div>
 
-            <div className="dm-page-composer">
-              <input
-                value={dmText}
-                onFocus={() => sendTyping(true)}
-                onBlur={() => sendTyping(false)}
-                onChange={e => {
-                  setDmText(e.target.value);
-                  sendTyping(true);
-                }}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendDm();
+            <div className="dm-composer-zone">
+              {(replyTo || editingDm || dmAttachment) && (
+                <div className="dm-compose-context">
+                  {editingDm && (
+                    <span>✏ Mesaj düzenleniyor</span>
+                  )}
+                  {replyTo && !editingDm && (
+                    <span>↩ {replyTo.senderId === account?.id ? "Kendine" : activeDmFriend.username} yanıtlanıyor</span>
+                  )}
+                  {dmAttachment && (
+                    <span>📎 {dmAttachment.name}</span>
+                  )}
+                  <button onClick={() => {
+                    setReplyTo(null);
+                    setEditingDm(null);
+                    setDmAttachment(null);
+                    if (editingDm) setDmText("");
+                  }}>✕</button>
+                </div>
+              )}
+
+              <div className="dm-page-composer">
+                <input
+                  ref={dmFileInputRef}
+                  type="file"
+                  className="hidden-file-input"
+                  onChange={e => {
+                    chooseDmFile(e.target.files?.[0] || null);
+                    e.currentTarget.value = "";
+                  }}
+                />
+
+                <button
+                  className="dm-attach-button"
+                  title="Dosya gönder (maks. 4 MB)"
+                  onClick={() => dmFileInputRef.current?.click()}
+                >
+                  ＋
+                </button>
+
+                <input
+                  value={dmText}
+                  onFocus={() => sendTyping(true)}
+                  onBlur={() => sendTyping(false)}
+                  onChange={e => {
+                    setDmText(e.target.value);
+                    sendTyping(true);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendDm();
+                    }
+                  }}
+                  placeholder={
+                    editingDm
+                      ? "Mesajı düzenle"
+                      : `${activeDmFriend.username} kişisine mesaj gönder`
                   }
-                }}
-                placeholder={`${activeDmFriend.username} kişisine mesaj gönder`}
-              />
-              <button onClick={sendDm}>Gönder</button>
+                />
+                <button onClick={sendDm}>
+                  {editingDm ? "Kaydet" : "Gönder"}
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -2646,6 +2960,18 @@ export default function App() {
               👥 Arkadaşlar
               {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
             </button>
+
+            <select
+              className="presence-select"
+              value={myStatus}
+              onChange={e => setPresenceStatus(e.target.value as any)}
+              title="Durum"
+            >
+              <option value="online">🟢 Çevrimiçi</option>
+              <option value="idle">🌙 Boşta</option>
+              <option value="dnd">⛔ Rahatsız Etmeyin</option>
+              <option value="invisible">⚫ Görünmez</option>
+            </select>
 
             <div className="top-state">
               ✨ Noise suppression

@@ -12,79 +12,37 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-
       - name: Install dependencies
         working-directory: desktop
         run: npm install
-
       - name: Build Windows
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:win
-
       - name: Verify Windows updater files
         shell: pwsh
         run: |
-          Write-Host "=== Windows release files ==="
+          $installer = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.5.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "desktop/release" -Filter "EchoVerse-Setup-1.6.5.exe.blockmap" | Select-Object -First 1
+          $latest = Get-ChildItem "desktop/release" -Filter "latest.yml" | Select-Object -First 1
 
-          Get-ChildItem "desktop/release" -Recurse | ForEach-Object {
-            Write-Host $_.FullName
-          }
+          if (!$installer) { throw "Windows installer missing" }
+          if (!$blockmap) { throw "Windows blockmap missing" }
+          if (!$latest) { throw "latest.yml missing" }
 
-          $installer = Get-ChildItem "desktop/release" -Filter "*.exe" |
-            Where-Object { $_.Name -like "EchoVerse-Setup-*" } |
-            Select-Object -First 1
+          $content = Get-Content $latest.FullName -Raw
+          Write-Host $content
 
-          $blockmap = Get-ChildItem "desktop/release" -Filter "*.exe.blockmap" |
-            Where-Object { $_.Name -like "EchoVerse-Setup-*" } |
-            Select-Object -First 1
+          if ($content -notmatch "version:\s*1\.6\.5") { throw "latest.yml version mismatch" }
+          if ($content -notmatch "EchoVerse-Setup-1\.6\.5\.exe") { throw "latest.yml installer mismatch" }
 
-          $latest = Get-ChildItem "desktop/release" -Filter "latest.yml" |
-            Select-Object -First 1
-
-          if (!$installer) {
-            throw "Windows installer missing"
-          }
-
-          if (!$blockmap) {
-            throw "Windows installer blockmap missing"
-          }
-
-          if (!$latest) {
-            throw "latest.yml missing"
-          }
-
-          Write-Host "Installer found: $($installer.Name)"
-          Write-Host "Blockmap found: $($blockmap.Name)"
-          Write-Host "latest.yml found"
-
-          $latestContent = Get-Content $latest.FullName -Raw
-
-          Write-Host "=== latest.yml ==="
-          Write-Host $latestContent
-
-          if ($latestContent -notmatch "version:\s*1\.6\.4") {
-            throw "latest.yml version is not 1.6.4"
-          }
-
-          if ($latestContent -notmatch "EchoVerse-Setup-1\.6\.4\.exe") {
-            throw "latest.yml does not reference EchoVerse-Setup-1.6.4.exe"
-          }
-
-          Write-Host "Windows auto-update files verified successfully."
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: |
@@ -93,32 +51,23 @@ jobs:
             desktop/release/latest.yml
           if-no-files-found: error
 
-
   mac-intel:
     name: macOS Intel
     runs-on: macos-15-intel
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-
       - name: Install dependencies
         working-directory: desktop
         run: npm install
-
-      - name: Build macOS Intel
+      - name: Build
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:intel
-
-      - name: Upload macOS Intel artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: mac-intel-release
           path: |
@@ -126,33 +75,24 @@ jobs:
             desktop/release/*.zip
             desktop/release/*.blockmap
           if-no-files-found: error
-
 
   mac-arm64:
     name: macOS Apple Silicon
     runs-on: macos-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-
       - name: Install dependencies
         working-directory: desktop
         run: npm install
-
-      - name: Build macOS Apple Silicon
+      - name: Build
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:arm64
-
-      - name: Upload macOS Apple Silicon artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64-release
           path: |
@@ -161,48 +101,29 @@ jobs:
             desktop/release/*.blockmap
           if-no-files-found: error
 
-
   publish:
     name: Publish GitHub Release
-    needs:
-      - windows
-      - mac-intel
-      - mac-arm64
-
+    needs: [windows, mac-intel, mac-arm64]
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download Windows
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: windows-release
           path: release/windows
-
-      - name: Download macOS Intel
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: mac-intel-release
           path: release/mac-intel
-
-      - name: Download macOS Apple Silicon
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: mac-arm64-release
           path: release/mac-arm64
-
       - name: Verify release payload
         run: |
-          echo "=== Release files ==="
           find release -maxdepth 3 -type f -print
-
+          test -f "release/windows/EchoVerse-Setup-1.6.5.exe"
+          test -f "release/windows/EchoVerse-Setup-1.6.5.exe.blockmap"
           test -f release/windows/latest.yml
-
-          test -f "release/windows/EchoVerse-Setup-1.6.4.exe"
-          test -f "release/windows/EchoVerse-Setup-1.6.4.exe.blockmap"
-
-          grep -q "version: 1.6.4" release/windows/latest.yml
-          grep -q "EchoVerse-Setup-1.6.4.exe" release/windows/latest.yml
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

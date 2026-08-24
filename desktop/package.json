@@ -1,7 +1,7 @@
 {
   "name": "echoverse-desktop",
   "productName": "EchoVerse",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "EchoVerse desktop voice and chat app",
   "main": "electron/main.cjs",
   "type": "module",
@@ -12,8 +12,9 @@
     "dist:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish never",
     "dist:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "release:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "release:mac:intel": "npm run build && electron-builder --mac dmg zip --x64 --publish never",
-    "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish never"
+    "release:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish always",
+    "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish never",
+    "release:mac:intel": "npm run build && electron-builder --mac dmg zip --x64 --publish never"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",
@@ -35,7 +36,6 @@
   "build": {
     "appId": "com.echoverse.desktop",
     "productName": "EchoVerse",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -67,14 +67,14 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "category": "public.app-category.social-networking",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "EchoVerse sesli konuşma için mikrofonunu kullanır.",
         "NSCameraUsageDescription": "EchoVerse görüntülü konuşma için kameranı kullanır."
-      }
+      },
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "dmg": {
       "title": "EchoVerse ${version}"
@@ -86,7 +86,8 @@
         "repo": "echoverse",
         "releaseType": "release"
       }
-    ]
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "author": "EchoVerse"
 }

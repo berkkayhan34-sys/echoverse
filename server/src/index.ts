@@ -16,7 +16,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.6.4",
+    version: "1.6.5",
     ok: true,
     database: process.env.DATABASE_URL ? "postgres" : "memory",
     time: new Date().toISOString()
@@ -26,7 +26,7 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    version: "1.6.4",
+    version: "1.6.5",
     database: process.env.DATABASE_URL ? "postgres" : "memory"
   });
 });
@@ -36,7 +36,7 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: true, methods: ["GET", "POST"] },
   transports: ["websocket", "polling"],
-  maxHttpBufferSize: 2e6
+  maxHttpBufferSize: 8e6
 });
 
 const JWT_SECRET =
@@ -103,6 +103,13 @@ type SpotifyPartyState = {
 const users = new Map<string, User>();
 const guilds = new Map<string, Guild>();
 const spotifyParties = new Map<string, SpotifyPartyState>();
+const pendingCalls = new Map<string, {
+  callerAccountId: string;
+  callerSocketId: string;
+  targetAccountId: string;
+  targetSocketId: string;
+  timer: ReturnType<typeof setTimeout>;
+}>();
 
 // Fallback only. Use Render PostgreSQL for persistence.
 const memoryAccounts = new Map<string, Account>();
@@ -113,13 +120,22 @@ const memoryFriendships = new Map<string, {
   status: "pending" | "accepted" | "blocked";
   createdAt: string;
 }>();
-const memoryDmMessages: Array<{
+type StoredDm = {
   id: string;
   senderId: string;
   recipientId: string;
   body: string;
   createdAt: string;
-}> = [];
+  replyToId?: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
+  attachmentData?: string | null;
+  reactions?: Record<string, string[]>;
+};
+
+const memoryDmMessages: StoredDm[] = [];
 
 guilds.set("echoverse", {
   id: "echoverse",
@@ -219,6 +235,18 @@ async function initDatabase() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS echoverse_dm_pair_idx
     ON echoverse_dm_messages(sender_id, recipient_id, created_at)
+  `);
+
+  // v1.6.5 DM metadata migration. Safe to run repeatedly.
+  await pool.query(`
+    ALTER TABLE echoverse_dm_messages
+      ADD COLUMN IF NOT EXISTS reply_to_id TEXT,
+      ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS attachment_name TEXT,
+      ADD COLUMN IF NOT EXISTS attachment_mime TEXT,
+      ADD COLUMN IF NOT EXISTS attachment_data TEXT,
+      ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}'::jsonb
   `);
 
   console.log("EchoVerse accounts/friends/DM: PostgreSQL ready");
@@ -492,13 +520,30 @@ async function areFriends(a: string, b: string) {
   return status === "accepted";
 }
 
-async function storeDm(senderId: string, recipientId: string, body: string) {
-  const msg = {
+async function storeDm(
+  senderId: string,
+  recipientId: string,
+  body: string,
+  options: {
+    replyToId?: string | null;
+    attachmentName?: string | null;
+    attachmentMime?: string | null;
+    attachmentData?: string | null;
+  } = {}
+) {
+  const msg: StoredDm = {
     id: crypto.randomUUID(),
     senderId,
     recipientId,
     body,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    replyToId: options.replyToId || null,
+    editedAt: null,
+    deletedAt: null,
+    attachmentName: options.attachmentName || null,
+    attachmentMime: options.attachmentMime || null,
+    attachmentData: options.attachmentData || null,
+    reactions: {}
   };
 
   if (!pool) {
@@ -508,9 +553,23 @@ async function storeDm(senderId: string, recipientId: string, body: string) {
 
   await pool.query(
     `INSERT INTO echoverse_dm_messages
-      (id, sender_id, recipient_id, body, created_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [msg.id, senderId, recipientId, body, msg.createdAt]
+      (
+        id, sender_id, recipient_id, body, created_at,
+        reply_to_id, attachment_name, attachment_mime, attachment_data, reactions
+      )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+    [
+      msg.id,
+      senderId,
+      recipientId,
+      body,
+      msg.createdAt,
+      msg.replyToId,
+      msg.attachmentName,
+      msg.attachmentMime,
+      msg.attachmentData,
+      JSON.stringify(msg.reactions)
+    ]
   );
 
   return msg;
@@ -527,9 +586,15 @@ async function loadDmHistory(a: string, b: string) {
   }
 
   const result = await pool.query(
-    `SELECT id, sender_id, recipient_id, body, created_at
+    `SELECT
+       id, sender_id, recipient_id, body, created_at,
+       reply_to_id, edited_at, deleted_at,
+       attachment_name, attachment_mime, attachment_data, reactions
      FROM (
-       SELECT id, sender_id, recipient_id, body, created_at
+       SELECT
+         id, sender_id, recipient_id, body, created_at,
+         reply_to_id, edited_at, deleted_at,
+         attachment_name, attachment_mime, attachment_data, reactions
        FROM echoverse_dm_messages
        WHERE
          (sender_id = $1 AND recipient_id = $2)
@@ -546,9 +611,85 @@ async function loadDmHistory(a: string, b: string) {
     id: row.id,
     senderId: row.sender_id,
     recipientId: row.recipient_id,
-    body: row.body,
-    createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+    body: row.deleted_at ? "" : row.body,
+    createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+    replyToId: row.reply_to_id || null,
+    editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+    deletedAt: row.deleted_at?.toISOString?.() || row.deleted_at || null,
+    attachmentName: row.deleted_at ? null : row.attachment_name || null,
+    attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
+    attachmentData: row.deleted_at ? null : row.attachment_data || null,
+    reactions: row.reactions || {}
   }));
+}
+
+async function dmById(messageId: string): Promise<StoredDm | null> {
+  if (!pool) {
+    return memoryDmMessages.find(m => m.id === messageId) || null;
+  }
+
+  const result = await pool.query(
+    `SELECT
+      id, sender_id, recipient_id, body, created_at,
+      reply_to_id, edited_at, deleted_at,
+      attachment_name, attachment_mime, attachment_data, reactions
+     FROM echoverse_dm_messages
+     WHERE id=$1 LIMIT 1`,
+    [messageId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    recipientId: row.recipient_id,
+    body: row.deleted_at ? "" : row.body,
+    createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+    replyToId: row.reply_to_id || null,
+    editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+    deletedAt: row.deleted_at?.toISOString?.() || row.deleted_at || null,
+    attachmentName: row.deleted_at ? null : row.attachment_name || null,
+    attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
+    attachmentData: row.deleted_at ? null : row.attachment_data || null,
+    reactions: row.reactions || {}
+  };
+}
+
+function emitToAccount(accountId: string, event: string, payload: any) {
+  for (const peer of io.sockets.sockets.values()) {
+    if ((peer.data as any).account?.id === accountId) {
+      peer.emit(event, payload);
+    }
+  }
+}
+
+function emitDmPair(msg: StoredDm, event: string, payload: any) {
+  emitToAccount(msg.senderId, event, payload);
+  emitToAccount(msg.recipientId, event, payload);
+}
+
+function validateAttachment(input: any) {
+  if (!input) return { ok: true, value: null };
+
+  const name = String(input.name || "").trim().slice(0, 180);
+  const mime = String(input.mime || "application/octet-stream").slice(0, 120);
+  const data = String(input.data || "");
+
+  if (!name || !data.startsWith("data:")) {
+    return { ok: false, error: "Dosya verisi geçersiz." };
+  }
+
+  // Data URL max ~5.6 MB => about 4 MB raw.
+  if (data.length > 5_700_000) {
+    return { ok: false, error: "Dosya en fazla 4 MB olabilir." };
+  }
+
+  return {
+    ok: true,
+    value: { name, mime, data }
+  };
 }
 
 function socketForAccount(accountId: string) {
@@ -962,6 +1103,67 @@ io.on("connection", socket => {
     callback?.({ ok: true });
   });
 
+  socket.on("friends:block", async ({ targetId }, callback) => {
+    const account = (socket.data as any).account;
+    const target = String(targetId || "");
+    if (!account || !target || account.id === target) {
+      callback?.({ ok:false, error:"Kullanıcı engellenemedi." });
+      return;
+    }
+
+    const existing = await friendshipBetween(account.id, target);
+
+    if (!pool) {
+      const key = friendshipKey(account.id, target);
+      memoryFriendships.set(key, {
+        id: existing?.id || crypto.randomUUID(),
+        requesterId: account.id,
+        addresseeId: target,
+        status: "blocked",
+        createdAt: existing?.createdAt || new Date().toISOString()
+      });
+    } else if (existing) {
+      await pool.query(
+        `UPDATE echoverse_friendships
+         SET status='blocked', requester_id=$1, addressee_id=$2, updated_at=NOW()
+         WHERE id=$3`,
+        [account.id, target, existing.id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO echoverse_friendships
+          (id, requester_id, addressee_id, status, created_at, updated_at)
+         VALUES ($1,$2,$3,'blocked',NOW(),NOW())`,
+        [crypto.randomUUID(), account.id, target]
+      );
+    }
+
+    socket.emit("friends:changed");
+    emitToAccount(target, "friends:changed", {});
+    callback?.({ ok:true });
+  });
+
+  socket.on("friends:unblock", async ({ targetId }, callback) => {
+    const account = (socket.data as any).account;
+    const target = String(targetId || "");
+    if (!account || !target) return callback?.({ ok:false });
+
+    const existing = await friendshipBetween(account.id, target);
+    if (!existing || existing.status !== "blocked") {
+      return callback?.({ ok:false, error:"Engel bulunamadı." });
+    }
+
+    if (!pool) {
+      memoryFriendships.delete(friendshipKey(account.id, target));
+    } else {
+      await pool.query(`DELETE FROM echoverse_friendships WHERE id=$1`, [existing.id]);
+    }
+
+    socket.emit("friends:changed");
+    emitToAccount(target, "friends:changed", {});
+    callback?.({ ok:true });
+  });
+
   socket.on("dm:history", async ({ friendId }, callback) => {
     const user = users.get(socket.id);
     const friend = String(friendId || "");
@@ -975,13 +1177,13 @@ io.on("connection", socket => {
     callback?.({ ok: true, messages });
   });
 
-  socket.on("dm:send", async ({ friendId, body }, callback) => {
+  socket.on("dm:send", async ({ friendId, body, replyToId, attachment }, callback) => {
     const user = users.get(socket.id);
     const friend = String(friendId || "");
     const clean = sanitizeText(body);
 
-    if (!user?.accountId || !clean) {
-      callback?.({ ok: false, error: "Mesaj gönderilemedi." });
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: "Oturum gerekli." });
       return;
     }
 
@@ -990,7 +1192,23 @@ io.on("connection", socket => {
       return;
     }
 
-    const msg = await storeDm(user.accountId, friend, clean);
+    const checkedAttachment = validateAttachment(attachment);
+    if (!checkedAttachment.ok) {
+      callback?.({ ok: false, error: checkedAttachment.error });
+      return;
+    }
+
+    if (!clean && !checkedAttachment.value) {
+      callback?.({ ok: false, error: "Boş mesaj gönderilemez." });
+      return;
+    }
+
+    const msg = await storeDm(user.accountId, friend, clean, {
+      replyToId: replyToId ? String(replyToId) : null,
+      attachmentName: checkedAttachment.value?.name || null,
+      attachmentMime: checkedAttachment.value?.mime || null,
+      attachmentData: checkedAttachment.value?.data || null
+    });
 
     const payload = {
       ...msg,
@@ -998,14 +1216,72 @@ io.on("connection", socket => {
       senderAvatarData: user.avatarData
     };
 
-    socket.emit("dm:message", payload);
+    emitDmPair(msg, "dm:message", payload);
+    callback?.({ ok: true, message: payload });
+  });
 
-    const friendSocket = socketForAccount(friend);
-    if (friendSocket) {
-      io.to(friendSocket.socketId).emit("dm:message", payload);
+  socket.on("dm:edit", async ({ messageId, body }, callback) => {
+    const account = (socket.data as any).account;
+    const msg = await dmById(String(messageId || ""));
+    const clean = sanitizeText(body);
+
+    if (!account || !msg || msg.senderId !== account.id || msg.deletedAt || !clean) {
+      callback?.({ ok: false, error: "Mesaj düzenlenemedi." });
+      return;
     }
 
-    callback?.({ ok: true, message: payload });
+    const editedAt = new Date().toISOString();
+
+    if (!pool) {
+      msg.body = clean;
+      msg.editedAt = editedAt;
+    } else {
+      await pool.query(
+        `UPDATE echoverse_dm_messages SET body=$1, edited_at=$2 WHERE id=$3`,
+        [clean, editedAt, msg.id]
+      );
+      msg.body = clean;
+      msg.editedAt = editedAt;
+    }
+
+    emitDmPair(msg, "dm:updated", msg);
+    callback?.({ ok: true, message: msg });
+  });
+
+  socket.on("dm:delete", async ({ messageId }, callback) => {
+    const account = (socket.data as any).account;
+    const msg = await dmById(String(messageId || ""));
+
+    if (!account || !msg || msg.senderId !== account.id || msg.deletedAt) {
+      callback?.({ ok: false, error: "Mesaj silinemedi." });
+      return;
+    }
+
+    const deletedAt = new Date().toISOString();
+
+    if (!pool) {
+      msg.body = "";
+      msg.deletedAt = deletedAt;
+      msg.attachmentName = null;
+      msg.attachmentMime = null;
+      msg.attachmentData = null;
+    } else {
+      await pool.query(
+        `UPDATE echoverse_dm_messages
+         SET body='', deleted_at=$1,
+             attachment_name=NULL, attachment_mime=NULL, attachment_data=NULL
+         WHERE id=$2`,
+        [deletedAt, msg.id]
+      );
+      msg.body = "";
+      msg.deletedAt = deletedAt;
+      msg.attachmentName = null;
+      msg.attachmentMime = null;
+      msg.attachmentData = null;
+    }
+
+    emitDmPair(msg, "dm:deleted", { messageId: msg.id, deletedAt });
+    callback?.({ ok: true });
   });
 
   socket.on("call:start", async ({ friendId }, callback) => {
@@ -1024,6 +1300,30 @@ io.on("connection", socket => {
     }
 
     const callId = crypto.randomUUID();
+
+    const callTimer = setTimeout(() => {
+      const pending = pendingCalls.get(callId);
+      if (!pending) return;
+
+      pendingCalls.delete(callId);
+      io.to(pending.callerSocketId).emit("call:answered", {
+        callId,
+        accept: false,
+        reason: "timeout"
+      });
+      io.to(pending.targetSocketId).emit("call:missed", {
+        callId,
+        fromAccountId: pending.callerAccountId
+      });
+    }, 35000);
+
+    pendingCalls.set(callId, {
+      callerAccountId: user.accountId,
+      callerSocketId: socket.id,
+      targetAccountId: friend,
+      targetSocketId: friendSocket.socketId,
+      timer: callTimer
+    });
 
     io.to(friendSocket.socketId).emit("call:incoming", {
       callId,
@@ -1044,6 +1344,12 @@ io.on("connection", socket => {
     const user = users.get(socket.id);
     if (!user) return;
 
+    const pending = pendingCalls.get(String(callId));
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingCalls.delete(String(callId));
+    }
+
     io.to(String(toSocketId)).emit("call:answered", {
       callId,
       accept: !!accept,
@@ -1055,6 +1361,11 @@ io.on("connection", socket => {
   });
 
   socket.on("call:end", ({ toSocketId, callId }) => {
+    const pending = pendingCalls.get(String(callId));
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingCalls.delete(String(callId));
+    }
     io.to(String(toSocketId)).emit("call:ended", { callId });
   });
 
@@ -1281,16 +1592,42 @@ io.on("connection", socket => {
     callback?.({ ok:true });
   });
 
-  socket.on("dm:react", ({ messageId, emoji }, callback) => {
+  socket.on("dm:react", async ({ messageId, emoji }, callback) => {
     const account = (socket.data as any).account;
-    if (!account || !messageId || !emoji) return callback?.({ ok:false });
-    const current = dmReactions.get(messageId) || {};
-    const set = new Set(current[emoji] || []);
+    const msg = await dmById(String(messageId || ""));
+    const cleanEmoji = String(emoji || "").slice(0, 12);
+
+    if (!account || !msg || !cleanEmoji) {
+      callback?.({ ok:false, error:"Reaction eklenemedi." });
+      return;
+    }
+
+    if (account.id !== msg.senderId && account.id !== msg.recipientId) {
+      callback?.({ ok:false, error:"Bu mesaja erişimin yok." });
+      return;
+    }
+
+    const reactions = { ...(msg.reactions || {}) };
+    const set = new Set(reactions[cleanEmoji] || []);
     set.has(account.id) ? set.delete(account.id) : set.add(account.id);
-    current[emoji] = [...set];
-    dmReactions.set(messageId, current);
-    io.emit("dm:reaction", { messageId, reactions: current });
-    callback?.({ ok:true, reactions: current });
+
+    if (set.size) reactions[cleanEmoji] = [...set];
+    else delete reactions[cleanEmoji];
+
+    msg.reactions = reactions;
+
+    if (!pool) {
+      const memory = memoryDmMessages.find(m => m.id === msg.id);
+      if (memory) memory.reactions = reactions;
+    } else {
+      await pool.query(
+        `UPDATE echoverse_dm_messages SET reactions=$1::jsonb WHERE id=$2`,
+        [JSON.stringify(reactions), msg.id]
+      );
+    }
+
+    emitDmPair(msg, "dm:reaction", { messageId: msg.id, reactions });
+    callback?.({ ok:true, reactions });
   });
 
 socket.on("disconnect", () => {
@@ -1322,7 +1659,7 @@ const PORT = Number(process.env.PORT || 3001);
 initDatabase()
   .then(() => {
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`EchoVerse Server v1.6.4 listening on ${PORT}`);
+      console.log(`EchoVerse Server v1.6.5 listening on ${PORT}`);
     });
   })
   .catch(err => {
