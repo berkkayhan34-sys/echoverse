@@ -20,6 +20,7 @@ type FriendUser = {
   username: string;
   avatarData?: string | null;
   friendshipId?: string;
+  status?: "online" | "idle" | "dnd" | "invisible" | "offline";
 };
 
 type DmMessage = {
@@ -30,6 +31,11 @@ type DmMessage = {
   createdAt: string;
   senderUsername?: string;
   senderAvatarData?: string | null;
+  replyToId?: string | null;
+  editedAt?: string;
+  attachmentName?: string;
+  attachmentData?: string;
+  reactions?: Record<string, string[]>;
 };
 
 type IncomingCall = {
@@ -112,7 +118,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.5.0");
+  const [appVersion, setAppVersion] = useState("1.6.0");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -141,6 +147,13 @@ export default function App() {
   const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
   const [dmText, setDmText] = useState("");
+  const [unreadDm, setUnreadDm] = useState<Record<string, number>>({});
+  const [dmTyping, setDmTyping] = useState<Record<string, boolean>>({});
+  const [myStatus, setMyStatus] = useState<"online"|"idle"|"dnd"|"invisible">("online");
+  const [dmSearch, setDmSearch] = useState("");
+  const [replyTo, setReplyTo] = useState<DmMessage | null>(null);
+  const [micTestLevel, setMicTestLevel] = useState(0);
+  const [updateProgress, setUpdateProgress] = useState(0);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [privateCallPeer, setPrivateCallPeer] = useState<FriendUser | null>(null);
   const [privateCallSocketId, setPrivateCallSocketId] = useState("");
@@ -193,6 +206,8 @@ export default function App() {
 
     window.echoverse?.onUpdateStatus?.((status: string) => {
       setUpdateStatus(status);
+      const progress = status.match(/(\d{1,3})%/);
+      if (progress) setUpdateProgress(Number(progress[1]));
     });
   }, []);
 
@@ -244,6 +259,15 @@ export default function App() {
     s.on("friends:changed", () => {
       loadFriends(s);
     });
+    s.on("presence:changed", ({ accountId, status }: any) => {
+      setFriends(prev => prev.map(f => f.id === accountId ? { ...f, status } : f));
+    });
+    s.on("dm:typing", ({ accountId, typing }: any) => {
+      setDmTyping(prev => ({ ...prev, [accountId]: !!typing }));
+    });
+    s.on("dm:reaction", ({ messageId, reactions }: any) => {
+      setDmMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+    });
 
     s.on("friends:request-received", (friend: FriendUser) => {
       loadFriends(s);
@@ -265,6 +289,9 @@ export default function App() {
       });
 
       if (account && msg.senderId !== account.id) {
+        if (!activeDmFriend || activeDmFriend.id !== msg.senderId) {
+          setUnreadDm(prev => ({ ...prev, [msg.senderId]: (prev[msg.senderId] || 0) + 1 }));
+        }
         window.echoverse?.notify?.({
           title: msg.senderUsername || "Yeni mesaj",
           body: msg.body
@@ -640,10 +667,12 @@ export default function App() {
 
     const body = dmText.trim();
     setDmText("");
+    setReplyTo(null);
+    socket?.emit("dm:typing", { friendId: activeDmFriend.id, typing: false });
 
     socket.emit(
       "dm:send",
-      { friendId: activeDmFriend.id, body },
+      { friendId: activeDmFriend.id, body, replyToId: replyTo?.id || null },
       (result: any) => {
         if (!result?.ok) {
           setError(result?.error || "Mesaj gönderilemedi.");
@@ -651,6 +680,40 @@ export default function App() {
       }
     );
   }
+
+  async function checkForUpdates() {
+    setUpdateStatus("Güncellemeler kontrol ediliyor…");
+    const result = await window.echoverse?.checkForUpdates?.();
+    if (!result?.ok) setUpdateStatus(result?.error || "Güncelleme kontrolü başarısız.");
+  }
+
+  async function testOutput() {
+    try {
+      const ctx = new AudioContext(); const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.frequency.value = 523.25; gain.gain.value = 0.06; osc.connect(gain); gain.connect(ctx.destination); osc.start();
+      window.setTimeout(() => { try { osc.stop(); ctx.close(); } catch {} }, 500);
+    } catch {}
+  }
+
+  async function testMicrophone() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio: selectedInput ? {deviceId:{exact:selectedInput}} : true});
+      const ctx = new AudioContext(); const analyser=ctx.createAnalyser(); ctx.createMediaStreamSource(stream).connect(analyser);
+      const data=new Uint8Array(analyser.fftSize); const start=Date.now();
+      const timer=window.setInterval(()=>{ analyser.getByteTimeDomainData(data); let sum=0;
+        for(const v of data){const n=(v-128)/128;sum+=n*n;} setMicTestLevel(Math.min(100,Math.round(Math.sqrt(sum/data.length)*420)));
+        if(Date.now()-start>4000){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());ctx.close();setMicTestLevel(0);}
+      },80);
+    } catch { setError("Mikrofon testi başlatılamadı."); }
+  }
+
+  function setPresenceStatus(status: "online"|"idle"|"dnd"|"invisible") {
+    setMyStatus(status); socket?.emit("presence:set",{status});
+  }
+  function sendTyping(typing:boolean) {
+    if(activeDmFriend) socket?.emit("dm:typing",{friendId:activeDmFriend.id,typing});
+  }
+  function reactDm(messageId:string, emoji:string) { socket?.emit("dm:react",{messageId,emoji}); }
 
   function startRingtone() {
     stopRingtone();
@@ -1701,7 +1764,16 @@ export default function App() {
                 : "Giriş Yap"}
           </button>
 
-          {updateStatus && <div className="update-box">{updateStatus}</div>}
+          <div className="v16-qol">
+          <button onClick={checkForUpdates}>Güncellemeleri kontrol et</button>
+          {updateProgress > 0 && updateProgress < 100 && <progress max="100" value={updateProgress} />}
+          <button onClick={testMicrophone}>Mikrofon testi</button><span>Mic {micTestLevel}%</span>
+          <button onClick={testOutput}>Output test sesi</button>
+          <select value={myStatus} onChange={e=>setPresenceStatus(e.target.value as any)}>
+            <option value="online">Online</option><option value="idle">Idle</option><option value="dnd">DND</option><option value="invisible">Invisible</option>
+          </select>
+        </div>
+        {updateStatus && <div className="update-box">{updateStatus}</div>}
           {error && <div className="error-box">{error}</div>}
 
           <small className="auth-version">EchoVerse v{appVersion}</small>

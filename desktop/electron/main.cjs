@@ -663,3 +663,14 @@ app.on("before-quit", () => {
 app.on("window-all-closed", () => {
   // Keep EchoVerse alive in tray/menu bar.
 });
+ipcMain.handle("update:check", async () => {
+  if (!app.isPackaged) return { ok: false, error: "Updater sadece kurulu uygulamada çalışır." };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { ok: true, version: result?.updateInfo?.version || null };
+  } catch (error) {
+    sendUpdateStatus(`Güncelleme hatası: ${error?.message || error}`);
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+

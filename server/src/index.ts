@@ -16,7 +16,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/", (_req, res) => {
   res.json({
     name: "EchoVerse Server",
-    version: "1.5.0",
+    version: "1.6.0",
     ok: true,
     database: process.env.DATABASE_URL ? "postgres" : "memory",
     time: new Date().toISOString()
@@ -26,7 +26,7 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    version: "1.5.0",
+    version: "1.6.0",
     database: process.env.DATABASE_URL ? "postgres" : "memory"
   });
 });
@@ -622,6 +622,10 @@ async function attachAccountToSocket(socket: any, account: Account) {
     account: publicAccount(account)
   };
 }
+
+const accountPresence = new Map<string, string>();
+const dmReactions = new Map<string, Record<string, string[]>>();
+const dmReadAt = new Map<string, number>();
 
 io.on("connection", socket => {
   socket.emit("guild:list", guildList());
@@ -1243,7 +1247,53 @@ io.on("connection", socket => {
     });
   });
 
-  socket.on("disconnect", () => {
+  
+  socket.on("presence:set", ({ status }, callback) => {
+    const account = (socket.data as any).account;
+    if (!account) return callback?.({ ok: false, error: "Oturum gerekli." });
+    const allowed = ["online", "idle", "dnd", "invisible"];
+    const value = allowed.includes(status) ? status : "online";
+    accountPresence.set(account.id, value);
+    io.emit("presence:changed", { accountId: account.id, status: value });
+    callback?.({ ok: true, status: value });
+  });
+
+  socket.on("presence:get", ({ accountIds }, callback) => {
+    const presence: Record<string,string> = {};
+    for (const id of (accountIds || [])) presence[id] = accountPresence.get(id) || "offline";
+    callback?.({ ok: true, presence });
+  });
+
+  socket.on("dm:typing", ({ friendId, typing }) => {
+    const account = (socket.data as any).account;
+    if (!account || !friendId) return;
+    for (const peer of io.sockets.sockets.values()) {
+      if ((peer.data as any).account?.id === friendId) {
+        peer.emit("dm:typing", { accountId: account.id, typing: !!typing });
+      }
+    }
+  });
+
+  socket.on("dm:read", ({ friendId }, callback) => {
+    const account = (socket.data as any).account;
+    if (!account || !friendId) return callback?.({ ok:false });
+    dmReadAt.set(`${account.id}:${friendId}`, Date.now());
+    callback?.({ ok:true });
+  });
+
+  socket.on("dm:react", ({ messageId, emoji }, callback) => {
+    const account = (socket.data as any).account;
+    if (!account || !messageId || !emoji) return callback?.({ ok:false });
+    const current = dmReactions.get(messageId) || {};
+    const set = new Set(current[emoji] || []);
+    set.has(account.id) ? set.delete(account.id) : set.add(account.id);
+    current[emoji] = [...set];
+    dmReactions.set(messageId, current);
+    io.emit("dm:reaction", { messageId, reactions: current });
+    callback?.({ ok:true, reactions: current });
+  });
+
+socket.on("disconnect", () => {
     const user = users.get(socket.id);
 
     if (user?.roomId && user.guildId) {
@@ -1272,7 +1322,7 @@ const PORT = Number(process.env.PORT || 3001);
 initDatabase()
   .then(() => {
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`EchoVerse Server v1.5 listening on ${PORT}`);
+      console.log(`EchoVerse Server v1.6 listening on ${PORT}`);
     });
   })
   .catch(err => {
