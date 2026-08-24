@@ -6,7 +6,18 @@ contextBridge.exposeInMainWorld("echoverse", {
   onUpdateStatus: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("echoverse:update-status", listener);
+    return () => ipcRenderer.removeListener("echoverse:update-status", listener);
   },
+
+  onUpdateState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("echoverse:update-state", listener);
+    return () => ipcRenderer.removeListener("echoverse:update-state", listener);
+  },
+
+  getUpdateState: () => ipcRenderer.invoke("update:get-state"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  getUpdaterLogPath: () => ipcRenderer.invoke("update:get-log-path"),
 
   spotifyStatus: () => ipcRenderer.invoke("spotify:status"),
   spotifyLogin: () => ipcRenderer.invoke("spotify:login"),

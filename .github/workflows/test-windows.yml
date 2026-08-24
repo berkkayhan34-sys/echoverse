@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   windows-test:
+    name: Windows Test Build
     runs-on: windows-latest
 
     steps:
@@ -29,6 +30,15 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
 
+      - name: Verify updater metadata
+        shell: powershell
+        run: |
+          if (!(Test-Path "desktop/release/latest.yml")) {
+            Write-Error "latest.yml missing"
+            exit 1
+          }
+          Get-Content "desktop/release/latest.yml"
+
       - name: Upload Windows test installer
         uses: actions/upload-artifact@v4
         with:
@@ -36,4 +46,5 @@ jobs:
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap
+            desktop/release/latest.yml
           if-no-files-found: error

@@ -118,7 +118,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.2");
+  const [appVersion, setAppVersion] = useState("1.6.3");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -158,6 +158,9 @@ export default function App() {
   const [replyTo, setReplyTo] = useState<DmMessage | null>(null);
   const [micTestLevel, setMicTestLevel] = useState(0);
   const [updateProgress, setUpdateProgress] = useState(0);
+  const [updatePhase, setUpdatePhase] = useState("idle");
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [privateCallPeer, setPrivateCallPeer] = useState<FriendUser | null>(null);
   const [privateCallSocketId, setPrivateCallSocketId] = useState("");
@@ -210,11 +213,38 @@ export default function App() {
       } catch {}
     })();
 
-    window.echoverse?.onUpdateStatus?.((status: string) => {
+    let removeUpdateState: (() => void) | void;
+
+    (async () => {
+      try {
+        const initial = await window.echoverse?.getUpdateState?.();
+        if (initial) {
+          setUpdatePhase(initial.phase || "idle");
+          setUpdateStatus(initial.status || "");
+          setUpdateProgress(initial.percent || 0);
+          setUpdateVersion(initial.version || null);
+        }
+      } catch {}
+    })();
+
+    removeUpdateState = window.echoverse?.onUpdateState?.((state: any) => {
+      setUpdatePhase(state?.phase || "idle");
+      setUpdateStatus(state?.status || "");
+      setUpdateProgress(Number(state?.percent || 0));
+      setUpdateVersion(state?.version || null);
+    });
+
+    // Backward compatibility with older preload builds.
+    const removeLegacy = window.echoverse?.onUpdateStatus?.((status: string) => {
       setUpdateStatus(status);
       const progress = status.match(/(\d{1,3})%/);
       if (progress) setUpdateProgress(Number(progress[1]));
     });
+
+    return () => {
+      try { removeUpdateState?.(); } catch {}
+      try { removeLegacy?.(); } catch {}
+    };
   }, []);
 
   useEffect(() => {
@@ -697,6 +727,44 @@ export default function App() {
     setUpdateStatus("Güncellemeler kontrol ediliyor…");
     const result = await window.echoverse?.checkForUpdates?.();
     if (!result?.ok) setUpdateStatus(result?.error || "Güncelleme kontrolü başarısız.");
+  }
+
+  async function installReadyUpdate() {
+    const result = await window.echoverse?.installUpdate?.();
+    if (!result?.ok) {
+      setUpdateStatus(result?.error || "Güncelleme kurulamadı.");
+    }
+  }
+
+  function updaterBanner() {
+    if (!updateStatus) return null;
+
+    return (
+      <div className={`global-update-banner ${updatePhase === "error" ? "error" : ""}`}>
+        <div className="global-update-copy">
+          <b>
+            {updatePhase === "error"
+              ? "Güncelleme sorunu"
+              : updateVersion
+                ? `EchoVerse ${updateVersion}`
+                : "EchoVerse Update"}
+          </b>
+          <span>{updateStatus}</span>
+          {updatePhase === "downloading" && (
+            <progress max="100" value={updateProgress} />
+          )}
+        </div>
+
+        <div className="global-update-actions">
+          {updatePhase === "ready" && (
+            <button onClick={installReadyUpdate}>Şimdi yeniden başlat</button>
+          )}
+          {updatePhase === "error" && (
+            <button onClick={checkForUpdates}>Tekrar dene</button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   async function testOutput() {
@@ -1765,6 +1833,7 @@ export default function App() {
   if (!identified) {
     return (
       <div className="welcome-page">
+        {updaterBanner()}
         <div className="welcome-card auth-card">
           <div className="logo-orb">E</div>
           <h1>EchoVerse</h1>
@@ -1861,6 +1930,7 @@ export default function App() {
   if (!joined) {
     return (
       <div className="welcome-page">
+        {updaterBanner()}
         <div className="welcome-card guild-picker">
           <div className="picker-head">
             <div>
@@ -2003,6 +2073,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {updaterBanner()}
       <aside className="servers">
         <div className="server-logo">
           E

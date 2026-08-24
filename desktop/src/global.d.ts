@@ -7,7 +7,11 @@ declare global {
         serverUrl: string;
         spotifyClientId?: string;
       }>;
-      onUpdateStatus?: (callback: (status: string) => void) => void;
+      onUpdateStatus?: (callback: (status: string) => void) => (() => void) | void;
+      onUpdateState?: (callback: (state: { phase: string; status: string; version?: string | null; percent?: number; error?: string | null }) => void) => (() => void) | void;
+      getUpdateState?: () => Promise<{ phase: string; status: string; version?: string | null; percent?: number; error?: string | null }>;
+      installUpdate?: () => Promise<{ ok: boolean; error?: string }>;
+      getUpdaterLogPath?: () => Promise<string | null>;
 
       spotifyStatus?: () => Promise<{
         connected: boolean;

@@ -24,6 +24,16 @@ let isQuitting = false;
 let spotifyTokens = null;
 let spotifyLoginServer = null;
 let selectedDisplaySourceId = null;
+let updaterSetupDone = false;
+let updateInstallTimer = null;
+let updaterState = {
+  phase: "idle",
+  status: "",
+  version: null,
+  percent: 0,
+  error: null
+};
+
 
 const SPOTIFY_CALLBACK_PORT = 43821;
 const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
@@ -460,50 +470,192 @@ ipcMain.handle("spotify:applySync", async (_evt, sync) => {
   return { ok: true };
 });
 
-function sendUpdateStatus(status) {
-  mainWindow?.webContents.send("echoverse:update-status", status);
+function updaterLogPath() {
+  try {
+    return path.join(app.getPath("userData"), "echoverse-updater.log");
+  } catch {
+    return null;
+  }
+}
+
+function logUpdater(message, extra = "") {
+  const line = `[${new Date().toISOString()}] ${message}${extra ? ` ${extra}` : ""}\n`;
+  console.log("[Updater]", message, extra);
+
+  try {
+    const file = updaterLogPath();
+    if (file) fs.appendFileSync(file, line, "utf8");
+  } catch {}
+}
+
+function sendUpdateState(patch = {}) {
+  updaterState = {
+    ...updaterState,
+    ...patch
+  };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("echoverse:update-state", updaterState);
+    mainWindow.webContents.send("echoverse:update-status", updaterState.status || "");
+  }
+}
+
+function showUpdateNotification(title, body) {
+  try {
+    if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+    }
+  } catch {}
+}
+
+async function runUpdateCheck(source = "automatic") {
+  if (!app.isPackaged) {
+    return { ok: false, error: "Updater sadece kurulu uygulamada çalışır." };
+  }
+
+  try {
+    logUpdater(`Checking for updates (${source})`, `current=${app.getVersion()}`);
+    const result = await autoUpdater.checkForUpdates();
+
+    return {
+      ok: true,
+      version: result?.updateInfo?.version || null
+    };
+  } catch (error) {
+    const message = error?.message || String(error);
+    logUpdater("Update check failed", message);
+    sendUpdateState({
+      phase: "error",
+      status: `Güncelleme hatası: ${message}`,
+      error: message
+    });
+
+    return { ok: false, error: message };
+  }
 }
 
 function setupAutoUpdater() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || updaterSetupDone) return;
+  updaterSetupDone = true;
 
+  // GitHub Releases is configured by build.publish in package.json.
+  // Download automatically, but only install after the package is fully downloaded.
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
 
   autoUpdater.on("checking-for-update", () => {
-    sendUpdateStatus("Güncelleme kontrol ediliyor…");
+    logUpdater("checking-for-update");
+    sendUpdateState({
+      phase: "checking",
+      status: "Güncelleme kontrol ediliyor…",
+      percent: 0,
+      error: null
+    });
   });
 
   autoUpdater.on("update-available", info => {
-    sendUpdateStatus(`Yeni sürüm ${info.version} indiriliyor…`);
+    logUpdater("update-available", `version=${info.version}`);
+    sendUpdateState({
+      phase: "downloading",
+      version: info.version,
+      status: `Yeni EchoVerse ${info.version} sürümü bulundu. İndiriliyor…`,
+      percent: 0,
+      error: null
+    });
+
+    showUpdateNotification(
+      "EchoVerse güncellemesi bulundu",
+      `v${info.version} otomatik indiriliyor.`
+    );
   });
 
-  autoUpdater.on("update-not-available", () => {
-    sendUpdateStatus("");
+  autoUpdater.on("update-not-available", info => {
+    logUpdater("update-not-available", `latest=${info?.version || "unknown"}`);
+    sendUpdateState({
+      phase: "current",
+      version: info?.version || app.getVersion(),
+      status: "EchoVerse güncel.",
+      percent: 100,
+      error: null
+    });
+
+    // Do not leave the harmless "up to date" banner on screen forever.
+    setTimeout(() => {
+      if (updaterState.phase === "current") {
+        sendUpdateState({ phase: "idle", status: "", percent: 0 });
+      }
+    }, 3500);
   });
 
   autoUpdater.on("download-progress", progress => {
-    sendUpdateStatus(`Güncelleme indiriliyor… %${Math.round(progress.percent)}`);
+    const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
+    sendUpdateState({
+      phase: "downloading",
+      status: `Güncelleme indiriliyor… %${percent}`,
+      percent,
+      error: null
+    });
   });
 
   autoUpdater.on("update-downloaded", info => {
-    sendUpdateStatus(`EchoVerse ${info.version} hazır. Uygulama yeniden başlatılarak güncellenecek…`);
-    setTimeout(() => {
-      autoUpdater.quitAndInstall(false, true);
-    }, 1800);
+    logUpdater("update-downloaded", `version=${info.version}`);
+
+    sendUpdateState({
+      phase: "ready",
+      version: info.version,
+      status: `EchoVerse ${info.version} indirildi. 5 saniye içinde yeniden başlatılıp kurulacak.`,
+      percent: 100,
+      error: null
+    });
+
+    showUpdateNotification(
+      "EchoVerse güncellemesi hazır",
+      `v${info.version} kurulum için uygulamayı yeniden başlatacak.`
+    );
+
+    if (updateInstallTimer) clearTimeout(updateInstallTimer);
+    updateInstallTimer = setTimeout(() => {
+      try {
+        isQuitting = true;
+        logUpdater("quitAndInstall", `version=${info.version}`);
+        autoUpdater.quitAndInstall(false, true);
+      } catch (error) {
+        const message = error?.message || String(error);
+        logUpdater("quitAndInstall failed", message);
+        sendUpdateState({
+          phase: "error",
+          status: `Güncelleme kurulamadı: ${message}`,
+          error: message
+        });
+      }
+    }, 5000);
   });
 
   autoUpdater.on("error", err => {
-    console.error("Auto update error:", err);
-    sendUpdateStatus("");
+    const message = err?.message || String(err);
+    logUpdater("autoUpdater error", message);
+
+    // IMPORTANT: never hide updater errors. This is how Defender/download
+    // failures become visible to the user instead of silently disappearing.
+    sendUpdateState({
+      phase: "error",
+      status: `Güncelleme hatası: ${message}`,
+      error: message
+    });
+
+    showUpdateNotification(
+      "EchoVerse güncelleme hatası",
+      message
+    );
   });
 
+  // Give renderer time to attach its listeners, then check automatically.
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(err => {
-      console.error("Update check failed:", err);
-    });
-  }, 2500);
+    runUpdateCheck("startup");
+  }, 4500);
 }
+
 
 async function setupScreenCapture() {
   session.defaultSession.setDisplayMediaRequestHandler(
@@ -664,13 +816,35 @@ app.on("window-all-closed", () => {
   // Keep EchoVerse alive in tray/menu bar.
 });
 ipcMain.handle("update:check", async () => {
-  if (!app.isPackaged) return { ok: false, error: "Updater sadece kurulu uygulamada çalışır." };
+  return runUpdateCheck("manual");
+});
+
+ipcMain.handle("update:get-state", async () => updaterState);
+
+ipcMain.handle("update:install", async () => {
+  if (!app.isPackaged) {
+    return { ok: false, error: "Updater sadece kurulu uygulamada çalışır." };
+  }
+
+  if (updaterState.phase !== "ready") {
+    return { ok: false, error: "Kurulmaya hazır bir güncelleme yok." };
+  }
+
   try {
-    const result = await autoUpdater.checkForUpdates();
-    return { ok: true, version: result?.updateInfo?.version || null };
+    if (updateInstallTimer) {
+      clearTimeout(updateInstallTimer);
+      updateInstallTimer = null;
+    }
+
+    isQuitting = true;
+    logUpdater("Manual quitAndInstall");
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
   } catch (error) {
-    sendUpdateStatus(`Güncelleme hatası: ${error?.message || error}`);
-    return { ok: false, error: error?.message || String(error) };
+    const message = error?.message || String(error);
+    return { ok: false, error: message };
   }
 });
+
+ipcMain.handle("update:get-log-path", async () => updaterLogPath());
 
