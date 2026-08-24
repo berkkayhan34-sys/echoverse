@@ -1,0 +1,39 @@
+name: Test Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Build Windows test installer
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist:win
+
+      - name: Upload Windows test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EchoVerse-v1.6.3-Windows-Test
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+          if-no-files-found: error
