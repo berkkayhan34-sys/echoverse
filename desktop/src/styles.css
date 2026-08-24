@@ -553,3 +553,26 @@ button {
     display: none;
   }
 }
+
+
+.guild-picker { width: min(520px, 92vw); }
+.picker-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.icon-btn { width:42px; height:42px; border:0; border-radius:12px; background:#6257e8; color:white; font-size:24px; }
+.guild-list { display:flex; flex-direction:column; gap:8px; margin:18px 0; max-height:380px; overflow:auto; }
+.guild-row { display:flex; align-items:center; gap:12px; width:100%; border:1px solid #2c3240; background:#151922; color:white; border-radius:12px; padding:11px; text-align:left; }
+.guild-row:hover { background:#202532; }
+.guild-row span:last-child { display:flex; flex-direction:column; min-width:0; }
+.guild-row small { color:#727c91; margin-top:3px; }
+.guild-badge { width:40px; height:40px; flex:none; border-radius:13px; display:grid; place-items:center; background:#343a4c; font-weight:850; }
+.secondary-wide { width:100%; padding:11px; border:1px solid #343a4b; border-radius:10px; background:transparent; color:#cdd3de; }
+.guild-title { flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; }
+.guild-code { color:#687186; font-size:10px; }
+.disconnect-btn { background:#b93b49 !important; color:white !important; font-weight:800; }
+.update-box { margin-top:12px; padding:10px 12px; border-radius:9px; background:#1b3228; color:#8be2ae; font-size:13px; }
+.modal-backdrop { position:fixed; inset:0; z-index:100; display:grid; place-items:center; background:rgba(0,0,0,.65); }
+.modal { width:min(420px,90vw); background:#151922; border:1px solid #333a4b; border-radius:16px; padding:20px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.modal h2 { margin-top:0; }
+.modal input { width:100%; padding:12px; border-radius:10px; border:1px solid #3a4255; background:#0d1016; color:white; outline:none; }
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.modal-actions button { border:0; border-radius:9px; padding:9px 13px; background:#2a303d; color:white; }
+.modal-actions .primary-small { background:#6658ed; }

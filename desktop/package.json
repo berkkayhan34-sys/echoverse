@@ -1,7 +1,7 @@
 {
   "name": "echoverse-desktop",
   "productName": "EchoVerse",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "EchoVerse desktop voice and chat app",
   "main": "electron/main.cjs",
   "type": "module",
@@ -10,12 +10,16 @@
     "build": "vite build",
     "dist:win": "npm run build && electron-builder --win nsis --x64",
     "dist:mac:x64": "npm run build && electron-builder --mac dmg --x64",
-    "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64"
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64",
+    "release:win": "npm run build && electron-builder --win nsis --x64 --publish always",
+    "release:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish always",
+    "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish always"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
@@ -58,7 +62,8 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.social-networking",
       "hardenedRuntime": false,
@@ -66,7 +71,15 @@
     },
     "dmg": {
       "title": "EchoVerse ${version}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "berkkayhan34-sys",
+        "repo": "echoverse",
+        "releaseType": "release"
+      }
+    ]
   },
   "author": "EchoVerse"
 }

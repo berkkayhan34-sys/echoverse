@@ -1,16 +1,15 @@
-name: Build EchoVerse Desktop
+name: Release EchoVerse
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ "main" ]
-    paths:
-      - "desktop/**"
-      - ".github/workflows/build-desktop.yml"
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   windows:
-    name: Windows Installer
     runs-on: windows-latest
     defaults:
       run:
@@ -21,14 +20,12 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
-      - run: npm run dist:win
-      - uses: actions/upload-artifact@v4
-        with:
-          name: EchoVerse-Windows
-          path: desktop/release/*.exe
+      - name: Publish Windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release:win
 
   mac-intel:
-    name: macOS Intel
     runs-on: macos-15-intel
     defaults:
       run:
@@ -39,16 +36,13 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
-      - env:
+      - name: Publish Intel Mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run dist:mac:x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: EchoVerse-macOS-Intel
-          path: desktop/release/*.{dmg,zip}
+        run: npm run release:mac:x64
 
   mac-arm64:
-    name: macOS Apple Silicon
     runs-on: macos-latest
     defaults:
       run:
@@ -59,10 +53,8 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
-      - env:
+      - name: Publish Apple Silicon Mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run dist:mac:arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: EchoVerse-macOS-Apple-Silicon
-          path: desktop/release/*.{dmg,zip}
+        run: npm run release:mac:arm64
