@@ -604,7 +604,7 @@ function setupAutoUpdater() {
     sendUpdateState({
       phase: "ready",
       version: info.version,
-      status: `EchoVerse ${info.version} indirildi. 5 saniye içinde yeniden başlatılıp kurulacak.`,
+      status: `EchoVerse ${info.version} hazır. Uygun olduğunda yeniden başlatıp kurabilirsin.`,
       percent: 100,
       error: null
     });
@@ -613,24 +613,7 @@ function setupAutoUpdater() {
       "EchoVerse güncellemesi hazır",
       `v${info.version} kurulum için uygulamayı yeniden başlatacak.`
     );
-
-    if (updateInstallTimer) clearTimeout(updateInstallTimer);
-    updateInstallTimer = setTimeout(() => {
-      try {
-        isQuitting = true;
-        logUpdater("quitAndInstall", `version=${info.version}`);
-        autoUpdater.quitAndInstall(false, true);
-      } catch (error) {
-        const message = error?.message || String(error);
-        logUpdater("quitAndInstall failed", message);
-        sendUpdateState({
-          phase: "error",
-          status: `Güncelleme kurulamadı: ${message}`,
-          error: message
-        });
-      }
-    }, 5000);
-  });
+});
 
   autoUpdater.on("error", err => {
     const message = err?.message || String(err);

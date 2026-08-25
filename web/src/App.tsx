@@ -120,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.6");
+  const [appVersion, setAppVersion] = useState("1.6.7");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -153,6 +153,7 @@ export default function App() {
   const [callSeconds, setCallSeconds] = useState(0);
   const [connectionMessage, setConnectionMessage] = useState("");
   const [dmAttachment, setDmAttachment] = useState<{name:string; mime:string; data:string} | null>(null);
+  const [dmDragActive, setDmDragActive] = useState(false);
   const [editingDm, setEditingDm] = useState<DmMessage | null>(null);
   const [deafened, setDeafened] = useState(false);
   const [pushToTalk, setPushToTalk] = useState(false);
@@ -2807,7 +2808,7 @@ export default function App() {
                     <span>↩ {replyTo.senderId === account?.id ? "Kendine" : activeDmFriend.username} yanıtlanıyor</span>
                   )}
                   {dmAttachment && (
-                    <span>📎 {dmAttachment.name}</span>
+                    <span>📎 {dmAttachment.name} · gönderime hazır</span>
                   )}
                   <button onClick={() => {
                     setReplyTo(null);
@@ -2818,7 +2819,18 @@ export default function App() {
                 </div>
               )}
 
-              <div className="dm-page-composer">
+              <div
+                className={`dm-page-composer ${dmDragActive ? "drag-active" : ""}`}
+                onDragEnter={e => { e.preventDefault(); setDmDragActive(true); }}
+                onDragOver={e => { e.preventDefault(); setDmDragActive(true); }}
+                onDragLeave={e => { e.preventDefault(); setDmDragActive(false); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDmDragActive(false);
+                  chooseDmFile(e.dataTransfer.files?.[0] || null);
+                }}
+              >
+                {dmDragActive && <div className="dm-drop-hint">Dosyayı bırak</div>}
                 <input
                   ref={dmFileInputRef}
                   type="file"

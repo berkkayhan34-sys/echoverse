@@ -1967,3 +1967,80 @@ body::after {
   opacity: .82;
   transform: scale(.98);
 }
+
+
+/* EchoVerse v1.6.7 — stability + restrained updater + DM polish */
+.fatal-error-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: radial-gradient(circle at 50% 20%, #1d2230 0, #101319 55%, #0c0f14 100%);
+  color: #e9edf5;
+}
+.fatal-error-card {
+  width: min(440px, 100%);
+  padding: 24px;
+  border-radius: 16px;
+  background: rgba(23,27,36,.94);
+  border: 1px solid rgba(255,255,255,.07);
+  box-shadow: 0 22px 70px rgba(0,0,0,.32);
+}
+.fatal-error-mark {
+  width: 30px; height: 30px; display:grid; place-items:center;
+  border-radius: 9px; background:#312d49; color:#a99cff; font-weight:800;
+}
+.fatal-error-card h1 { margin: 14px 0 6px; font-size: 18px; }
+.fatal-error-card p { color:#8f99aa; font-size: 12px; line-height:1.55; }
+.fatal-error-card button {
+  margin-top:12px; border:0; border-radius:9px; padding:9px 12px;
+  background:#6559df; color:white; font-weight:700;
+}
+.fatal-error-card details { margin-top:14px; color:#707b8d; font-size:11px; }
+.fatal-error-card pre { white-space:pre-wrap; word-break:break-word; }
+
+.dm-page-composer { position: relative; transition: border-color .14s ease, background .14s ease; }
+.dm-page-composer.drag-active {
+  background: rgba(101,89,223,.08);
+  outline: 1px dashed rgba(123,111,240,.48);
+  outline-offset: -5px;
+}
+.dm-drop-hint {
+  position:absolute; inset:5px; z-index:4; display:grid; place-items:center;
+  border-radius:9px; background:rgba(17,20,28,.91); color:#b9b1ff;
+  font-size:12px; font-weight:750; pointer-events:none;
+}
+
+/* Updater should stay secondary to the app. */
+.global-update-banner {
+  top: 10px !important;
+  width: min(500px, calc(100vw - 24px)) !important;
+  padding: 9px 11px !important;
+  border-color: rgba(255,255,255,.07) !important;
+  background: rgba(20,24,32,.94) !important;
+  box-shadow: 0 12px 32px rgba(0,0,0,.22) !important;
+}
+.global-update-banner:not(.error) .global-update-copy b { color:#dce1ea !important; }
+.global-update-copy span { color:#7f8999 !important; }
+.global-update-actions button {
+  padding: 7px 9px !important;
+  background:#2d3442 !important;
+  color:#cfd5df !important;
+  border:1px solid rgba(255,255,255,.06) !important;
+}
+.global-update-actions button:hover { background:#373f50 !important; }
+
+.v16-qol > button:first-child {
+  background: transparent !important;
+  color:#7f8999 !important;
+  border:1px solid rgba(255,255,255,.055) !important;
+  box-shadow:none !important;
+  font-weight:600 !important;
+}
+.update-box {
+  background:rgba(255,255,255,.025) !important;
+  color:#7f8999 !important;
+  border:1px solid rgba(255,255,255,.045) !important;
+  padding:8px 10px !important;
+  font-size:11px !important;
+}

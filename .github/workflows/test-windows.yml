@@ -31,8 +31,8 @@ jobs:
       - name: Verify updater metadata
         shell: pwsh
         run: |
-          $installer = "desktop/release/EchoVerse-Setup-1.6.6.exe"
-          $blockmap = "desktop/release/EchoVerse-Setup-1.6.6.exe.blockmap"
+          $installer = "desktop/release/EchoVerse-Setup-1.6.7.exe"
+          $blockmap = "desktop/release/EchoVerse-Setup-1.6.7.exe.blockmap"
           $latest = "desktop/release/latest.yml"
 
           if (!(Test-Path $installer)) { throw "Installer missing" }
@@ -47,9 +47,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: EchoVerse-v1.6.6-Windows-Test
+          name: EchoVerse-v1.6.7-Windows-Test
           path: |
-            desktop/release/EchoVerse-Setup-1.6.6.exe
-            desktop/release/EchoVerse-Setup-1.6.6.exe.blockmap
+            desktop/release/EchoVerse-Setup-1.6.7.exe
+            desktop/release/EchoVerse-Setup-1.6.7.exe.blockmap
             desktop/release/latest.yml
           if-no-files-found: error
