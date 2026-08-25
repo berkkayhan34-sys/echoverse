@@ -43,8 +43,8 @@ jobs:
           $content = Get-Content $latest -Raw
           Write-Host $content
 
-          if ($content -notmatch "version:\s*1\.6\.6") { throw "Windows metadata version mismatch" }
-          if ($content -notmatch "EchoVerse-Setup-1\.6\.6\.exe") { throw "Windows metadata filename mismatch" }
+          if ($content -notmatch "version:\s*1\.6\.7") { throw "Windows metadata version mismatch" }
+          if ($content -notmatch "EchoVerse-Setup-1\.6\.7\.exe") { throw "Windows metadata filename mismatch" }
 
       - uses: actions/upload-artifact@v4
         with:
