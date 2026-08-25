@@ -726,7 +726,7 @@ function leaveCurrentRoom(socket: any, user: User) {
   const oldGuild = user.guildId;
 
   socket.leave(oldRoom);
-  socket.to(oldRoom).emit("peer-left", { socketId: socket.id });
+  socket.to(oldRoom).emit("peer-left", { socketId: socket.id, username: user.username });
 
   if (oldGuild) {
     const party = spotifyParties.get(oldGuild);
@@ -1643,7 +1643,8 @@ socket.on("disconnect", () => {
       }
 
       socket.to(oldRoom).emit("peer-left", {
-        socketId: socket.id
+        socketId: socket.id,
+        username: user.username
       });
 
       users.delete(socket.id);

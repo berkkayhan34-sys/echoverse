@@ -120,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.7");
+  const [appVersion, setAppVersion] = useState("1.6.8");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -139,6 +139,12 @@ export default function App() {
     () => localStorage.getItem("echoverse_output_device") || ""
   );
   const [showAudioSettings, setShowAudioSettings] = useState(false);
+  const [lobbySoundsEnabled, setLobbySoundsEnabled] = useState(
+    () => localStorage.getItem("echoverse_lobby_sounds") !== "off"
+  );
+  const [effectVolume, setEffectVolume] = useState(
+    () => Number(localStorage.getItem("echoverse_effect_volume") || "70")
+  );
 
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
@@ -204,6 +210,43 @@ export default function App() {
   const typingStopTimer = useRef<number | null>(null);
   const callTimer = useRef<number | null>(null);
   const dmFileInputRef = useRef<HTMLInputElement | null>(null);
+  const lobbySoundCooldown = useRef(0);
+
+
+  function playLobbyTone(kind: "join" | "leave") {
+    if (!lobbySoundsEnabled) return;
+    const now = Date.now();
+    if (now - lobbySoundCooldown.current < 180) return;
+    lobbySoundCooldown.current = now;
+
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctx();
+      const master = ctx.createGain();
+      master.gain.value = Math.max(0, Math.min(1, effectVolume / 100)) * 0.22;
+      master.connect(ctx.destination);
+
+      const notes = kind === "join" ? [520, 700] : [620, 420];
+      notes.forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = ctx.currentTime + index * 0.075;
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.7, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.095);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(start);
+        osc.stop(start + 0.11);
+      });
+
+      window.setTimeout(() => ctx.close().catch(() => {}), 500);
+    } catch (err) {
+      console.warn("[EchoVerse] lobby sound failed", err);
+    }
+  }
 
 
 
@@ -504,10 +547,12 @@ export default function App() {
     });
 
     s.on("peer-joined", async (peer: PeerInfo) => {
+      playLobbyTone("join");
       await createPeer(s, peer.socketId, false);
     });
 
     s.on("peer-left", ({ socketId }: { socketId: string }) => {
+      playLobbyTone("leave");
       removePeer(socketId);
     });
 
@@ -3232,6 +3277,37 @@ export default function App() {
                 </option>
               ))}
             </select>
+
+            <div className="sound-settings-block">
+              <label className="sound-toggle-row">
+                <span>
+                  <b>Lobi giriş / çıkış sesleri</b>
+                  <small>Bulunduğun ses lobisine biri katıldığında veya ayrıldığında çalar.</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={lobbySoundsEnabled}
+                  onChange={e => {
+                    const enabled = e.target.checked;
+                    setLobbySoundsEnabled(enabled);
+                    localStorage.setItem("echoverse_lobby_sounds", enabled ? "on" : "off");
+                  }}
+                />
+              </label>
+
+              <label>Efekt ses seviyesi · %{effectVolume}</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={effectVolume}
+                onChange={e => {
+                  const value = Number(e.target.value);
+                  setEffectVolume(value);
+                  localStorage.setItem("echoverse_effect_volume", String(value));
+                }}
+              />
+            </div>
 
             <div className="modal-actions">
               <button onClick={() => setShowAudioSettings(false)}>Kapat</button>

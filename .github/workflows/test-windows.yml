@@ -18,6 +18,15 @@ jobs:
         with:
           node-version: 24
 
+      - name: Read package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          if (-not $version) { throw "desktop/package.json version missing" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Testing EchoVerse $version"
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install
@@ -31,25 +40,27 @@ jobs:
       - name: Verify updater metadata
         shell: pwsh
         run: |
-          $installer = "desktop/release/EchoVerse-Setup-1.6.7.exe"
-          $blockmap = "desktop/release/EchoVerse-Setup-1.6.7.exe.blockmap"
+          $version = "${{ steps.version.outputs.version }}"
+          $installer = "desktop/release/EchoVerse-Setup-$version.exe"
+          $blockmap = "$installer.blockmap"
           $latest = "desktop/release/latest.yml"
 
-          if (!(Test-Path $installer)) { throw "Installer missing" }
-          if (!(Test-Path $blockmap)) { throw "Blockmap missing" }
+          if (!(Test-Path $installer)) { throw "Installer missing: $installer" }
+          if (!(Test-Path $blockmap)) { throw "Blockmap missing: $blockmap" }
           if (!(Test-Path $latest)) { throw "latest.yml missing" }
 
           $content = Get-Content $latest -Raw
           Write-Host $content
 
-          if ($content -notmatch "version:\s*1\.6\.7") { throw "Version mismatch" }
-          if ($content -notmatch "EchoVerse-Setup-1\.6\.7\.exe") { throw "Installer filename mismatch" }
+          $escaped = [regex]::Escape($version)
+          if ($content -notmatch "version:\s*$escaped") { throw "Version mismatch" }
+          if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") { throw "Installer filename mismatch" }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: EchoVerse-v1.6.7-Windows-Test
+          name: EchoVerse-Windows-Test
           path: |
-            desktop/release/EchoVerse-Setup-1.6.7.exe
-            desktop/release/EchoVerse-Setup-1.6.7.exe.blockmap
+            desktop/release/EchoVerse-Setup-*.exe
+            desktop/release/EchoVerse-Setup-*.exe.blockmap
             desktop/release/latest.yml
           if-no-files-found: error

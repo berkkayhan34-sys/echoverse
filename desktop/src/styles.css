@@ -2083,3 +2083,24 @@ button {
   padding:8px 10px !important;
   font-size:11px !important;
 }
+
+
+/* EchoVerse v1.6.8 — Voice & Social */
+.sound-settings-block {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+}
+.sound-toggle-row {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+.sound-toggle-row span { display:flex; flex-direction:column; gap:3px; }
+.sound-toggle-row small { color:#7f8999; font-size:11px; line-height:1.35; }
+.sound-toggle-row input[type="checkbox"] { width:18px; height:18px; accent-color:#7166e8; }
+.sound-settings-block input[type="range"] { width:100%; }
