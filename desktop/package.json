@@ -1,7 +1,7 @@
 {
   "name": "echoverse-desktop",
   "productName": "EchoVerse",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "EchoVerse desktop voice and chat app",
   "main": "electron/main.cjs",
   "type": "module",
@@ -72,8 +72,8 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "EchoVerse sesli konu\u015fma i\u00e7in mikrofonunu kullan\u0131r.",
-        "NSCameraUsageDescription": "EchoVerse g\u00f6r\u00fcnt\u00fcl\u00fc konu\u015fma i\u00e7in kameran\u0131 kullan\u0131r."
+        "NSMicrophoneUsageDescription": "EchoVerse sesli konuşma için mikrofonunu kullanır.",
+        "NSCameraUsageDescription": "EchoVerse görüntülü konuşma için kameranı kullanır."
       },
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "icon": "assets/echoverse-icon.png"

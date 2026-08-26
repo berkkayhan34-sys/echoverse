@@ -24,7 +24,6 @@ let tray = null;
 const brandingIcon = path.join(__dirname, "..", "assets", "echoverse-icon.png");
 const brandingIco = path.join(__dirname, "..", "assets", "echoverse.ico");
 const splashImage = path.join(__dirname, "..", "assets", "echoverse-splash.png");
-let tray = null;
 let isQuitting = false;
 let spotifyTokens = null;
 let spotifyLoginServer = null;
@@ -687,58 +686,82 @@ async function setupScreenCapture() {
 }
 
 
+
 function createTray() {
   if (tray) return;
 
-  let icon = nativeImage.createEmpty();
+  try {
+    let icon;
 
-  if (process.platform === "darwin") {
-    icon = nativeImage.createFromBuffer(
-      Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAIklEQVR42mNgGAWjYBSMglEwCkbB////P4bRMApGwSgYBaNgFAwAAGm6Axf2zQwkAAAAAElFTkSuQmCC",
-        "base64"
-      )
-    );
-    icon.setTemplateImage(true);
-  }
+    if (process.platform === "win32") {
+      icon = nativeImage.createFromPath(brandingIco).resize({ width: 16, height: 16 });
+    } else {
+      icon = nativeImage.createFromPath(brandingIcon).resize({ width: 18, height: 18 });
+      if (process.platform === "darwin") icon.setTemplateImage(false);
+    }
 
-  tray = new Tray(icon);
-  tray.setToolTip("EchoVerse");
+    if (!icon || icon.isEmpty()) {
+      icon = nativeImage.createFromPath(brandingIcon).resize({ width: 18, height: 18 });
+    }
 
-  const menu = Menu.buildFromTemplate([
-    {
-      label: "EchoVerse'ü Aç",
-      click: () => {
-        if (!mainWindow) createWindow();
+    tray = new Tray(icon);
+    tray.setToolTip("EchoVerse");
+
+    const menu = Menu.buildFromTemplate([
+      {
+        label: "EchoVerse'ü Aç",
+        click: () => {
+          if (!mainWindow) createWindow();
+          mainWindow?.show();
+          mainWindow?.focus();
+        }
+      },
+      { type: "separator" },
+      {
+        label: "Güncellemeleri Kontrol Et",
+        click: () => {
+          if (!mainWindow) createWindow();
+          mainWindow?.webContents.send("tray:check-updates");
+          mainWindow?.show();
+          mainWindow?.focus();
+        }
+      },
+      { type: "separator" },
+      {
+        label: "Tamamen Kapat",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setContextMenu(menu);
+
+    tray.on("click", () => {
+      if (!mainWindow) createWindow();
+
+      if (mainWindow?.isVisible()) {
+        mainWindow.hide();
+      } else {
         mainWindow?.show();
         mainWindow?.focus();
       }
-    },
-    { type: "separator" },
-    {
-      label: "Tamamen Kapat",
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
+    });
 
-  tray.setContextMenu(menu);
-
-  tray.on("click", () => {
-    if (!mainWindow) createWindow();
-    if (mainWindow?.isVisible()) {
-      mainWindow.hide();
-    } else {
+    tray.on("double-click", () => {
+      if (!mainWindow) createWindow();
       mainWindow?.show();
       mainWindow?.focus();
-    }
-  });
+    });
+  } catch (err) {
+    console.error("Tray setup failed:", err);
+  }
 }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: false,
     icon: process.platform === "win32" ? brandingIco : brandingIcon,
     width: 1450,
     height: 900,
@@ -765,7 +788,19 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
 
-  mainWindow.webContents.once("did-finish-load", setupAutoUpdater);
+  mainWindow.webContents.once("did-finish-load", () => {
+    setupAutoUpdater();
+
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+      splashWindow = null;
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 
   mainWindow.on("close", event => {
     if (isQuitting) return;
@@ -807,25 +842,9 @@ function createSplash() {
   } catch {}
 }
 
-function createTray() {
-  if (tray || process.platform !== "win32") return;
-  try {
-    const trayImage = nativeImage.createFromPath(brandingIco).resize({width:16,height:16});
-    tray = new Tray(trayImage);
-    tray.setToolTip("EchoVerse");
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: "EchoVerse'ü Aç", click: () => { mainWindow?.show(); mainWindow?.focus(); } },
-      { type: "separator" },
-      { label: "Güncellemeleri Kontrol Et", click: () => mainWindow?.webContents.send("tray:check-updates") },
-      { type: "separator" },
-      { label: "Çıkış", click: () => { app.isQuitting = true; app.quit(); } }
-    ]));
-    tray.on("double-click", () => { mainWindow?.show(); mainWindow?.focus(); });
-  } catch {}
-}
-
 app.whenReady().then(() => {
   loadSpotifyTokens();
+  createSplash();
   createTray();
   createWindow();
 
