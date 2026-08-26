@@ -120,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.8");
+  const [appVersion, setAppVersion] = useState("1.6.9");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -214,10 +214,17 @@ export default function App() {
   const callTimer = useRef<number | null>(null);
   const dmFileInputRef = useRef<HTMLInputElement | null>(null);
   const lobbySoundCooldown = useRef(0);
+  const activeGuildRef = useRef<Guild | null>(null);
+  const joinedRef = useRef(false);
+  const lobbySoundsEnabledRef = useRef(lobbySoundsEnabled);
+  const effectVolumeRef = useRef(effectVolume);
+  const lobbyMembersRef = useRef<PeerInfo[]>([]);
+  const lobbyStateReadyRef = useRef(false);
+  const reconnectingRef = useRef(false);
 
 
   function playLobbyTone(kind: "join" | "leave") {
-    if (!lobbySoundsEnabled) return;
+    if (!lobbySoundsEnabledRef.current) return;
     const now = Date.now();
     if (now - lobbySoundCooldown.current < 180) return;
     lobbySoundCooldown.current = now;
@@ -225,8 +232,9 @@ export default function App() {
     try {
       const Ctx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new Ctx();
+      if (ctx.state === "suspended") void ctx.resume();
       const master = ctx.createGain();
-      master.gain.value = Math.max(0, Math.min(1, effectVolume / 100)) * 0.22;
+      master.gain.value = Math.max(0, Math.min(1, effectVolumeRef.current / 100)) * 0.32;
       master.connect(ctx.destination);
 
       const notes = kind === "join" ? [520, 700] : [620, 420];
@@ -253,6 +261,19 @@ export default function App() {
 
 
 
+
+  useEffect(() => {
+    activeGuildRef.current = activeGuild;
+    joinedRef.current = joined;
+  }, [activeGuild, joined]);
+
+  useEffect(() => {
+    lobbySoundsEnabledRef.current = lobbySoundsEnabled;
+  }, [lobbySoundsEnabled]);
+
+  useEffect(() => {
+    effectVolumeRef.current = effectVolume;
+  }, [effectVolume]);
 
   useEffect(() => {
     activeDmFriendRef.current = activeDmFriend;
@@ -422,12 +443,22 @@ export default function App() {
           setIdentified(true);
           loadFriends(s);
           refreshAudioDevices();
+
+          const guild = activeGuildRef.current;
+          if (joinedRef.current && guild) {
+            reconnectingRef.current = true;
+            lobbyStateReadyRef.current = false;
+            lobbyMembersRef.current = [];
+            s.emit("join-room", { guildId: guild.id });
+          }
         });
       }
     });
 
     s.on("disconnect", () => {
       setConnected(false);
+      reconnectingRef.current = true;
+      lobbyStateReadyRef.current = false;
       setConnectionMessage("Bağlantı kesildi. Yeniden bağlanılıyor…");
     });
 
@@ -567,7 +598,46 @@ export default function App() {
     });
 
     s.on("presence", (list: PeerInfo[]) => {
+      // Fallback for older server builds.
       setPresence(list);
+    });
+
+    s.on("voice:lobby-state", async ({ members }: { members: PeerInfo[] }) => {
+      const next = Array.isArray(members) ? members : [];
+      const previous = lobbyMembersRef.current;
+      const previousIds = new Set(previous.map(member => member.socketId));
+      const nextIds = new Set(next.map(member => member.socketId));
+      const selfId = s.id;
+
+      if (lobbyStateReadyRef.current && !reconnectingRef.current) {
+        const joinedSomeone = next.some(
+          member => member.socketId !== selfId && !previousIds.has(member.socketId)
+        );
+        const leftSomeone = previous.some(
+          member => member.socketId !== selfId && !nextIds.has(member.socketId)
+        );
+
+        if (joinedSomeone) playLobbyTone("join");
+        else if (leftSomeone) playLobbyTone("leave");
+      }
+
+      lobbyMembersRef.current = next;
+      lobbyStateReadyRef.current = true;
+      reconnectingRef.current = false;
+      setPresence(next);
+
+      // If a point event was missed, repair the WebRTC graph from server truth.
+      for (const member of next) {
+        if (member.socketId === selfId) continue;
+        if (!pcs.current.has(member.socketId)) {
+          await createPeer(s, member.socketId, true);
+        }
+      }
+
+      // Remove ghost peers that are not actually in the lobby anymore.
+      for (const peerId of Array.from(pcs.current.keys())) {
+        if (peerId !== selfId && !nextIds.has(peerId)) removePeer(peerId);
+      }
     });
 
     s.on("room-peers", async (peers: PeerInfo[]) => {
@@ -577,13 +647,13 @@ export default function App() {
     });
 
     s.on("peer-joined", async (peer: PeerInfo) => {
-      playLobbyTone("join");
       await createPeer(s, peer.socketId, false);
+      s.emit("voice:sync-request");
     });
 
     s.on("peer-left", ({ socketId }: { socketId: string }) => {
-      playLobbyTone("leave");
       removePeer(socketId);
+      s.emit("voice:sync-request");
     });
 
     s.on("webrtc-offer", async ({ from, sdp }) => {
@@ -1794,6 +1864,10 @@ export default function App() {
     setSpotifyFollowing(false);
     setSpotifyLeader(false);
 
+    lobbyStateReadyRef.current = false;
+    lobbyMembersRef.current = [];
+    reconnectingRef.current = false;
+
     socket.emit("join-room", {
       guildId: guild.id
     });
@@ -1848,6 +1922,9 @@ export default function App() {
   }
 
   async function leaveVoice(returnHome = true) {
+    lobbyStateReadyRef.current = false;
+    lobbyMembersRef.current = [];
+    reconnectingRef.current = false;
     socket?.emit("leave-room");
 
     pcs.current.forEach(pc => pc.close());

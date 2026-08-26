@@ -716,7 +716,16 @@ function getPresence(roomId: string) {
 }
 
 function broadcastPresence(roomId: string) {
-  io.to(roomId).emit("presence", getPresence(roomId));
+  const members = getPresence(roomId);
+  io.to(roomId).emit("presence", members);
+  io.to(roomId).emit("voice:lobby-state", { members, syncedAt: Date.now() });
+}
+
+function sendLobbyState(socket: any, roomId: string) {
+  socket.emit("voice:lobby-state", {
+    members: getPresence(roomId),
+    syncedAt: Date.now()
+  });
 }
 
 function leaveCurrentRoom(socket: any, user: User) {
@@ -1431,6 +1440,7 @@ io.on("connection", socket => {
     );
 
     socket.emit("room-peers", peers);
+    sendLobbyState(socket, roomId);
 
     socket.to(roomId).emit("peer-joined", {
       socketId: socket.id,
@@ -1445,11 +1455,21 @@ io.on("connection", socket => {
     broadcastPresence(roomId);
   });
 
+  socket.on("voice:sync-request", () => {
+    const user = users.get(socket.id);
+    if (!user?.roomId) {
+      socket.emit("voice:lobby-state", { members: [], syncedAt: Date.now() });
+      return;
+    }
+    sendLobbyState(socket, user.roomId);
+  });
+
   socket.on("leave-room", () => {
     const user = users.get(socket.id);
     if (!user) return;
     leaveCurrentRoom(socket, user);
     socket.emit("presence", []);
+    socket.emit("voice:lobby-state", { members: [], syncedAt: Date.now() });
   });
 
   socket.on("chat-message", ({ guildId, text }) => {
