@@ -847,6 +847,9 @@ function createSplash() {
 }
 
 app.whenReady().then(() => {
+  // The tray keeps its own context menu; remove Electron's native File/Edit
+  // application menu from the main window on every supported platform.
+  Menu.setApplicationMenu(null);
   loadSpotifyTokens();
   createSplash();
   createTray();

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
 name: Release EchoVerse
 
 on:
@@ -21,7 +24,9 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          $version = (Get-Content "VERSION" -Raw).Trim()
+          $desktopVersion = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
           if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag/package mismatch: tag=${{ github.ref_name }} package=$version" }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Install dependencies
@@ -67,7 +72,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION=$(node -p "require('./desktop/package.json').version")
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
@@ -109,7 +116,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION=$(node -p "require('./desktop/package.json').version")
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
@@ -163,7 +172,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION=$(node -p "require('./source/desktop/package.json').version")
+          VERSION=$(tr -d '[:space:]' < "source/VERSION")
+          DESKTOP_VERSION=$(node -p "require('./source/desktop/package.json').version")
+          test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install YAML helper

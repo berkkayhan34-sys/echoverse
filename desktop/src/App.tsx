@@ -105,12 +105,22 @@ const EV_SOUNDS = {
   mention: "./sounds/mention.wav",
 } as const;
 
+function resolveEvSoundUrl(path: string) {
+  // Resolve against the renderer document in both Vite and packaged builds.
+  return typeof document === "undefined"
+    ? path
+    : new URL(path, document.baseURI).toString();
+}
+
 function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
   try {
-    const audio = new Audio(EV_SOUNDS[key]);
+    const audio = new Audio(resolveEvSoundUrl(EV_SOUNDS[key]));
+    audio.preload = "auto";
     audio.volume = Math.max(0, Math.min(1, volume));
     audio.loop = loop;
-    void audio.play().catch(() => {});
+    audio.play()?.catch(error => {
+      console.warn(`[EchoVerse] sound playback failed (${key})`, error);
+    });
     return audio;
   } catch {
     return null;
@@ -275,6 +285,29 @@ export default function App() {
   const lobbyMembersRef = useRef<PeerInfo[]>([]);
   const lobbyStateReadyRef = useRef(false);
   const reconnectingRef = useRef(false);
+
+  useEffect(() => {
+    // Unlock Chromium media playback from the first user gesture so sounds
+    // received later through Socket.IO are not rejected as autoplay.
+    const unlockAudio = () => {
+      const probe = new Audio(resolveEvSoundUrl(EV_SOUNDS.mic));
+      probe.muted = true;
+      probe.preload = "auto";
+      probe.play()?.then(() => {
+        probe.pause();
+        probe.currentTime = 0;
+      }).catch(() => {});
+      window.removeEventListener("pointerdown", unlockAudio, true);
+      window.removeEventListener("keydown", unlockAudio, true);
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, true);
+    window.addEventListener("keydown", unlockAudio, true);
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio, true);
+      window.removeEventListener("keydown", unlockAudio, true);
+    };
+  }, []);
 
 
   function playLobbyTone(kind: "join" | "leave") {
@@ -558,7 +591,11 @@ export default function App() {
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
-        playEvSound("message", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
+        const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
+        playEvSound("message", volume);
+        if (currentAccount.username && msg.body.includes(`@${currentAccount.username}`)) {
+          playEvSound("mention", volume);
+        }
         if (!isOpenConversation) {
           setUnreadDm(prev => ({
             ...prev,
@@ -611,6 +648,7 @@ export default function App() {
 
       setPrivateCallSocketId(result.responderSocketId);
       setCallState("connected");
+      playEvSound("connected", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       await createPeer(s, result.responderSocketId, true);
     });
 
@@ -621,6 +659,15 @@ export default function App() {
 
     s.on("chat-message", (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
+      const currentAccount = accountRef.current;
+      if (
+        currentAccount &&
+        msg.username !== currentAccount.username &&
+        currentAccount.username &&
+        msg.text.includes(`@${currentAccount.username}`)
+      ) {
+        playEvSound("mention", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
+      }
     });
 
     s.on("presence", (list: PeerInfo[]) => {
@@ -1264,21 +1311,7 @@ export default function App() {
   }
 
   function playCallEndTone() {
-    try {
-      const ctx = new AudioContext();
-      const gain = ctx.createGain();
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(520, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(260, ctx.currentTime + 0.32);
-      gain.gain.setValueAtTime(0.04, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
-      window.setTimeout(() => { try { ctx.close(); } catch {} }, 600);
-    } catch {}
+    playEvSound("ended", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
   }
 
   function formatCallTime(total: number) {
@@ -1325,6 +1358,7 @@ export default function App() {
     setViewMode("dm");
     setCallState("calling");
     setRinging(true);
+    playEvSound("outgoing", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
     startRingback();
 
     socket.emit("call:start", { friendId: friend.id }, (result: any) => {
@@ -1356,6 +1390,7 @@ export default function App() {
     if (accept) {
       await prepareForPrivateCall();
       setCallState("connected");
+      playEvSound("connected", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       setPrivateCallPeer({
         id: incomingCall.fromAccountId,
         username: incomingCall.fromUsername,
@@ -2215,6 +2250,7 @@ export default function App() {
 
       setScreenOn(false);
       await setOutboundVideo(cameraTrack.current);
+      playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       return;
     }
 
@@ -2275,6 +2311,7 @@ export default function App() {
       screenTrack.current = track;
       setScreenOn(true);
       await setOutboundVideo(track);
+      playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
 
       track.onended = async () => {
         if (screenTrack.current?.id !== track.id) return;
@@ -2282,6 +2319,7 @@ export default function App() {
         screenTrack.current = null;
         setScreenOn(false);
         await setOutboundVideo(cameraTrack.current);
+        playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       };
     } catch (err: any) {
       setShowScreenPicker(false);

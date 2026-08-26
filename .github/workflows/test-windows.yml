@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
 name: Test Windows Build
 
 on:
@@ -22,7 +25,9 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          $version = (Get-Content "VERSION" -Raw).Trim()
+          $desktopVersion = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
           if (-not $version) { throw "desktop/package.json version missing" }
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Testing EchoVerse $version"
@@ -38,7 +43,7 @@ jobs:
         run: npm run dist:win
 
 
-      - name: Verify v1.7.3 branding and sound assets
+      - name: Verify branding and sound assets
         shell: pwsh
         run: |
           $required = @(

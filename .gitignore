@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Operating-system and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+**/config.local.json
+
+# Node dependencies and build output
+**/node_modules/
+**/dist/
+**/release/
+coverage/
+*.tsbuildinfo
+.vite/
+**/.vite/
+.cache/
+**/.cache/
+.turbo/
+**/.turbo/
+.parcel-cache/
+**/.parcel-cache/
+.eslintcache
+.npm/
+.pnpm-store/
+.yarn/
+
+# Runtime, logs, and local data
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.pid
+server/uploads/
+server/data/
+tmp/
+temp/
+**/tmp/
+**/temp/
+work/
+**/work/
+.tmp/
+**/.tmp/
+
+# Temporary archives and installer output
+*.zip
+*.tar.gz
+*.blockmap
+*.dmg
+*.exe
+
+# Keep dependency lockfiles tracked when intentionally added.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
 name: Build EchoVerse Desktop
 
 on:
@@ -6,6 +9,10 @@ on:
     branches: [ "main" ]
     paths:
       - "desktop/**"
+      - "VERSION"
+      - "package.json"
+      - "server/package.json"
+      - "web/package.json"
       - ".github/workflows/build-desktop.yml"
 
 jobs:
@@ -17,6 +24,14 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+      - name: Validate canonical version
+        shell: pwsh
+        working-directory: .
+        run: |
+          $version = (Get-Content "VERSION" -Raw).Trim()
+          $desktopVersion = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          if (-not $version) { throw "VERSION is empty" }
+          if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -35,6 +50,14 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+      - name: Validate canonical version
+        shell: bash
+        working-directory: .
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          test -n "$VERSION"
+          test "$DESKTOP_VERSION" = "$VERSION"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -55,6 +78,14 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+      - name: Validate canonical version
+        shell: bash
+        working-directory: .
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          test -n "$VERSION"
+          test "$DESKTOP_VERSION" = "$VERSION"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

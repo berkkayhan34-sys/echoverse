@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 EchoVerse contributors
+SPDX-License-Identifier: GPL-3.0-only
+-->
+
 # GitHub ile Windows + macOS otomatik build
 
 Bu sürüm GitHub Actions ile üç çıktı üretir:

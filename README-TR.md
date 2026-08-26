@@ -1,87 +1,49 @@
-# EchoVerse — Sıfırdan Kurulum
+<!--
+SPDX-FileCopyrightText: 2026 EchoVerse contributors
+SPDX-License-Identifier: GPL-3.0-only
+-->
 
-Bu paket iki parçadan oluşur:
+# EchoVerse
 
-- `server/` = herkesin bağlandığı merkezi EchoVerse sunucusu
-- `desktop/` = arkadaşlarına vereceğin Windows uygulaması
+EchoVerse, web ve Electron istemcileri olan gerçek zamanlı bir iletişim
+uygulamasıdır. Bu depo şu anda **1.7.4** tabanını korur; canonical sürüm
+[`VERSION`](VERSION) dosyasındadır.
 
-## Hedef
+## Dokümantasyon giriş noktası
 
-Arkadaşın sadece EchoVerse uygulamasını kuracak, kullanıcı adını yazacak ve Lobby'ye girecek.
-Node.js, port açma, Tailscale vb. arkadaş tarafında gerekmez.
+Kalıcı kararlar ve kurallar [`DOCS/`](DOCS/README.md) altında tutulur:
 
----
+- [Mimari ve sınırlar](DOCS/architecture.md)
+- [Hedef repo yapısı](DOCS/architecture/repository-structure.md)
+- [Güvenlik politikası](DOCS/security-policy.md)
+- [Test ve kalite politikası](DOCS/testing-policy.md)
+- [Geliştirme akışı](DOCS/development.md)
+- [Release akışı](DOCS/release.md)
+- [Roadmap](DOCS/roadmap.md)
+- [Kararlar](DOCS/decisions/README.md)
+- [Katkı rehberi](.github/CONTRIBUTING.md)
+- [Güvenlik bildirimi](.github/SECURITY.md)
 
-# A) Önce server'ı internete koy
+`DOCS/` klasörü canonical dokümantasyon ve tarihsel sürüm notlarını içerir.
+Yeni politika ve kararlar bu klasörün köküne veya altındaki ilgili bölüme
+eklenir. Agent/LLM çalışma kuralları için
+[`AGENTS.md`](AGENTS.md) dosyasını okuyun.
 
-En kolay yöntem Render / Railway / benzeri bir Node.js hosting servisidir.
+## Mevcut çalışma alanları
 
-Server klasörü doğrudan deploy edilmeye hazırdır.
+- `server/` — merkezi HTTP ve Socket.IO backend'i;
+- `web/` — tarayıcı istemcisi;
+- `desktop/` — Electron uygulaması ve installer akışı;
+- `src/` — legacy root server entrypoint; yeni ürün davranışı eklenmez.
 
-### Ayarlar
+Hedef yapı `apps/` ve `packages/` altında modular monolith'tir. Seçilen
+refactor yaklaşımı kontrollü big-bang cutover'dır; dokümantasyon temeli
+tamamlanmadan runtime kodu değiştirilmeyecektir.
 
-Root / Working Directory:
+## Yerel geliştirme
 
-`server`
-
-Build:
-
-`npm install`
-
-Start:
-
-`npm start`
-
-Server kendi `PORT` environment variable'ını otomatik kullanır.
-
-Deploy tamamlanınca sana buna benzer HTTPS adresi verilir:
-
-`https://echoverse-server-xxxx.onrender.com`
-
-Bu adresi kopyala.
-
----
-
-# B) Masaüstü uygulamasına server adresini yaz
-
-`desktop/config.json` dosyasını Not Defteri ile aç.
-
-Örnek:
-
-```json
-{
-  "serverUrl": "https://echoverse-server-xxxx.onrender.com"
-}
-```
-
-Kendi adresini yazıp kaydet.
-
----
-
-# C) Windows installer üret
-
-PowerShell aç:
-
-```powershell
-cd desktop
-powershell -ExecutionPolicy Bypass -File .\BUILD-WINDOWS.ps1
-```
-
-İlk sefer npm paketlerini indirir.
-
-Başarılı olursa `desktop/release/` altında installer oluşur.
-
-Genellikle:
-
-`EchoVerse Setup 1.0.0.exe`
-
-Bu installer'ı arkadaşlarına gönderebilirsin.
-
----
-
-# D) Local test
-
-Server:
+Her çalışma alanının kendi README'sini ve `package.json` script'lerini okuyun.
+Tipik akış:
 
 ```powershell
 cd server
@@ -89,44 +51,25 @@ npm install
 npm run dev
 ```
 
-Desktop için `config.json`:
+Başka bir terminalde web veya desktop çalışma alanını kendi script'iyle
+başlatın. Yerel ayarlarda yalnızca örnek değerler kullanın; token, cookie,
+gerçek veritabanı URL'si ve imzalama anahtarı commit edilmez. Ayrıntılı akış
+için [development.md](DOCS/development.md) belgesine bakın.
 
-```json
-{
-  "serverUrl": "http://localhost:3001"
-}
-```
+Root `Makefile` içindeki `make ai-check` güvenli AI/agent doğrulamasını,
+`make ai-server-test` çalışan local server health kontrolünü, `make
+release-check` ise release metadata kontrolünü yapar. Tüm hedefler için
+`make help` kullanın.
 
-Başka terminal:
+## Lisans
 
-```powershell
-cd desktop
-npm install
-npm run dev
-```
+EchoVerse, ek istisna olmaksızın **GPL-3.0-only** ile lisanslanır. SPDX
+başlıkları ve `REUSE.toml` kuralları lisansın makine tarafından doğrulanmasını
+sağlar. Bkz. [`LICENSE`](LICENSE) ve [`REUSE.toml`](REUSE.toml).
 
----
+## Durum ve sınırlar
 
-# Özellikler
-
-- Kullanıcı adı
-- Lobby
-- Online kullanıcı listesi
-- Gerçek zamanlı chat
-- Bot: !ping, !roll, !help
-- WebRTC ses
-- Echo cancellation
-- Noise suppression
-- Auto gain
-- Mikrofon mute
-- Kamera
-- Ekran paylaşımı
-- Electron masaüstü uygulaması
-- Windows installer
-- Socket.IO signaling
-- Merkezi backend mimarisi
-
-## Not
-
-Bu sürüm MVP'dir. Küçük arkadaş grupları için WebRTC mesh kullanır.
-Büyük Discord sunucuları gibi onlarca eşzamanlı ses kullanıcısı için ileride SFU (LiveKit/mediasoup) gerekir.
+Bu belgeler repo ve yönetişim temelini kurar; uygulama davranışının tamamının
+test edildiği iddiasında değildir. Release öncesi gerekli test, güvenlik,
+installer ve artifact kontrolleri [testing policy](DOCS/testing-policy.md) ile
+[release workflow](DOCS/release.md) içinde tanımlıdır.
