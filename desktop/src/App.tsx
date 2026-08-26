@@ -120,7 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.6.9");
+  const [appVersion, setAppVersion] = useState("1.7.0");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -132,6 +132,17 @@ export default function App() {
 
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState(
+    () => localStorage.getItem("echoverse_camera_device") || ""
+  );
+  const [screenQuality, setScreenQuality] = useState<"720" | "1080">(
+    () => (localStorage.getItem("echoverse_screen_quality") === "1080" ? "1080" : "720")
+  );
+  const [screenFps, setScreenFps] = useState<30 | 60>(
+    () => (localStorage.getItem("echoverse_screen_fps") === "60" ? 60 : 30)
+  );
+  const [videoLayout, setVideoLayout] = useState<"grid" | "focus">("grid");
   const [selectedInput, setSelectedInput] = useState(
     () => localStorage.getItem("echoverse_input_device") || ""
   );
@@ -847,6 +858,7 @@ export default function App() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       setAudioInputs(devices.filter(d => d.kind === "audioinput"));
       setAudioOutputs(devices.filter(d => d.kind === "audiooutput"));
+      setVideoInputs(devices.filter(d => d.kind === "videoinput"));
     } catch {}
   }
 
@@ -1662,6 +1674,10 @@ export default function App() {
       video.muted = true;
       video.className = "remote-video";
       video.title = "Büyütmek için tıkla • ESC ile çık";
+      const badge = document.createElement("span");
+      badge.className = "video-live-badge";
+      badge.textContent = "LIVE";
+      video.parentElement?.appendChild(badge);
       video.onclick = () => {
         document
           .querySelectorAll(".video-maximized")
@@ -2100,6 +2116,32 @@ export default function App() {
     await renegotiateVideo();
   }
 
+  async function switchCamera(deviceId: string) {
+    setSelectedCamera(deviceId);
+    localStorage.setItem("echoverse_camera_device", deviceId);
+
+    if (!cameraOn) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30, max: 30 }
+        },
+        audio: false
+      });
+      const nextTrack = stream.getVideoTracks()[0];
+      const oldTrack = cameraTrack.current;
+      cameraTrack.current = nextTrack;
+      if (!screenOn) await setOutboundVideo(nextTrack);
+      oldTrack?.stop();
+    } catch (err: any) {
+      setError(`Kamera değiştirilemedi: ${err?.message || "bilinmeyen hata"}`);
+    }
+  }
+
   async function toggleCamera() {
     if (cameraOn) {
       cameraTrack.current?.stop();
@@ -2116,9 +2158,10 @@ export default function App() {
       const cam =
         await navigator.mediaDevices.getUserMedia({
           video: {
+            deviceId: selectedCamera ? { exact: selectedCamera } : undefined,
             width: { ideal: 1280 },
             height: { ideal: 720 },
-            frameRate: { ideal: 30 }
+            frameRate: { ideal: 30, max: 30 }
           },
           audio: false
         });
@@ -2198,7 +2241,9 @@ export default function App() {
       const display =
         await navigator.mediaDevices.getDisplayMedia({
           video: {
-            frameRate: { ideal: 30 }
+            width: { ideal: screenQuality === "1080" ? 1920 : 1280 },
+            height: { ideal: screenQuality === "1080" ? 1080 : 720 },
+            frameRate: { ideal: screenFps, max: screenFps }
           },
           audio: false
         });
@@ -3084,7 +3129,7 @@ export default function App() {
               refreshAudioDevices();
               setShowAudioSettings(true);
             }}>
-              ⚙ Ses
+              ⚙ Ses & Video
             </button>
 
             <button onClick={() => {
@@ -3113,7 +3158,18 @@ export default function App() {
           </div>
         </header>
 
-        <div className="video-zone">
+        <div className="video-toolbar">
+          <div>
+            <b>Video & Paylaşım</b>
+            <span>{screenOn ? `Ekran paylaşımı · ${screenQuality}p ${screenFps} FPS` : cameraOn ? "Kamera açık · 720p" : "Video kapalı"}</span>
+          </div>
+          <div className="video-layout-actions">
+            <button className={videoLayout === "grid" ? "active" : ""} onClick={() => setVideoLayout("grid")}>▦ Grid</button>
+            <button className={videoLayout === "focus" ? "active" : ""} onClick={() => setVideoLayout("focus")}>▣ Focus</button>
+          </div>
+        </div>
+
+        <div className={`video-zone ${videoLayout === "focus" ? "focus-layout" : "grid-layout"}`}>
           <video
             ref={localVideoRef}
             muted
@@ -3398,7 +3454,8 @@ export default function App() {
       {showAudioSettings && (
         <div className="modal-backdrop">
           <div className="modal audio-settings-modal">
-            <h2>Ses Ayarları</h2>
+            <h2>Ses & Video</h2>
+            <p className="settings-subtitle">Mikrofon, hoparlör, kamera ve ekran paylaşımı ayarları.</p>
 
             <label>Mikrofon / Input</label>
             <select
@@ -3425,6 +3482,57 @@ export default function App() {
                 </option>
               ))}
             </select>
+
+            <div className="settings-divider">VIDEO</div>
+
+            <label>Kamera</label>
+            <select
+              value={selectedCamera}
+              onChange={e => switchCamera(e.target.value)}
+            >
+              <option value="">Sistem varsayılanı</option>
+              {videoInputs.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Kamera ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+
+            <div className="video-quality-grid">
+              <div>
+                <label>Ekran paylaşım kalitesi</label>
+                <select
+                  value={screenQuality}
+                  onChange={e => {
+                    const value = e.target.value as "720" | "1080";
+                    setScreenQuality(value);
+                    localStorage.setItem("echoverse_screen_quality", value);
+                  }}
+                >
+                  <option value="720">720p</option>
+                  <option value="1080">1080p</option>
+                </select>
+              </div>
+              <div>
+                <label>FPS</label>
+                <select
+                  value={screenFps}
+                  onChange={e => {
+                    const value = Number(e.target.value) as 30 | 60;
+                    setScreenFps(value);
+                    localStorage.setItem("echoverse_screen_fps", String(value));
+                  }}
+                >
+                  <option value={30}>30 FPS</option>
+                  <option value={60}>60 FPS</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="screen-share-note">
+              🖥️ {screenQuality}p · {screenFps} FPS paylaşım profili
+              <small>Değişiklik bir sonraki ekran paylaşımında uygulanır.</small>
+            </div>
 
             <div className="sound-settings-block">
               <label className="sound-toggle-row">
