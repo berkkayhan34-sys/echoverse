@@ -17,25 +17,25 @@
     "release:mac:intel": "npm run build && electron-builder --mac dmg zip --x64 --publish never"
   },
   "dependencies": {
-    "socket.io-client": "^4.8.1",
+    "@echoverse/client-core": "2.0.0",
+    "@echoverse/contracts": "2.0.0",
+    "@echoverse/shared-ui": "2.0.0",
+    "electron-updater": "^6.3.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "electron-updater": "^6.3.9",
-    "@echoverse/contracts": "2.0.0",
-    "@echoverse/client-core": "2.0.0",
-    "@echoverse/shared-ui": "2.0.0"
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.1.0",
     "concurrently": "^9.1.2",
-    "electron": "35.7.5",
-    "electron-builder": "^25.1.8",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
-    "vite": "^5.4.14",
-    "wait-on": "^8.0.1",
-    "vitest": "^3.2.4"
+    "vite": "^8.2.2",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.1"
   },
   "build": {
     "appId": "com.echoverse.desktop",
