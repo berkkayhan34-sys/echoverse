@@ -16,6 +16,7 @@ export type ServerConfig = {
   nodeEnv: "development" | "test" | "production";
   port: number;
   databaseUrl?: string;
+  databaseSslRejectUnauthorized: boolean;
   jwtSecret: string;
   corsOrigins: string[];
 };
@@ -29,10 +30,13 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     throw new Error("JWT_SECRET must be set to at least 32 characters in production");
   }
 
+  const databaseSslRejectUnauthorized = env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+
   return {
     nodeEnv,
     port,
     databaseUrl: env.DATABASE_URL?.trim() || undefined,
+    databaseSslRejectUnauthorized,
     jwtSecret: jwtSecret || crypto.randomBytes(32).toString("hex"),
     corsOrigins: csv(env.CORS_ORIGINS, localOrigins)
   };

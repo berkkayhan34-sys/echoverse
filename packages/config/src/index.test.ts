@@ -15,6 +15,16 @@ describe("server configuration", () => {
     const config = loadServerConfig({ NODE_ENV: "development", CORS_ORIGINS: "https://example.test" });
     expect(config.corsOrigins).toEqual(["https://example.test"]);
     expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.databaseSslRejectUnauthorized).toBe(true);
+  });
+
+  it("allows hosted providers with self-signed database certificates to opt out explicitly", () => {
+    const config = loadServerConfig({
+      NODE_ENV: "production",
+      JWT_SECRET: "x".repeat(32),
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "false"
+    });
+    expect(config.databaseSslRejectUnauthorized).toBe(false);
   });
 
   it("rejects invalid ports", () => {

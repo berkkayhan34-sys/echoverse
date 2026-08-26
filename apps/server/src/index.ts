@@ -104,7 +104,7 @@ const pool = config.databaseUrl
       connectionString: config.databaseUrl,
       ssl:
         config.nodeEnv === "production"
-          ? { rejectUnauthorized: true }
+          ? { rejectUnauthorized: config.databaseSslRejectUnauthorized }
           : undefined
     })
   : null;
