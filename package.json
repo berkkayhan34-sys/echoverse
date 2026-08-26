@@ -1,21 +1,21 @@
 {
-  "name": "echoverse-server",
-  "version": "1.7.4",
+  "name": "echoverse-workspace",
+  "version": "1.7.5",
+  "private": true,
   "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "build": "npm run build --workspaces --if-present",
+    "version:check": "node -e \"const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) throw new Error('Invalid VERSION'); console.log(v)\""
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
+    "@playwright/test": "^1.55.0",
     "@types/node": "^22.10.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }

@@ -17,3 +17,9 @@ doğrulanmış değişiklikleri özetler; planlanan işler release edilmiş say�
 
 - Mevcut ürün baseline'ı.
 - Ayrıntılı tarihsel notlar [`DOCS/`](DOCS/README.md) altında tutulur.
+
+## 1.7.5
+
+- V2 modular-monolith çalışma alanı ve ortak paketleri.
+- Protokol v2 el sıkışması, sınır doğrulama ve server güvenlik varsayılanları.
+- PostgreSQL migration’ları, test/build kalite kapısı ve Playwright smoke testi.

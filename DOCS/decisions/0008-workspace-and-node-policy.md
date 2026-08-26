@@ -14,8 +14,9 @@ SPDX-License-Identifier: GPL-3.0-only
   `package-lock.json`.
 - Node.js **22 LTS** is the supported version for local development, CI,
   testing, and release tooling.
-- Workspace migration and lockfile consolidation remain a planned repository
-  change; this ADR does not introduce that runtime/tooling migration now.
+- Workspace migration and lockfile consolidation are implemented. App and
+  package manifests live under `apps/` and `packages/`; the root
+  `package-lock.json` is canonical.
 
 ## Consequences
 

@@ -17,4 +17,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0006: release artifacts, retention, and observability](0006-release-data-and-observability.md)
 - [ADR-0007: governance activation timing](0007-governance-activation.md)
 - [ADR-0008: workspace lockfile and Node.js policy](0008-workspace-and-node-policy.md)
+- [ADR-0009: v2 runtime cutover](0009-v2-runtime-cutover.md)
 - [Unresolved decisions](unresolved.md)

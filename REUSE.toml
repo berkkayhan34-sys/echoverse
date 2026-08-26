@@ -67,3 +67,33 @@ SPDX-License-Identifier = "GPL-3.0-only"
 path = "**/*.mp3"
 SPDX-FileCopyrightText = "2026 EchoVerse contributors"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.ts"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.tsx"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.cjs"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.css"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.html"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = "**/*.ps1"
+SPDX-FileCopyrightText = "2026 EchoVerse contributors"
+SPDX-License-Identifier = "GPL-3.0-only"

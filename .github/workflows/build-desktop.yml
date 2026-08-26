@@ -8,11 +8,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - "desktop/**"
+      - "apps/desktop/**"
       - "VERSION"
       - "package.json"
-      - "server/package.json"
-      - "web/package.json"
+      - "apps/server/package.json"
+      - "apps/web/package.json"
       - ".github/workflows/build-desktop.yml"
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - name: Validate canonical version
@@ -29,7 +29,7 @@ jobs:
         working-directory: .
         run: |
           $version = (Get-Content "VERSION" -Raw).Trim()
-          $desktopVersion = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
+          $desktopVersion = (Get-Content "apps/desktop/package.json" -Raw | ConvertFrom-Json).version
           if (-not $version) { throw "VERSION is empty" }
           if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
       - uses: actions/setup-node@v4
@@ -40,14 +40,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-Windows
-          path: desktop/release/*.exe
+            path: apps/desktop/release/*.exe
 
   mac-intel:
     name: macOS Intel
     runs-on: macos-15-intel
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - name: Validate canonical version
@@ -55,7 +55,7 @@ jobs:
         working-directory: .
         run: |
           VERSION=$(tr -d '[:space:]' < VERSION)
-          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          DESKTOP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
           test -n "$VERSION"
           test "$DESKTOP_VERSION" = "$VERSION"
       - uses: actions/setup-node@v4
@@ -68,14 +68,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-macOS-Intel
-          path: desktop/release/*.{dmg,zip}
+            path: apps/desktop/release/*.{dmg,zip}
 
   mac-arm64:
     name: macOS Apple Silicon
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - name: Validate canonical version
@@ -83,7 +83,7 @@ jobs:
         working-directory: .
         run: |
           VERSION=$(tr -d '[:space:]' < VERSION)
-          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          DESKTOP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
           test -n "$VERSION"
           test "$DESKTOP_VERSION" = "$VERSION"
       - uses: actions/setup-node@v4
@@ -96,4 +96,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-macOS-Apple-Silicon
-          path: desktop/release/*.{dmg,zip}
+            path: apps/desktop/release/*.{dmg,zip}

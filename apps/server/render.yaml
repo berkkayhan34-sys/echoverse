@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
+services:
+  - type: web
+    name: echoverse-server
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm --workspace=@echoverse/server start
+    autoDeploy: true
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true

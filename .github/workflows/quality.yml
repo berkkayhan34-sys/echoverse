@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Quality Gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: make version-check
+      - run: make ai-check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --omit=dev
+      - run: npm run build

@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-only
 # EchoVerse
 
 EchoVerse, web ve Electron istemcileri olan gerçek zamanlı bir iletişim
-uygulamasıdır. Bu depo şu anda **1.7.4** tabanını korur; canonical sürüm
+uygulamasıdır. Bu depo şu anda **1.7.5** sürümündedir; canonical sürüm
 [`VERSION`](VERSION) dosyasındadır.
 
 ## Dokümantasyon giriş noktası
@@ -31,14 +31,14 @@ eklenir. Agent/LLM çalışma kuralları için
 
 ## Mevcut çalışma alanları
 
-- `server/` — merkezi HTTP ve Socket.IO backend'i;
-- `web/` — tarayıcı istemcisi;
-- `desktop/` — Electron uygulaması ve installer akışı;
-- `src/` — legacy root server entrypoint; yeni ürün davranışı eklenmez.
+- `apps/server/` — merkezi HTTP ve Socket.IO backend'i;
+- `apps/web/` — tarayıcı istemcisi;
+- `apps/desktop/` — Electron uygulaması ve installer akışı;
+- `packages/` — protokol sözleşmeleri, istemci çekirdeği, ortak arayüz ve yapılandırma;
+- `DOCS/` — mimari, güvenlik, test, release ve karar kayıtları;
 
-Hedef yapı `apps/` ve `packages/` altında modular monolith'tir. Seçilen
-refactor yaklaşımı kontrollü big-bang cutover'dır; dokümantasyon temeli
-tamamlanmadan runtime kodu değiştirilmeyecektir.
+`apps/` ve `packages/` altındaki modular monolith v2 cutover'ı uygulanmıştır.
+Protokol sürümü 2'dir; server ve istemciler birlikte güncellenmelidir.
 
 ## Yerel geliştirme
 
@@ -46,8 +46,7 @@ Her çalışma alanının kendi README'sini ve `package.json` script'lerini okuy
 Tipik akış:
 
 ```powershell
-cd server
-npm install
+cd apps/server
 npm run dev
 ```
 
@@ -56,8 +55,8 @@ başlatın. Yerel ayarlarda yalnızca örnek değerler kullanın; token, cookie,
 gerçek veritabanı URL'si ve imzalama anahtarı commit edilmez. Ayrıntılı akış
 için [development.md](DOCS/development.md) belgesine bakın.
 
-Root `Makefile` içindeki `make ai-check` güvenli AI/agent doğrulamasını,
-`make ai-server-test` çalışan local server health kontrolünü, `make
+Root `Makefile` içindeki `make setup` bağımlılıkları, `make quality` statik/test
+kapısını, `make ai-server-test` çalışan local server health kontrolünü, `make
 release-check` ise release metadata kontrolünü yapar. Tüm hedefler için
 `make help` kullanın.
 
@@ -69,7 +68,7 @@ sağlar. Bkz. [`LICENSE`](LICENSE) ve [`REUSE.toml`](REUSE.toml).
 
 ## Durum ve sınırlar
 
-Bu belgeler repo ve yönetişim temelini kurar; uygulama davranışının tamamının
-test edildiği iddiasında değildir. Release öncesi gerekli test, güvenlik,
-installer ve artifact kontrolleri [testing policy](DOCS/testing-policy.md) ile
-[release workflow](DOCS/release.md) içinde tanımlıdır.
+Uygulama v2 çalışma alanına taşınmış ve temel test/build kapıları eklenmiştir.
+Feature bazlı yetkilendirme, SQLite adapter'ı, WebRTC regresyonları ve installer
+smoke kontrolleri release öncesi takip işidir; kapsamı [testing policy](DOCS/testing-policy.md)
+ve [roadmap](DOCS/roadmap.md) içinde tanımlıdır.

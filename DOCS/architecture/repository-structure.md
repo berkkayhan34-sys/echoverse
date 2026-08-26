@@ -5,10 +5,9 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Repository structure
 
-This is the target map for the modular-monolith cutover. It deliberately
+This is the implemented map for the modular-monolith cutover. It deliberately
 separates application entrypoints, shared packages, documentation, and
-operational configuration. The map is preparatory; no runtime move is made by
-this document.
+operational configuration.
 
 ```text
 echoverse/
@@ -38,10 +37,10 @@ echoverse/
 
 | Current path | Target responsibility | Constraint |
 | --- | --- | --- |
-| `server/` | `apps/server/` | Keep transport composition separate from feature modules. |
-| `web/` | `apps/web/` plus shared packages | Remove duplicated client logic only after contracts exist. |
-| `desktop/` | `apps/desktop/` plus shared packages | Keep native APIs behind the Electron boundary. |
-| `src/` | retired legacy entrypoint | No new product behavior; removal requires evidence and approval. |
+| `apps/server/` | backend application | Keep transport composition separate from feature modules. |
+| `apps/web/` | browser application plus shared packages | Shared contracts/core are the integration boundary. |
+| `apps/desktop/` | Electron application plus shared packages | Keep native APIs behind the Electron boundary. |
+| `src/` | retired legacy entrypoint | Removed in v2 cutover; restore only by rollback to `1ab4dd2`. |
 | `DOCS/` | canonical documentation | Keep new policy in the canonical files indexed by `DOCS/README.md`. |
 | `DOCS/historic/` | immutable historical V1.* notes | Do not add new policy or current setup guidance here. |
 

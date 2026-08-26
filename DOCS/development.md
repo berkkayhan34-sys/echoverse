@@ -5,15 +5,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Development workflow
 
-This is the local workflow for the current repository while the documentation
-foundation is being established. Runtime refactoring begins only after the
-roadmap gate and the required decisions are accepted.
+This is the local workflow for the v2 modular-monolith workspace.
 
 ## Prerequisites
 
 Use Node.js 22 LTS and the repository-supported package manager. Install
-dependencies separately in the root, `server/`, `web/`, and `desktop/` only
-when the relevant package has a lockfile and the change requires it. Do not
+dependencies through the root npm workspace. App-specific commands remain
+available in `apps/server/`, `apps/web/`, and `apps/desktop/`. Run `npm install`
+once at the repository root; the root workspace lockfile is canonical. Do not
 commit generated `node_modules`, `dist`, `release`, logs, or local databases.
 
 GNU Make 4.4.1 is used for the repository targets. On Windows, install it with
@@ -22,18 +21,21 @@ PATH is loaded.
 
 ## Current workspaces
 
-- `server/` — backend development and start scripts;
-- `web/` — browser client development/build;
-- `desktop/` — Electron development/build/package scripts;
-- `src/` — legacy root server entrypoint; do not add new behavior here.
+- `apps/server/` — backend development and start scripts;
+- `apps/web/` — browser client development/build;
+- `apps/desktop/` — Electron development/build/package scripts;
+- `packages/contracts/` — protocol v2 DTOs and boundary schemas;
+- `packages/client-core/` — browser-safe session helpers;
+- `packages/shared-ui/` — browser-safe shared UI primitives;
+- `packages/config/` — validated server configuration;
 
 ## Local configuration
 
-Desktop runtime settings are read from `desktop/config.json`. Keep a local
+Desktop runtime settings are read from `apps/desktop/config.json`. Keep a local
 server URL and placeholder integration identifiers there; do not put secrets in
-that file or in examples. `server/render.yaml` is the authoritative Render
-manifest; the root `render.yaml` is legacy metadata until a later cleanup
-removes it.
+that file or in examples. `apps/server/render.yaml` is the authoritative Render
+manifest; the root `render.yaml` mirrors its service location for Render
+discovery.
 
 For a local server, use `http://localhost:3001` (or the port configured by the
 server) and start the server before starting web/desktop. For hosted use, use
@@ -42,13 +44,14 @@ secret configuration, health, and logs before sharing an installer.
 
 ## Hosted backend and installer
 
-The current Render setup points at `server/` with `npm install` and `npm start`.
+The current Render setup installs from the repository root and starts
+`@echoverse/server` through the workspace script.
 Required environment variables must be declared and reviewed through the
-authoritative `server/render.yaml`; never replace a secret with a value copied
+authoritative `apps/server/render.yaml`; never replace a secret with a value copied
 into a YAML file.
 
 To build a Windows installer locally, run the existing desktop build script
-from `desktop/` and inspect `desktop/release/`. Treat the output as an
+from `apps/desktop/` and inspect `apps/desktop/release/`. Treat the output as an
 unverified local artifact until the release checks, integrity metadata, and
 signing/publisher decision in [release.md](release.md) pass.
 
@@ -74,13 +77,6 @@ the directories when needed.
 Read the package README and scripts before running a workspace command. Keep
 environment files local and use placeholders in examples; never paste real
 tokens, cookies, database URLs, or signing keys into Git or issue trackers.
-
-## Documentation foundation mode
-
-During this phase, allowed changes are documentation, governance, repository
-metadata, and release/version validation. Do not modify product behavior,
-protocol payloads, persistence formats, or deployment semantics under the guise
-of cleanup. Record a future runtime change in an ADR and roadmap item first.
 
 ## Version changes
 

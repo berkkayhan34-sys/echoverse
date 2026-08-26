@@ -19,21 +19,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
       - name: Read and validate version
         id: version
         shell: pwsh
         run: |
           $version = (Get-Content "VERSION" -Raw).Trim()
-          $desktopVersion = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
-          if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
+          $desktopVersion = (Get-Content "apps/desktop/package.json" -Raw | ConvertFrom-Json).version
+          if ($desktopVersion -ne $version) { throw "apps/desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
           if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag/package mismatch: tag=${{ github.ref_name }} package=$version" }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Install dependencies
-        working-directory: desktop
+        working-directory: apps/desktop
         run: npm install
       - name: Build Windows
-        working-directory: desktop
+        working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:win
@@ -41,9 +41,9 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $installer = "desktop/release/EchoVerse-Setup-$version.exe"
+          $installer = "apps/desktop/release/EchoVerse-Setup-$version.exe"
           $blockmap = "$installer.blockmap"
-          $latest = "desktop/release/latest.yml"
+          $latest = "apps/desktop/release/latest.yml"
           if (!(Test-Path $installer)) { throw "Windows installer missing" }
           if (!(Test-Path $blockmap)) { throw "Windows blockmap missing" }
           if (!(Test-Path $latest)) { throw "latest.yml missing" }
@@ -55,9 +55,9 @@ jobs:
         with:
           name: windows-release
           path: |
-            desktop/release/EchoVerse-Setup-*.exe
-            desktop/release/EchoVerse-Setup-*.exe.blockmap
-            desktop/release/latest.yml
+            apps/desktop/release/EchoVerse-Setup-*.exe
+            apps/desktop/release/EchoVerse-Setup-*.exe.blockmap
+            apps/desktop/release/latest.yml
           if-no-files-found: error
 
   mac-intel:
@@ -73,15 +73,15 @@ jobs:
         shell: bash
         run: |
           VERSION=$(tr -d '[:space:]' < VERSION)
-          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          DESKTOP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
           test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
-        working-directory: desktop
+        working-directory: apps/desktop
         run: npm install
       - name: Build macOS Intel
-        working-directory: desktop
+        working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:intel
@@ -90,18 +90,18 @@ jobs:
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          test -f "desktop/release/EchoVerse-$V-x64.dmg"
-          test -f "desktop/release/EchoVerse-$V-x64.dmg.blockmap"
-          test -f "desktop/release/EchoVerse-$V-x64.zip"
-          test -f "desktop/release/EchoVerse-$V-x64.zip.blockmap"
+          test -f "apps/desktop/release/EchoVerse-$V-x64.dmg"
+          test -f "apps/desktop/release/EchoVerse-$V-x64.dmg.blockmap"
+          test -f "apps/desktop/release/EchoVerse-$V-x64.zip"
+          test -f "apps/desktop/release/EchoVerse-$V-x64.zip.blockmap"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-intel-release
           path: |
-            desktop/release/EchoVerse-*-x64.dmg
-            desktop/release/EchoVerse-*-x64.dmg.blockmap
-            desktop/release/EchoVerse-*-x64.zip
-            desktop/release/EchoVerse-*-x64.zip.blockmap
+            apps/desktop/release/EchoVerse-*-x64.dmg
+            apps/desktop/release/EchoVerse-*-x64.dmg.blockmap
+            apps/desktop/release/EchoVerse-*-x64.zip
+            apps/desktop/release/EchoVerse-*-x64.zip.blockmap
           if-no-files-found: error
 
   mac-arm64:
@@ -117,15 +117,15 @@ jobs:
         shell: bash
         run: |
           VERSION=$(tr -d '[:space:]' < VERSION)
-          DESKTOP_VERSION=$(node -p "require('./desktop/package.json').version")
+          DESKTOP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
           test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
-        working-directory: desktop
+        working-directory: apps/desktop
         run: npm install
       - name: Build macOS Apple Silicon
-        working-directory: desktop
+        working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:arm64
@@ -134,18 +134,18 @@ jobs:
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          test -f "desktop/release/EchoVerse-$V-arm64.dmg"
-          test -f "desktop/release/EchoVerse-$V-arm64.dmg.blockmap"
-          test -f "desktop/release/EchoVerse-$V-arm64.zip"
-          test -f "desktop/release/EchoVerse-$V-arm64.zip.blockmap"
+          test -f "apps/desktop/release/EchoVerse-$V-arm64.dmg"
+          test -f "apps/desktop/release/EchoVerse-$V-arm64.dmg.blockmap"
+          test -f "apps/desktop/release/EchoVerse-$V-arm64.zip"
+          test -f "apps/desktop/release/EchoVerse-$V-arm64.zip.blockmap"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64-release
           path: |
-            desktop/release/EchoVerse-*-arm64.dmg
-            desktop/release/EchoVerse-*-arm64.dmg.blockmap
-            desktop/release/EchoVerse-*-arm64.zip
-            desktop/release/EchoVerse-*-arm64.zip.blockmap
+            apps/desktop/release/EchoVerse-*-arm64.dmg
+            apps/desktop/release/EchoVerse-*-arm64.dmg.blockmap
+            apps/desktop/release/EchoVerse-*-arm64.zip
+            apps/desktop/release/EchoVerse-*-arm64.zip.blockmap
           if-no-files-found: error
 
   publish:
@@ -173,7 +173,7 @@ jobs:
         shell: bash
         run: |
           VERSION=$(tr -d '[:space:]' < "source/VERSION")
-          DESKTOP_VERSION=$(node -p "require('./source/desktop/package.json').version")
+          DESKTOP_VERSION=$(node -p "require('./source/apps/desktop/package.json').version")
           test "$DESKTOP_VERSION" = "$VERSION"
           test "v$VERSION" = "${GITHUB_REF_NAME}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

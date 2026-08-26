@@ -18,7 +18,7 @@ Use a **hybrid session model**:
 - refresh rotation, revocation, expiry, origin checks, and logout semantics are
   server-enforced and covered by negative tests.
 
-The authoritative Render deployment manifest is `server/render.yaml`. The root
+The authoritative Render deployment manifest is `apps/server/render.yaml`. The root
 `render.yaml` is legacy metadata until it is explicitly retired in a later
 cleanup decision; deployment automation must not silently maintain two
 independent sources.

@@ -5,7 +5,7 @@ services:
   - type: web
     name: echoverse-server
     runtime: node
-    rootDir: server
-    buildCommand: npm install
-    startCommand: npm start
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm --workspace=@echoverse/server start
     autoDeploy: true

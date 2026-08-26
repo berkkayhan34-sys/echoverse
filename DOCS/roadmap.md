@@ -16,11 +16,19 @@ not “implemented”.
 Status: baseline under test/release maintenance. Existing runtime behavior is
 out of scope for the documentation foundation work.
 
+### 1.7.5 — v2 runtime cutover
+
+Status: release candidate for the workspace and server hardening cutover.
+
+The product version remains 1.7.x for installer compatibility while the
+Socket.IO/contracts package uses protocol major version 2. Release evidence is
+tracked by the quality workflow and ADR-0009.
+
 ## Foundation and architecture
 
 ### 1.8.0 — documentation and repository foundation
 
-Status: in progress in this documentation-only change.
+Status: complete; superseded by the v2 runtime cutover below.
 
 - GPL-3.0-only, SPDX, REUSE, `VERSION`, and repository ignore rules;
 - agent/contributor/security policies and canonical documentation index;
@@ -29,8 +37,8 @@ Status: in progress in this documentation-only change.
 - stable root `Makefile` targets for AI-safe checks, local server health,
   builds, release preparation, and ignored `work/`/`.tmp/` scratch paths.
 
-Acceptance: docs and metadata validate; no application source behavior changes
-are introduced by this milestone.
+Acceptance: docs and metadata validated; runtime work was intentionally deferred
+to the v2 cutover below.
 
 The `work/` and `.tmp/` directories are intentionally disposable development
 surfaces for generated evidence, local experiments, and intermediate files.
@@ -38,7 +46,7 @@ They are ignored by Git and must never contain secrets or irreplaceable data.
 
 ### 1.9.0 — contracts and quality foundation
 
-Status: planned.
+Status: complete for the workspace, contract, and baseline quality layers.
 
 - versioned protocol contracts and runtime boundary schemas;
 - CI typecheck/lint/test/security gates;
@@ -51,12 +59,17 @@ Status: planned.
 
 ### 2.0.0 — modular-monolith cutover
 
-Status: planned; owner-selected strategy B (controlled big-bang cutover).
+Status: in progress; owner-selected strategy B (controlled big-bang cutover).
 
 - target `apps/` and `packages/` structure;
 - feature-owned server modules and shared web/desktop client core;
-- legacy root server retirement after evidence and approval;
+- legacy root server retirement after evidence and approval (completed in this cutover);
 - migration, compatibility, installer, and end-to-end validation.
+
+Current evidence: workspace/typecheck/build/Vitest/Playwright smoke gates pass.
+The remaining release blockers are feature-level authorization and database
+integration tests, a production SQLite adapter, WebRTC regression coverage, and
+installer launch smoke checks.
 
 ### 2.1.0 — hardening and operational readiness
 

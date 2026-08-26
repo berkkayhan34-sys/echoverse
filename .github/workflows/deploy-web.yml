@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - "web/**"
+      - "apps/web/**"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
@@ -30,11 +30,11 @@ jobs:
           node-version: "22"
 
       - name: Install web dependencies
-        working-directory: web
+        working-directory: apps/web
         run: npm install
 
       - name: Build web app
-        working-directory: web
+        working-directory: apps/web
         run: npm run build
 
       - name: Setup Pages
@@ -43,7 +43,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/dist
+          path: apps/web/dist
 
   deploy:
     environment:

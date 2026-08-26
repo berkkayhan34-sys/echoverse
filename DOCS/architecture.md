@@ -5,10 +5,9 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # EchoVerse architecture
 
-This document describes the intended architecture and the constraints for the
-future runtime refactor. It is not a claim that the target layout is already
-implemented. The current implementation remains under `server/`, `web/`, and
-`desktop/`; the root `src/` entrypoint is legacy.
+This document describes the implemented v2 architecture and the constraints for
+future changes. Runtime entrypoints live under `apps/`; shared boundaries live
+under `packages/`.
 
 ## Architectural decision
 
@@ -19,14 +18,12 @@ stays at the desktop boundary. Microservices and separate repositories are out
 of scope for the current horizon.
 
 The owner-selected refactor strategy is **B: controlled big-bang cutover**.
-Documentation, contracts, tests, and build checks are prepared first. Runtime
-code is then moved in one separately approved cutover with a rollback point and
-compatibility review; a second runtime architecture is not shipped gradually
-beside the current one.
+The v2 cutover moves the runtime to `apps/` and shared packages in one bounded
+change with a rollback point and compatibility review.
 
 ## Target repository shape
 
-The target structure is documented in [repository structure](architecture/repository-structure.md).
+The structure is documented in [repository structure](architecture/repository-structure.md).
 At a high level:
 
 ```text
@@ -39,7 +36,7 @@ packages/
   client-core/  # shared auth, session, socket, and feature state
   shared-ui/    # browser-safe shared components and styles
   config/       # validated environment and endpoint configuration
-docs/           # canonical decisions, policies, and procedures
+DOCS/           # canonical decisions, policies, and procedures
 ```
 
 The final names may be adjusted only through an ADR. The important invariant is
@@ -97,20 +94,18 @@ the mirrors and the `v<version>` tag before publishing. See
 
 ## Development platform decisions
 
-The future monorepo uses npm workspaces. Local persistence uses SQLite and the
+The monorepo uses npm workspaces. Local persistence uses SQLite and the
 hosted production profile uses PostgreSQL; migrations and compatibility tests
 must make that boundary explicit. AI-assisted visible-flow acceptance uses the
 ChatGPT Codex in-app Browser tool, while automated contract, integration,
 security, and end-to-end tests remain mandatory. See
 [ADR-0003](decisions/0003-development-data-and-acceptance.md).
 
-## Current structural risks to address later
+## Migration status
 
-The current clients and backend contain very large entrypoint files, duplicated
-web/desktop behavior, a legacy root server entrypoint, and limited automated
-coverage. These are recorded as refactor inputs, not as permission to change
-runtime code during the documentation foundation phase. The cutover must first
-establish contracts, authorization tests, build checks, and rollback evidence.
+The v2 structure is now the implementation surface. Remaining extraction work
+is tracked by feature module and must not reintroduce a second runtime beside
+`apps/`.
 
 ## Architectural change process
 

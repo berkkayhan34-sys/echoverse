@@ -11,11 +11,9 @@ be mistaken for complete product validation.
 
 ## Current baseline
 
-The repository currently has build/development scripts but no complete,
-repository-wide unit, integration, authorization, frontend, or security gate.
-The documentation foundation phase therefore validates only documentation,
-metadata, links, YAML/JSON syntax, SPDX/REUSE consistency, and repository
-boundaries. It does not start product daemons or alter runtime behavior.
+The v2 workspace now has Vitest contract/configuration tests and a Playwright
+smoke suite. Feature-level authorization, database integration, WebRTC and
+installer coverage remain release-blocking work tracked on the roadmap.
 
 ## Required test layers
 
@@ -70,7 +68,10 @@ The root `Makefile` provides stable entrypoints for humans and AI agents:
 | Target | Purpose | Starts a daemon? |
 | --- | --- | --- |
 | `make ai-check` / `make ai-test` | Documentation, metadata, version, and whitespace gate | No |
-| `make setup` | Install server, web, and desktop dependencies | No |
+| `make setup` | Install all workspace dependencies | No |
+| `make typecheck` | Typecheck every workspace package | No |
+| `make test` | Run Vitest unit/contract tests | No |
+| `make e2e` | Run Playwright browser smoke tests | Starts web test server |
 | `make tooling-check` | Verify the Node.js 22 LTS policy | No |
 | `make ai-server-test` | Health-check an already running local server | No |
 | `make server-run` | Run the local server in the foreground | Yes |
@@ -81,8 +82,9 @@ The root `Makefile` provides stable entrypoints for humans and AI agents:
 | `make release-mac-intel` | Build macOS Intel artifacts | No, but creates artifacts |
 | `make release-mac-arm64` | Build macOS Apple Silicon artifacts | No, but creates artifacts |
 
-`make ai-check` is the default safe gate for an agent working on docs or repo
-metadata. `make ai-server-test` expects the server to be started separately
-with `make server-run`; set `ECHO_SERVER_URL` to test another local endpoint.
-Release targets require explicit owner approval and must be followed by the
-artifact checks in [release.md](release.md).
+`make ai-check` is the default safe gate for documentation-only work.
+`make quality` runs metadata, typecheck, and Vitest checks. `make ai-server-test`
+expects the server to be started separately with `make server-run`; set
+`ECHO_SERVER_URL` to test another local endpoint. Release targets require
+explicit owner approval and must be followed by the artifact checks in
+[release.md](release.md).

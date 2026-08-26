@@ -18,6 +18,8 @@ Thumbs.db
 **/dist/
 **/release/
 coverage/
+test-results/
+playwright-report/
 *.tsbuildinfo
 .vite/
 **/.vite/
@@ -44,8 +46,8 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 *.pid
-server/uploads/
-server/data/
+apps/server/uploads/
+apps/server/data/
 tmp/
 temp/
 **/tmp/
