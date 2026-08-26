@@ -39,12 +39,12 @@ deployment are complete. They do not close the incomplete children below.
 ```yaml
 id: DOC-001
 type: documentation_foundation
-status: incomplete
+status: in_progress
 evidence: null
 blocks_roadmap: true
 ```
 
-[ ] Establish the stationary child/evidence convention for this roadmap,
+[-] Establish the stationary child/evidence convention for this roadmap,
 create the documented `DOCS/evidence/` and `DOCS/audits/` surfaces, add an
 evidence template and a roadmap/status validator, and make `DOCS/README.md`
 the complete navigation index. Keep the first-active-child rule, checkbox and
