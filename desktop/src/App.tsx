@@ -97,6 +97,12 @@ const EV_SOUNDS = {
   message: "./sounds/message.wav",
   mic: "./sounds/mic-toggle.wav",
   call: "./sounds/incoming-call.wav",
+  outgoing: "./sounds/outgoing-call.wav",
+  connected: "./sounds/call-connected.wav",
+  ended: "./sounds/call-ended.wav",
+  deafen: "./sounds/deafen-toggle.wav",
+  screenShare: "./sounds/screen-share-toggle.wav",
+  mention: "./sounds/mention.wav",
 } as const;
 
 function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
@@ -109,6 +115,22 @@ function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
   } catch {
     return null;
   }
+}
+
+
+async function tuneEchoVerseScreenSender(sender: RTCRtpSender, fps: 30 | 60 = 30) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    params.encodings[0].maxBitrate = fps === 60 ? 10_000_000 : 8_000_000;
+    params.encodings[0].maxFramerate = fps;
+    params.degradationPreference = "maintain-resolution";
+    await sender.setParameters(params);
+  } catch {}
+}
+
+function tuneEchoVerseScreenTrack(track: MediaStreamTrack) {
+  try { track.contentHint = "detail"; } catch {}
 }
 
 export default function App() {
@@ -1079,6 +1101,7 @@ export default function App() {
   }
 
   function toggleDeafen() {
+    playEvSound("deafen", 0.55);
     const next = !deafened;
     setDeafened(next);
 

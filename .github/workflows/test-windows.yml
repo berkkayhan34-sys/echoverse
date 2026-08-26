@@ -75,6 +75,21 @@ jobs:
           $main = Get-Content "desktop/electron/main.cjs" -Raw
           if ($main -notmatch 'process\.resourcesPath') { throw "Packaged Electron branding path missing" }
 
+      - name: Verify v1.7.4 voice assets
+        shell: pwsh
+        run: |
+          $files = @(
+            "desktop/public/sounds/outgoing-call.wav",
+            "desktop/public/sounds/call-connected.wav",
+            "desktop/public/sounds/call-ended.wav",
+            "desktop/public/sounds/deafen-toggle.wav",
+            "desktop/public/sounds/screen-share-toggle.wav",
+            "desktop/public/sounds/mention.wav"
+          )
+          foreach ($f in $files) {
+            if (!(Test-Path $f)) { throw "Missing v1.7.4 sound asset: $f" }
+          }
+
       - name: Verify updater metadata
         shell: pwsh
         run: |

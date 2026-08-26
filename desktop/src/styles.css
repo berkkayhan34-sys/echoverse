@@ -2181,3 +2181,34 @@ input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(103,83,255,.10
   width: min(230px, 78%);
   height: auto;
 }
+
+
+/* v1.7.4 Voice / Screen Share / UI polish */
+[data-speaking="true"], .speaking {
+  position: relative;
+  box-shadow: 0 0 0 2px rgba(82, 205, 255, .68), 0 0 24px rgba(120, 78, 255, .34);
+  animation: evSpeakingPulse 1.2s ease-in-out infinite;
+}
+@keyframes evSpeakingPulse {
+  50% { box-shadow: 0 0 0 3px rgba(82,205,255,.9), 0 0 32px rgba(120,78,255,.48); }
+}
+.screen-share-viewer video, video[data-screen-share="true"] {
+  object-fit: contain;
+  background: #03040a;
+}
+.screen-share-viewer:fullscreen { background: #020308; padding: 0; }
+.voice-connection-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; opacity: .9;
+}
+.voice-connection-status::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; box-shadow: 0 0 10px currentColor;
+}
+.toast, .notification-card, [role="dialog"] {
+  animation: evPolishIn .18s ease-out;
+}
+@keyframes evPolishIn {
+  from { opacity: 0; transform: translateY(6px) scale(.99); }
+  to { opacity: 1; transform: none; }
+}
