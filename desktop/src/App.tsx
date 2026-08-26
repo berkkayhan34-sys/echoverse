@@ -90,6 +90,27 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" }
 ];
 
+
+const EV_SOUNDS = {
+  join: "/sounds/voice-join.wav",
+  leave: "/sounds/voice-leave.wav",
+  message: "/sounds/message.wav",
+  mic: "/sounds/mic-toggle.wav",
+  call: "/sounds/incoming-call.wav",
+} as const;
+
+function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
+  try {
+    const audio = new Audio(EV_SOUNDS[key]);
+    audio.volume = Math.max(0, Math.min(1, volume));
+    audio.loop = loop;
+    void audio.play().catch(() => {});
+    return audio;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [serverUrl, setServerUrl] = useState("");
   const [spotifyConfigured, setSpotifyConfigured] = useState(false);
@@ -120,7 +141,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
-  const [appVersion, setAppVersion] = useState("1.7.0");
+  const [appVersion, setAppVersion] = useState("1.7.1");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
@@ -2019,6 +2040,7 @@ export default function App() {
   }
 
   function toggleMute() {
+    playEvSound("mic", 0.78);
     const stream = localStream.current;
     if (!stream) return;
 
@@ -2295,7 +2317,7 @@ export default function App() {
         {updaterBanner()}
         <div className="welcome-card auth-card">
           <div className="logo-orb">E</div>
-          <h1>EchoVerse</h1>
+          <img className="echoverse-wordmark" src="/echoverse-wordmark.png" alt="EchoVerse" />
           <p>Arkadaşlarınla konuş, yazış, izle.</p>
 
           <div className={`server-state ${connected ? "online" : "offline"}`}>

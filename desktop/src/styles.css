@@ -2145,3 +2145,23 @@ button {
   background:rgba(219,58,76,.9); color:white; font-size:9px; font-weight:900; letter-spacing:.08em;
 }
 .speaking-video { box-shadow:0 0 0 2px #48c774, 0 0 24px rgba(72,199,116,.18) !important; }
+
+
+/* EchoVerse v1.7.1 — Branding & UX Polish */
+:root { --ev-cyan:#35b9ff; --ev-violet:#7657ff; --ev-magenta:#d438ff; --ev-surface:#0c0d18; }
+* { scrollbar-width:thin; scrollbar-color:#3b365e #0b0c14; }
+::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-track{background:#0b0c14}
+::-webkit-scrollbar-thumb{background:#3b365e;border-radius:999px}
+button,.icon-button,.control-btn{transition:transform .14s ease,background .14s ease,border-color .14s ease,box-shadow .14s ease,opacity .14s ease}
+button:hover,.icon-button:hover,.control-btn:hover{transform:translateY(-1px)}
+button:active,.icon-button:active,.control-btn:active{transform:translateY(0) scale(.97)}
+.echoverse-wordmark{display:block;width:min(168px,72%);height:auto;object-fit:contain;filter:drop-shadow(0 0 12px rgba(113,86,255,.22))}
+.modal,.settings-panel,.context-menu{animation:ev-pop .16s ease-out}
+@keyframes ev-pop{from{opacity:0;transform:translateY(5px) scale(.985)}to{opacity:1;transform:none}}
+.empty-state{border:1px solid rgba(123,94,255,.12);background:radial-gradient(circle at 50% 0%,rgba(111,72,255,.09),transparent 52%),#0b0d16}
+.loading,.loading-state{animation:ev-pulse 1.4s ease-in-out infinite}
+@keyframes ev-pulse{50%{opacity:.55}}
+input,textarea,select{transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(103,83,255,.10)}
+.tooltip,[data-tooltip]{--ev-tooltip:#111321}
+.update-card,.update-panel{border-color:rgba(122,91,255,.16)!important;box-shadow:0 12px 40px rgba(0,0,0,.18)}

@@ -1,7 +1,7 @@
 {
   "name": "echoverse-desktop",
   "productName": "EchoVerse",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "EchoVerse desktop voice and chat app",
   "main": "electron/main.cjs",
   "type": "module",
@@ -51,7 +51,8 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "icon": "assets/echoverse.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -71,10 +72,11 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "EchoVerse sesli konuşma için mikrofonunu kullanır.",
-        "NSCameraUsageDescription": "EchoVerse görüntülü konuşma için kameranı kullanır."
+        "NSMicrophoneUsageDescription": "EchoVerse sesli konu\u015fma i\u00e7in mikrofonunu kullan\u0131r.",
+        "NSCameraUsageDescription": "EchoVerse g\u00f6r\u00fcnt\u00fcl\u00fc konu\u015fma i\u00e7in kameran\u0131 kullan\u0131r."
       },
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "icon": "assets/echoverse-icon.png"
     },
     "dmg": {
       "title": "EchoVerse ${version}"
@@ -87,7 +89,8 @@
         "releaseType": "release"
       }
     ],
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "icon": "assets/echoverse-icon.png"
   },
   "author": "EchoVerse"
 }
