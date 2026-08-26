@@ -9,3 +9,6 @@ services:
     buildCommand: npm ci
     startCommand: npm --workspace=@echoverse/server start
     autoDeploy: true
+    envVars:
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+        value: "false"
