@@ -40,7 +40,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-Windows
-            path: apps/desktop/release/*.exe
+          path: apps/desktop/release/*.exe
 
   mac-intel:
     name: macOS Intel
@@ -68,7 +68,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-macOS-Intel
-            path: apps/desktop/release/*.{dmg,zip}
+          path: apps/desktop/release/*.{dmg,zip}
 
   mac-arm64:
     name: macOS Apple Silicon
@@ -96,4 +96,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EchoVerse-macOS-Apple-Silicon
-            path: apps/desktop/release/*.{dmg,zip}
+          path: apps/desktop/release/*.{dmg,zip}
