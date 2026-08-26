@@ -37,6 +37,44 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
 
+
+      - name: Verify v1.7.3 branding and sound assets
+        shell: pwsh
+        run: |
+          $required = @(
+            "desktop/assets/echoverse.ico",
+            "desktop/assets/echoverse-icon.png",
+            "desktop/assets/echoverse-splash.png",
+            "desktop/public/echoverse-icon.png",
+            "desktop/public/echoverse-wordmark.png",
+            "desktop/public/sounds/voice-join.wav",
+            "desktop/public/sounds/voice-leave.wav",
+            "desktop/public/sounds/message.wav",
+            "desktop/public/sounds/mic-toggle.wav",
+            "desktop/public/sounds/incoming-call.wav",
+            "desktop/dist/echoverse-icon.png",
+            "desktop/dist/echoverse-wordmark.png",
+            "desktop/dist/sounds/voice-join.wav",
+            "desktop/dist/sounds/voice-leave.wav",
+            "desktop/dist/sounds/message.wav",
+            "desktop/dist/sounds/mic-toggle.wav",
+            "desktop/dist/sounds/incoming-call.wav"
+          )
+
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) { throw "Required branding/sound asset missing: $file" }
+          }
+
+          $pkg = Get-Content "desktop/package.json" -Raw
+          if ($pkg -notmatch '"to":\s*"branding"') { throw "Packaged branding resources are not configured" }
+
+          $app = Get-Content "desktop/src/App.tsx" -Raw
+          if ($app -match 'src="/echoverse-wordmark.png"') { throw "Absolute wordmark URL would break under file:// packaging" }
+          if ($app -match '"/sounds/') { throw "Absolute sound URL would break under file:// packaging" }
+
+          $main = Get-Content "desktop/electron/main.cjs" -Raw
+          if ($main -notmatch 'process\.resourcesPath') { throw "Packaged Electron branding path missing" }
+
       - name: Verify updater metadata
         shell: pwsh
         run: |

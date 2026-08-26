@@ -21,9 +21,12 @@ const crypto = require("crypto");
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
-const brandingIcon = path.join(__dirname, "..", "assets", "echoverse-icon.png");
-const brandingIco = path.join(__dirname, "..", "assets", "echoverse.ico");
-const splashImage = path.join(__dirname, "..", "assets", "echoverse-splash.png");
+const brandingRoot = app.isPackaged
+  ? path.join(process.resourcesPath, "branding")
+  : path.join(__dirname, "..", "assets");
+const brandingIcon = path.join(brandingRoot, "echoverse-icon.png");
+const brandingIco = path.join(brandingRoot, "echoverse.ico");
+const splashImage = path.join(brandingRoot, "echoverse-splash.png");
 let isQuitting = false;
 let spotifyTokens = null;
 let spotifyLoginServer = null;
@@ -824,22 +827,23 @@ function createWindow() {
 function createSplash() {
   try {
     splashWindow = new BrowserWindow({
-      width: 520, height: 760, frame: false, transparent: false,
-      resizable: false, show: false, alwaysOnTop: true,
+      width: 520,
+      height: 760,
+      frame: false,
+      transparent: false,
+      resizable: false,
+      show: false,
+      alwaysOnTop: true,
       backgroundColor: "#050510",
       icon: process.platform === "win32" ? brandingIco : brandingIcon,
       webPreferences: { contextIsolation: true, sandbox: true }
     });
-    const splashHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
-      html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050510}
-      body{display:grid;place-items:center;font-family:Inter,Segoe UI,sans-serif}
-      .wrap{width:100%;height:100%;position:relative;background:#050510}
-      img{width:100%;height:100%;object-fit:cover}
-      .status{position:absolute;left:0;right:0;bottom:28px;text-align:center;color:#8d8aa8;font-size:12px;letter-spacing:.08em}
-    </style></head><body><div class="wrap"><img src="file://${splashImage.replace(/\\/g,"/")}"><div class="status">EchoVerse hazırlanıyor…</div></div></body></html>`;
-    splashWindow.loadURL("data:text/html;charset=UTF-8," + encodeURIComponent(splashHtml));
+
+    splashWindow.loadFile(splashImage);
     splashWindow.once("ready-to-show", () => splashWindow?.show());
-  } catch {}
+  } catch (err) {
+    console.error("Splash setup failed:", err);
+  }
 }
 
 app.whenReady().then(() => {

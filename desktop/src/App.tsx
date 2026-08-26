@@ -92,11 +92,11 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 
 const EV_SOUNDS = {
-  join: "/sounds/voice-join.wav",
-  leave: "/sounds/voice-leave.wav",
-  message: "/sounds/message.wav",
-  mic: "/sounds/mic-toggle.wav",
-  call: "/sounds/incoming-call.wav",
+  join: "./sounds/voice-join.wav",
+  leave: "./sounds/voice-leave.wav",
+  message: "./sounds/message.wav",
+  mic: "./sounds/mic-toggle.wav",
+  call: "./sounds/incoming-call.wav",
 } as const;
 
 function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
@@ -261,38 +261,9 @@ export default function App() {
     if (now - lobbySoundCooldown.current < 180) return;
     lobbySoundCooldown.current = now;
 
-    try {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new Ctx();
-      if (ctx.state === "suspended") void ctx.resume();
-      const master = ctx.createGain();
-      master.gain.value = Math.max(0, Math.min(1, effectVolumeRef.current / 100)) * 0.32;
-      master.connect(ctx.destination);
-
-      const notes = kind === "join" ? [520, 700] : [620, 420];
-      notes.forEach((frequency, index) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const start = ctx.currentTime + index * 0.075;
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(frequency, start);
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.7, start + 0.012);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.095);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(start);
-        osc.stop(start + 0.11);
-      });
-
-      window.setTimeout(() => ctx.close().catch(() => {}), 500);
-    } catch (err) {
-      console.warn("[EchoVerse] lobby sound failed", err);
-    }
+    const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
+    playEvSound(kind, volume);
   }
-
-
-
 
   useEffect(() => {
     activeGuildRef.current = activeGuild;
@@ -565,6 +536,7 @@ export default function App() {
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
+        playEvSound("message", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
         if (!isOpenConversation) {
           setUnreadDm(prev => ({
             ...prev,
@@ -1245,8 +1217,9 @@ export default function App() {
 
   function startRingtone() {
     stopRingtone();
-    const loop = createToneLoop([820, 980], 900, 0.045);
-    ringAudio.current = { pause: loop.stop } as unknown as HTMLAudioElement;
+    const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
+    const audio = playEvSound("call", volume, true);
+    ringAudio.current = audio;
   }
 
   function stopRingtone() {
@@ -2316,8 +2289,8 @@ export default function App() {
       <div className="welcome-page">
         {updaterBanner()}
         <div className="welcome-card auth-card">
-          <div className="logo-orb">E</div>
-          <img className="echoverse-wordmark" src="/echoverse-wordmark.png" alt="EchoVerse" />
+          <img className="auth-app-icon" src="./echoverse-icon.png" alt="" />
+          <img className="echoverse-wordmark" src="./echoverse-wordmark.png" alt="EchoVerse" />
           <p>Arkadaşlarınla konuş, yazış, izle.</p>
 
           <div className={`server-state ${connected ? "online" : "offline"}`}>

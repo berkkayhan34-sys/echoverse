@@ -2165,3 +2165,19 @@ input,textarea,select{transition:border-color .15s ease,box-shadow .15s ease,bac
 input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(103,83,255,.10)}
 .tooltip,[data-tooltip]{--ev-tooltip:#111321}
 .update-card,.update-panel{border-color:rgba(122,91,255,.16)!important;box-shadow:0 12px 40px rgba(0,0,0,.18)}
+
+/* v1.7.3 production branding hotfix */
+.auth-app-icon {
+  width: 76px;
+  height: 76px;
+  display: block;
+  object-fit: contain;
+  border-radius: 20px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 10px 24px rgba(87, 74, 255, .28));
+}
+.echoverse-wordmark {
+  max-width: 230px;
+  width: min(230px, 78%);
+  height: auto;
+}
