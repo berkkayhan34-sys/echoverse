@@ -217,6 +217,44 @@ coverage, and add migration, schema, backup/restore, rollback, and
 SQLite/PostgreSQL compatibility tests. Keep hosted PostgreSQL migrations and
 the local adapter behavior explicitly aligned.
 
+### complete-application-localization
+
+```yaml
+id: CODE-004A-LOCALIZATION
+type: localization_foundation
+status: incomplete
+evidence: null
+```
+
+[ ] Inventory every application-owned string, including visible UI text,
+validation and error messages, notifications, empty/loading states, server
+responses, logs, and other runtime text users may not directly see. Move the
+complete inventory into key/value locale catalogs with no hard-coded natural
+language strings left in application code. Ship English (`en`) and Turkish
+(`tr`) first, with explicit locale selection, deterministic fallback, and a
+documented process for adding later locales. Protocol/event names, SQL/CSS
+identifiers, URLs, and third-party literals must be explicitly classified as
+non-localizable rather than silently omitted.
+
+The localization boundary must be Unicode-first and language-independent:
+UTF-8 must be preserved end to end across input, validation, Socket.IO
+payloads, persistence, logs, search, sorting, export/import, and updater
+metadata. Code must not assume ASCII or one-code-point characters; grapheme
+clusters, combining marks, emoji, CJK text, locale-aware case conversion,
+plural/date/number formatting, and font fallback must be handled explicitly.
+The catalogs and UI layout must leave room for future locale metadata such as
+writing direction and longer translations, even though only `en` and `tr` ship
+initially.
+
+The child is incomplete until automated tests prove that both catalogs have
+the same keys, interpolation placeholders and required values match, missing
+translations follow the documented fallback, unknown keys fail safely, server
+and clients resolve the same catalog, and representative web/desktop flows
+work in both English and Turkish. Tests must also cover non-ASCII, combining,
+emoji, and CJK fixtures through the complete client/server/database/search
+path, plus locale-aware formatting and future-direction-safe layout behavior.
+Record static string-inventory and browser acceptance evidence.
+
 ### server-feature-extraction
 
 ```yaml
@@ -300,7 +338,7 @@ evidence: null
 blocks_roadmap: true
 ```
 
-[ ] Audit CODE-001 through CODE-008 against architecture, security, testing,
+[ ] Audit CODE-001 through CODE-008 and CODE-004A-LOCALIZATION against architecture, security, testing,
 browser acceptance, migration compatibility, release artifacts, and rollback
 evidence. The v2.0 line cannot close until all release blockers are green and
 the complete diff contains no stale runtime, generated, or duplicate paths.
