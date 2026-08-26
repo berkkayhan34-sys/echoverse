@@ -5,48 +5,103 @@ on:
     tags:
       - "v*"
 
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (örnek: v1.7.0)"
+        required: true
+        type: string
+
 permissions:
   contents: write
 
 jobs:
+
+  # ============================================================
+  # WINDOWS
+  # ============================================================
   windows:
     name: Windows
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
+
       - name: Read and validate version
         id: version
         shell: pwsh
         run: |
           $version = (Get-Content "desktop/package.json" -Raw | ConvertFrom-Json).version
-          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag/package mismatch: tag=${{ github.ref_name }} package=$version" }
+          $releaseTag = "${{ inputs.release_tag || github.ref_name }}"
+
+          Write-Host "Package version: $version"
+          Write-Host "Release tag: $releaseTag"
+
+          if ("v$version" -ne $releaseTag) {
+            throw "Tag/package mismatch: tag=$releaseTag package=$version"
+          }
+
           "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install
+
       - name: Build Windows
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:win
+
       - name: Verify Windows updater files
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
+
           $installer = "desktop/release/EchoVerse-Setup-$version.exe"
           $blockmap = "$installer.blockmap"
           $latest = "desktop/release/latest.yml"
-          if (!(Test-Path $installer)) { throw "Windows installer missing" }
-          if (!(Test-Path $blockmap)) { throw "Windows blockmap missing" }
-          if (!(Test-Path $latest)) { throw "latest.yml missing" }
+
+          Write-Host "Checking:"
+          Write-Host $installer
+          Write-Host $blockmap
+          Write-Host $latest
+
+          if (!(Test-Path $installer)) {
+            throw "Windows installer missing: $installer"
+          }
+
+          if (!(Test-Path $blockmap)) {
+            throw "Windows blockmap missing: $blockmap"
+          }
+
+          if (!(Test-Path $latest)) {
+            throw "latest.yml missing"
+          }
+
           $content = Get-Content $latest -Raw
+          Write-Host $content
+
           $escaped = [regex]::Escape($version)
-          if ($content -notmatch "version:\s*$escaped") { throw "Windows metadata version mismatch" }
-          if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") { throw "Windows metadata filename mismatch" }
-      - uses: actions/upload-artifact@v4
+
+          if ($content -notmatch "version:\s*$escaped") {
+            throw "Windows metadata version mismatch"
+          }
+
+          if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") {
+            throw "Windows metadata filename mismatch"
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: |
@@ -55,39 +110,70 @@ jobs:
             desktop/release/latest.yml
           if-no-files-found: error
 
+
+  # ============================================================
+  # macOS INTEL
+  # ============================================================
   mac-intel:
     name: macOS Intel
     runs-on: macos-15-intel
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
+
       - name: Read and validate version
         id: version
         shell: bash
         run: |
+          set -e
+
           VERSION=$(node -p "require('./desktop/package.json').version")
-          test "v$VERSION" = "${GITHUB_REF_NAME}"
+          RELEASE_TAG="${{ inputs.release_tag || github.ref_name }}"
+
+          echo "Package version: $VERSION"
+          echo "Release tag: $RELEASE_TAG"
+
+          if [ "v$VERSION" != "$RELEASE_TAG" ]; then
+            echo "Tag/package mismatch"
+            exit 1
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install
+
       - name: Build macOS Intel
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:intel
+
       - name: Verify Intel artifacts
         shell: bash
         run: |
           set -euo pipefail
+
           V="${{ steps.version.outputs.version }}"
+
+          echo "Checking macOS Intel $V"
+
           test -f "desktop/release/EchoVerse-$V-x64.dmg"
           test -f "desktop/release/EchoVerse-$V-x64.dmg.blockmap"
           test -f "desktop/release/EchoVerse-$V-x64.zip"
           test -f "desktop/release/EchoVerse-$V-x64.zip.blockmap"
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload Intel artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: mac-intel-release
           path: |
@@ -97,39 +183,70 @@ jobs:
             desktop/release/EchoVerse-*-x64.zip.blockmap
           if-no-files-found: error
 
+
+  # ============================================================
+  # macOS APPLE SILICON
+  # ============================================================
   mac-arm64:
     name: macOS Apple Silicon
     runs-on: macos-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
+
       - name: Read and validate version
         id: version
         shell: bash
         run: |
+          set -e
+
           VERSION=$(node -p "require('./desktop/package.json').version")
-          test "v$VERSION" = "${GITHUB_REF_NAME}"
+          RELEASE_TAG="${{ inputs.release_tag || github.ref_name }}"
+
+          echo "Package version: $VERSION"
+          echo "Release tag: $RELEASE_TAG"
+
+          if [ "v$VERSION" != "$RELEASE_TAG" ]; then
+            echo "Tag/package mismatch"
+            exit 1
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         working-directory: desktop
         run: npm install
+
       - name: Build macOS Apple Silicon
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run release:mac:arm64
+
       - name: Verify ARM64 artifacts
         shell: bash
         run: |
           set -euo pipefail
+
           V="${{ steps.version.outputs.version }}"
+
+          echo "Checking macOS ARM64 $V"
+
           test -f "desktop/release/EchoVerse-$V-arm64.dmg"
           test -f "desktop/release/EchoVerse-$V-arm64.dmg.blockmap"
           test -f "desktop/release/EchoVerse-$V-arm64.zip"
           test -f "desktop/release/EchoVerse-$V-arm64.zip.blockmap"
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload ARM64 artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: mac-arm64-release
           path: |
@@ -139,88 +256,185 @@ jobs:
             desktop/release/EchoVerse-*-arm64.zip.blockmap
           if-no-files-found: error
 
+
+  # ============================================================
+  # PUBLISH RELEASE
+  # ============================================================
   publish:
     name: Publish GitHub Release
-    needs: [windows, mac-intel, mac-arm64]
+    needs:
+      - windows
+      - mac-intel
+      - mac-arm64
+
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Windows
+        uses: actions/download-artifact@v4
         with:
           name: windows-release
           path: release/windows
-      - uses: actions/download-artifact@v4
+
+      - name: Download macOS Intel
+        uses: actions/download-artifact@v4
         with:
           name: mac-intel-release
           path: release/mac-intel
-      - uses: actions/download-artifact@v4
+
+      - name: Download macOS ARM64
+        uses: actions/download-artifact@v4
         with:
           name: mac-arm64-release
           path: release/mac-arm64
-      - uses: actions/checkout@v4
+
+      - name: Checkout source
+        uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.release_tag || github.ref_name }}
           path: source
-      - name: Read version
+
+      - name: Read and validate version
         id: version
         shell: bash
         run: |
+          set -e
+
           VERSION=$(node -p "require('./source/desktop/package.json').version")
-          test "v$VERSION" = "${GITHUB_REF_NAME}"
+          RELEASE_TAG="${{ inputs.release_tag || github.ref_name }}"
+
+          echo "Package version: $VERSION"
+          echo "Release tag: $RELEASE_TAG"
+
+          if [ "v$VERSION" != "$RELEASE_TAG" ]; then
+            echo "Tag/package mismatch"
+            exit 1
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install YAML helper
         run: npm install yaml@2
+
       - name: Build combined latest-mac.yml
         shell: bash
+        env:
+          EV_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          export EV_VERSION="${{ steps.version.outputs.version }}"
+
           node <<'NODE'
           const fs = require("fs");
           const path = require("path");
           const crypto = require("crypto");
           const YAML = require("yaml");
+
           const version = process.env.EV_VERSION;
-          const intel = `release/mac-intel/EchoVerse-${version}-x64.zip`;
-          const arm = `release/mac-arm64/EchoVerse-${version}-arm64.zip`;
-          for (const file of [intel, arm]) {
-            if (!fs.existsSync(file)) throw new Error(`Missing ${file}`);
-            if (!fs.existsSync(file + ".blockmap")) throw new Error(`Missing ${file}.blockmap`);
+
+          if (!version) {
+            throw new Error("EV_VERSION missing");
           }
-          const sha512 = file => crypto.createHash("sha512").update(fs.readFileSync(file)).digest("base64");
-          const size = file => fs.statSync(file).size;
+
+          const intel =
+            `release/mac-intel/EchoVerse-${version}-x64.zip`;
+
+          const arm =
+            `release/mac-arm64/EchoVerse-${version}-arm64.zip`;
+
+          for (const file of [intel, arm]) {
+            if (!fs.existsSync(file)) {
+              throw new Error(`Missing ${file}`);
+            }
+
+            if (!fs.existsSync(file + ".blockmap")) {
+              throw new Error(`Missing ${file}.blockmap`);
+            }
+          }
+
+          const sha512 = file =>
+            crypto
+              .createHash("sha512")
+              .update(fs.readFileSync(file))
+              .digest("base64");
+
+          const size = file =>
+            fs.statSync(file).size;
+
           const doc = {
             version,
+
             files: [
-              { url: path.basename(intel), sha512: sha512(intel), size: size(intel) },
-              { url: path.basename(arm), sha512: sha512(arm), size: size(arm) }
+              {
+                url: path.basename(intel),
+                sha512: sha512(intel),
+                size: size(intel)
+              },
+              {
+                url: path.basename(arm),
+                sha512: sha512(arm),
+                size: size(arm)
+              }
             ],
+
             path: path.basename(intel),
             sha512: sha512(intel),
             releaseDate: new Date().toISOString()
           };
-          fs.writeFileSync("release/latest-mac.yml", YAML.stringify(doc), "utf8");
-          console.log(fs.readFileSync("release/latest-mac.yml", "utf8"));
+
+          fs.writeFileSync(
+            "release/latest-mac.yml",
+            YAML.stringify(doc),
+            "utf8"
+          );
+
+          console.log(
+            fs.readFileSync(
+              "release/latest-mac.yml",
+              "utf8"
+            )
+          );
           NODE
+
       - name: Verify complete updater payload
         shell: bash
         run: |
           set -euo pipefail
+
           V="${{ steps.version.outputs.version }}"
+
+          echo "Verifying EchoVerse $V"
+
+          # Windows
           test -f "release/windows/EchoVerse-Setup-$V.exe"
           test -f "release/windows/EchoVerse-Setup-$V.exe.blockmap"
-          test -f release/windows/latest.yml
+          test -f "release/windows/latest.yml"
+
+          # macOS Intel
+          test -f "release/mac-intel/EchoVerse-$V-x64.dmg"
+          test -f "release/mac-intel/EchoVerse-$V-x64.dmg.blockmap"
           test -f "release/mac-intel/EchoVerse-$V-x64.zip"
           test -f "release/mac-intel/EchoVerse-$V-x64.zip.blockmap"
+
+          # macOS Apple Silicon
+          test -f "release/mac-arm64/EchoVerse-$V-arm64.dmg"
+          test -f "release/mac-arm64/EchoVerse-$V-arm64.dmg.blockmap"
           test -f "release/mac-arm64/EchoVerse-$V-arm64.zip"
           test -f "release/mac-arm64/EchoVerse-$V-arm64.zip.blockmap"
-          test -f release/latest-mac.yml
+
+          # macOS updater metadata
+          test -f "release/latest-mac.yml"
+
           grep -q "version: $V" release/latest-mac.yml
           grep -q "EchoVerse-$V-x64.zip" release/latest-mac.yml
           grep -q "EchoVerse-$V-arm64.zip" release/latest-mac.yml
+
+          echo "All release files OK."
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: EchoVerse ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: EchoVerse ${{ inputs.release_tag || github.ref_name }}
           draft: false
           prerelease: false
           generate_release_notes: true
