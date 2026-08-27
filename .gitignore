@@ -32,6 +32,8 @@ playwright-report/
 .parcel-cache/
 **/.parcel-cache/
 .eslintcache
+results.sarif
+**/results.sarif
 .npm/
 .pnpm-store/
 .yarn/

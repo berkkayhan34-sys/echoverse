@@ -6,6 +6,8 @@
 **/release/
 tmp/
 **/tmp/
+results.sarif
+**/results.sarif
 DOCS/historic/
 package-lock.json
 *.png
