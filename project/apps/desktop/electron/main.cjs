@@ -41,7 +41,9 @@ const desktopCatalogs = { en: loadLocalization("en"), tr: loadLocalization("tr")
 let desktopLocale = "tr";
 
 function resolveDesktopLocale(value) {
-  return typeof value === "string" && value.toLowerCase().startsWith("tr") ? "tr" : "en";
+  if (typeof value !== "string") return "en";
+  const language = value.trim().toLowerCase().split(/[-_]/u, 1)[0];
+  return language === "tr" ? "tr" : "en";
 }
 
 function setDesktopLocale(value) {

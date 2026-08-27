@@ -5,9 +5,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # EchoVerse server
 
-HTTP and Socket.IO composition for the modular monolith. Feature code is
-organized under `src/features`, boundary validation under `src/domain`, and
-database migrations under `db/migrations`.
+HTTP and Socket.IO composition for the modular monolith. The entrypoint keeps
+process wiring, transport middleware, shared socket lifecycle, and cross-feature
+composition. Feature behavior is organized under `src/features`:
+`identity`, `guilds`, `chat`, `friends`, `calls`, and `spotify`. Persistence
+selection and migration lifecycle are owned by `src/persistence/runtime.ts`;
+boundary validation remains under `src/domain` and migrations under `db/migrations`.
 
 Run `npm run dev` from this directory or `make server-run` from the repository
 root. Production requires `JWT_SECRET`, an explicit `CORS_ORIGINS` value,

@@ -14,7 +14,9 @@ export type CatalogKey = keyof typeof englishCatalog;
 
 /** Resolve the supported catalog from an arbitrary browser or request locale. */
 export function resolveLocale(value: unknown): Locale {
-  return typeof value === "string" && value.toLowerCase().startsWith("tr") ? "tr" : "en";
+  if (typeof value !== "string") return "en";
+  const language = value.trim().toLowerCase().split(/[-_]/u, 1)[0];
+  return language === "tr" ? "tr" : "en";
 }
 
 /** Return the future-safe writing direction associated with a locale. */

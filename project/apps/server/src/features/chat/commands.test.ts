@@ -10,6 +10,7 @@ describe("utility chat commands", () => {
   it("handles deterministic commands", () => {
     expect(utilityBotResponse("!ping")).toBe("Pong 🏓");
     expect(utilityBotResponse("!help")).toContain("!roll");
+    expect(utilityBotResponse("!help", "en")).toBe("Commands: !ping, !roll, !help");
     expect(utilityBotResponse("hello")).toBeNull();
   });
 });

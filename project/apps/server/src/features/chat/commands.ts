@@ -3,14 +3,17 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-export function utilityBotResponse(command: string): string | null {
+import { createTranslator, type Locale } from "@echoverse/contracts";
+
+export function utilityBotResponse(command: string, locale: Locale = "tr"): string | null {
+  const t = createTranslator(locale);
   switch (command.trim().toLowerCase()) {
     case "!ping":
-      return "Pong 🏓";
+      return t("bot.pingResponse");
     case "!roll":
       return `🎲 ${Math.floor(Math.random() * 100) + 1}`;
     case "!help":
-      return "Komutlar: !ping, !roll, !help";
+      return t("bot.helpResponse");
     default:
       return null;
   }

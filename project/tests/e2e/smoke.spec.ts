@@ -13,15 +13,25 @@ test("web shell renders", async ({ page }) => {
 test.describe("web locale selection", () => {
   for (const scenario of [
     { locale: "en", submitLabel: "Sign in", tagline: "Talk, chat, and watch with your friends." },
-    { locale: "tr", submitLabel: "Giriş Yap", tagline: "Arkadaşlarınla konuş, yazış, izle." }
+    { locale: "tr", submitLabel: "Giriş Yap", tagline: "Arkadaşlarınla konuş, yazış, izle." },
+    {
+      locale: "unsupported-fallback",
+      storedLocale: "trick",
+      expectedLocale: "en",
+      submitLabel: "Sign in",
+      tagline: "Talk, chat, and watch with your friends."
+    }
   ]) {
     test(`${scenario.locale} renders the selected catalog`, async ({ page }) => {
       await page.addInitScript((locale) => {
         window.localStorage.setItem("echoverse_locale", locale);
-      }, scenario.locale);
+      }, scenario.storedLocale ?? scenario.locale);
       await page.goto("/");
 
-      await expect(page.locator("html")).toHaveAttribute("lang", scenario.locale);
+      await expect(page.locator("html")).toHaveAttribute(
+        "lang",
+        scenario.expectedLocale ?? scenario.locale
+      );
       await expect(page.getByText(scenario.tagline, { exact: true })).toBeVisible();
       await expect(page.locator("button.primary", { hasText: scenario.submitLabel })).toBeVisible();
     });

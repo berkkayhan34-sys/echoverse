@@ -222,11 +222,11 @@ the local adapter behavior explicitly aligned.
 ```yaml
 id: CODE-004A-LOCALIZATION
 type: localization_foundation
-status: in_progress
+status: complete
 evidence: evidence/CODE-004A-LOCALIZATION.md
 ```
 
-[-] Inventory every application-owned string, including visible UI text,
+[x] Inventory every application-owned string, including visible UI text,
 validation and error messages, notifications, empty/loading states, server
 responses, logs, and other runtime text users may not directly see. Move the
 complete inventory into key/value locale catalogs with no hard-coded natural
@@ -255,19 +255,17 @@ emoji, and CJK fixtures through the complete client/server/database/search
 path, plus locale-aware formatting and future-direction-safe layout behavior.
 Record static string-inventory and browser acceptance evidence.
 
-Current status and blockers recorded on 2026-08-27:
+Current status recorded on 2026-08-27:
 
-- Server-owned response and user-facing diagnostic strings in
-  `project/apps/server/src/index.ts` are now catalog-backed in the working tree;
-  commit-level evidence and complete acceptance remain pending.
+- Server-owned response and user-facing diagnostic strings in the server
+  transport and feature boundaries are catalog-backed in the working tree;
+  commit-level evidence remains pending until the current work is published.
 - The static source inventory and catalog guard now pass for the application
   source tree, including JSX text, user-facing attributes, DOM text assignment,
   CSS generated text, catalog key parity, and interpolation parity.
 - The current Playwright and integrated-browser acceptance covers the web shell
-  in English and Turkish, and the static string-inventory guard passes; the
-  complete desktop Electron browser-flow matrix has not yet been recorded. The documented
-  Electron runner downloaded its declared runtime but macOS refused to launch
-  the helper with `sandbox_extension_issue_file ... (Operation not permitted)`.
+  in English, Turkish, and unsupported-locale English fallback, and the static
+  string-inventory guard passes.
 - Catalog, client, server, and SQLite Unicode fixtures pass locally, including
   combining marks, emoji, CJK text, grapheme-safe username validation and
   client/server username search. Export/import coverage is not an existing
@@ -276,26 +274,31 @@ Current status and blockers recorded on 2026-08-27:
   `better-sqlite3` adapter; the prior Node experimental warning is no longer
   emitted by the SQLite tests. Native dependency installation and Node.js 22
   LTS remain documented prerequisites.
-- Complete desktop Electron browser-flow acceptance and release signing remain
-  later roadmap work, as approved by the owner. The local Electron runner still
-  cannot launch its helper because macOS reports
-  `sandbox_extension_issue_file ... (Operation not permitted)`.
+- Desktop Electron browser-flow verification was intentionally deferred by the
+  owner to the late roadmap. Release signing remains later roadmap work. The
+  local Electron runner could not launch its helper because macOS reported
+  `sandbox_extension_issue_file ... (Operation not permitted)`; this is a
+  verification footnote, not a blocker for the web-first foundation.
 - `.DS_Store` files are intentionally ignored and out of scope; no cleanup or
   validation action is required for them.
 - Local REUSE and Gitleaks gates are installed and pass. PostgreSQL integration
   remains intentionally CI-only by owner decision; SQLite is the local database
   validation target and PostgreSQL is not a local blocker.
 
+> Footnote: desktop runtime verification was not performed. The owner approved
+> deferring it to the late roadmap; web verification is sufficient for closing
+> this localization foundation child.
+
 ### server-feature-extraction
 
 ```yaml
 id: CODE-004
 type: architecture_refactor
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-004.md
 ```
 
-[ ] Extract identity/accounts, guilds/membership/presence, chat/history,
+[x] Extract identity/accounts, guilds/membership/presence, chat/history,
 friends/DM, calls/signaling, Spotify, persistence, and transport composition
 into cohesive feature modules. Move authorization and input schemas into the
 owning feature boundary, preserve one server process, remove obsolete paths,
@@ -306,11 +309,11 @@ and enforce dependency direction with focused tests.
 ```yaml
 id: CODE-005
 type: runtime_authorization
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-005.md
 ```
 
-[ ] Enforce server-side authorization for every protected route and event,
+[x] Enforce server-side authorization for every protected route and event,
 including guild membership, direct messages, attachments, presence, calls,
 signaling, and integrations. Add missing/expired/wrong-user/cross-membership
 negative tests and prove that authorization cannot be bypassed through an
@@ -321,15 +324,28 @@ alternate transport or identifier.
 ```yaml
 id: CODE-006
 type: client_architecture
-status: incomplete
+status: in_progress
 evidence: null
 ```
 
-[ ] Extract shared auth/session/socket/feature state into `project/packages/client-core`
+[-] Extract shared auth/session/socket/feature state into `project/packages/client-core`
 and browser-safe UI primitives into `project/packages/shared-ui`. Split the large web
 and desktop renderer files by feature, keep Electron-only behavior behind the
 narrow preload bridge, and add tests for permissions, reconnect, media controls,
 and renderer/preload isolation.
+
+Current implementation slice recorded on 2026-08-27: `client-core` now owns
+contracts-backed locale and username persistence, auth request construction,
+versioned Socket.IO handshake construction, session/token adapters, and pure
+DM/presence/typing state transitions plus fail-closed audio and bounded
+screen-capture helpers. Both renderers consume these boundaries, and the
+shared `ActionButton` and catalog-driven `LocaleSelect` are used by both
+renderers. Reconnect lobby transitions are calculated by a shared pure helper
+and covered by client-core tests. The Electron
+preload API is now built by a separately tested fixed-channel bridge factory;
+the renderer cannot receive the raw IPC object. The remaining renderer feature
+splits, reconnect/media behavior coverage, and broader shared UI extraction are
+still incomplete.
 
 ### webrtc-and-media-regressions
 

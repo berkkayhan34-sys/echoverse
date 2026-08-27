@@ -27,6 +27,8 @@ describe("JSON locale catalogs", () => {
   it("selects deterministically, falls back safely, and preserves Unicode", () => {
     expect(supportedLocales).toEqual(["en", "tr"]);
     expect(resolveLocale("tr-TR")).toBe("tr");
+    expect(resolveLocale("tr_TR")).toBe("tr");
+    expect(resolveLocale("trick")).toBe("en");
     expect(resolveLocale("ja-JP")).toBe("en");
     expect(createTranslator("tr")("auth.login")).toBe("Giriş yap");
     expect(createTranslator("en")("unknown.key")).toBe("[unknown.key]");

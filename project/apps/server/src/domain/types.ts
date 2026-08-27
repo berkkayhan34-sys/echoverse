@@ -40,6 +40,14 @@ export type SpotifyPartyState = {
   updatedAt?: number;
 };
 
+export type CallSession = {
+  callId: string;
+  callerAccountId: string;
+  callerSocketId: string;
+  targetAccountId: string;
+  targetSocketId: string;
+};
+
 export type StoredDm = {
   id: string;
   senderId: string;

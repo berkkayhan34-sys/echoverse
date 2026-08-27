@@ -28,7 +28,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           <button onClick={() => window.location.reload()}>{t("fatal.reload")}</button>
           <details>
             <summary>{t("fatal.details")}</summary>
-            <pre>{this.state.error.message}</pre>
+            <pre>{t("fatal.detailsUnavailable")}</pre>
           </details>
         </div>
       </div>

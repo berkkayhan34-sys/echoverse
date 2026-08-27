@@ -1,6 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { createTranslator, formatLocaleDate, resolveLocale } from "@echoverse/contracts";
+import { createTranslator, formatLocaleDate } from "@echoverse/contracts";
+import {
+  appendDmMessage,
+  applyDmReaction,
+  clearStoredUsername,
+  createAuthRequest,
+  createScreenVideoConstraints,
+  createSocketAuth,
+  deleteDmMessage,
+  getLobbyMemberTransition,
+  readClientLocale,
+  readStoredUsername,
+  resolveClientLocale,
+  isLocalAudioEnabled,
+  updateDmMessage,
+  updateFriendPresence,
+  updateTypingState,
+  writeClientLocale,
+  writeStoredUsername
+} from "@echoverse/client-core";
+import { AuthForm, LocaleSelect } from "@echoverse/shared-ui";
 import type {
   Account,
   ChatMessage,
@@ -79,14 +99,14 @@ function _tuneEchoVerseScreenTrack(track: MediaStreamTrack) {
 export default function App() {
   const [serverUrl, setServerUrl] = useState("");
   const [locale, setLocale] = useState<Locale>(() =>
-    resolveLocale(localStorage.getItem("echoverse_locale") || navigator.language)
+    readClientLocale(localStorage, navigator.language)
   );
   const t = useMemo(() => createTranslator(locale), [locale]);
   const translatorRef = useRef(t);
   const [spotifyConfigured, setSpotifyConfigured] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
   const authSessionRef = useRef<DesktopAuthSession | null>(null);
-  const [username, setUsername] = useState(() => localStorage.getItem("echoverse_username") || "");
+  const [username, setUsername] = useState(() => readStoredUsername(localStorage));
   const [account, setAccount] = useState<Account | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -201,7 +221,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = locale;
-    localStorage.setItem("echoverse_locale", locale);
+    writeClientLocale(localStorage, locale);
     void window.echoverse?.setLocale?.(locale);
   }, [locale]);
 
@@ -210,7 +230,7 @@ export default function App() {
   }, [t]);
 
   function changeLocale(nextLocale: string) {
-    setLocale(resolveLocale(nextLocale));
+    setLocale(resolveClientLocale(nextLocale));
   }
 
   const localStream = useRef<MediaStream | null>(null);
@@ -436,7 +456,7 @@ export default function App() {
     const s = io(serverUrl, {
       transports: ["websocket", "polling"],
       reconnection: true,
-      auth: { protocolVersion: 2, client: "desktop", locale }
+      auth: createSocketAuth(locale, "desktop")
     });
 
     setSocket(s);
@@ -467,7 +487,7 @@ export default function App() {
             };
             await window.echoverse?.authSession?.set?.(nextSession);
             authSessionRef.current = nextSession;
-            localStorage.setItem("echoverse_username", result.account.username);
+            writeStoredUsername(localStorage, result.account.username);
             setUsername(result.account.username);
             setAccount(result.account);
             setIdentified(true);
@@ -508,34 +528,21 @@ export default function App() {
       loadFriends(s);
     });
     s.on("presence:changed", ({ accountId, status }: any) => {
-      setFriends((prev) => prev.map((f) => (f.id === accountId ? { ...f, status } : f)));
+      setFriends((prev) => updateFriendPresence(prev, accountId, status));
     });
     s.on("dm:typing", ({ accountId, typing }: any) => {
-      setDmTyping((prev) => ({ ...prev, [accountId]: !!typing }));
+      setDmTyping((prev) => updateTypingState(prev, accountId, !!typing));
     });
     s.on("dm:reaction", ({ messageId, reactions }: any) => {
-      setDmMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m)));
+      setDmMessages((prev) => applyDmReaction(prev, messageId, reactions));
     });
 
     s.on("dm:updated", (message: DmMessage) => {
-      setDmMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
+      setDmMessages((prev) => updateDmMessage(prev, message));
     });
 
     s.on("dm:deleted", ({ messageId, deletedAt }: any) => {
-      setDmMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? {
-                ...m,
-                body: "",
-                deletedAt,
-                attachmentName: null,
-                attachmentMime: null,
-                attachmentData: null
-              }
-            : m
-        )
-      );
+      setDmMessages((prev) => deleteDmMessage(prev, messageId, deletedAt));
     });
 
     s.on("call:missed", () => {
@@ -567,10 +574,7 @@ export default function App() {
         (msg.senderId === currentFriend.id || msg.recipientId === currentFriend.id);
 
       if (isOpenConversation) {
-        setDmMessages((prev) => {
-          if (prev.some((existing) => existing.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        setDmMessages((prev) => appendDmMessage(prev, msg));
 
         if (currentFriend) {
           setUnreadDm((prev) => ({ ...prev, [currentFriend.id]: 0 }));
@@ -667,20 +671,12 @@ export default function App() {
     s.on("voice:lobby-state", async ({ members }: { members: PeerInfo[] }) => {
       const next = Array.isArray(members) ? members : [];
       const previous = lobbyMembersRef.current;
-      const previousIds = new Set(previous.map((member) => member.socketId));
-      const nextIds = new Set(next.map((member) => member.socketId));
       const selfId = s.id;
+      const transition = getLobbyMemberTransition(previous, next, selfId, reconnectingRef.current);
 
-      if (lobbyStateReadyRef.current && !reconnectingRef.current) {
-        const joinedSomeone = next.some(
-          (member) => member.socketId !== selfId && !previousIds.has(member.socketId)
-        );
-        const leftSomeone = previous.some(
-          (member) => member.socketId !== selfId && !nextIds.has(member.socketId)
-        );
-
-        if (joinedSomeone) playLobbyTone("join");
-        else if (leftSomeone) playLobbyTone("leave");
+      if (lobbyStateReadyRef.current) {
+        if (transition.joinedSomeone) playLobbyTone("join");
+        else if (transition.leftSomeone) playLobbyTone("leave");
       }
 
       lobbyMembersRef.current = next;
@@ -697,6 +693,7 @@ export default function App() {
       }
 
       // Remove ghost peers that are not actually in the lobby anymore.
+      const nextIds = new Set(transition.memberSocketIds);
       for (const peerId of Array.from(pcs.current.keys())) {
         if (peerId !== selfId && !nextIds.has(peerId)) removePeer(peerId);
       }
@@ -1135,7 +1132,7 @@ export default function App() {
     });
 
     localStream.current?.getAudioTracks().forEach((track) => {
-      track.enabled = next ? false : !muted && !pushToTalk;
+      track.enabled = isLocalAudioEnabled(muted, next, pushToTalk, false);
     });
   }
 
@@ -1744,21 +1741,9 @@ export default function App() {
     setAuthBusy(true);
     setError("");
 
-    const event = authMode === "register" ? "auth:register" : "auth:login";
+    const authRequest = createAuthRequest(authMode, email, password, authUsername.trim());
 
-    const payload =
-      authMode === "register"
-        ? {
-            email,
-            username: authUsername.trim(),
-            password
-          }
-        : {
-            email,
-            password
-          };
-
-    socket.emit(event, payload, async (result: any) => {
+    socket.emit(authRequest.event, authRequest.payload, async (result: any) => {
       setAuthBusy(false);
 
       if (!result?.ok) {
@@ -1782,7 +1767,7 @@ export default function App() {
         return;
       }
       authSessionRef.current = nextSession;
-      localStorage.setItem("echoverse_username", result.account.username);
+      writeStoredUsername(localStorage, result.account.username);
 
       setAccount(result.account);
       setUsername(result.account.username);
@@ -1809,7 +1794,7 @@ export default function App() {
     await window.echoverse?.authSession?.clear?.();
     authSessionRef.current = null;
     socket?.disconnect();
-    localStorage.removeItem("echoverse_username");
+    clearStoredUsername(localStorage);
     setAccount(null);
     setIdentified(false);
     setJoined(false);
@@ -2039,7 +2024,7 @@ export default function App() {
     const next = !muted;
 
     stream.getAudioTracks().forEach((track) => {
-      track.enabled = !next && !deafened && !pushToTalk;
+      track.enabled = isLocalAudioEnabled(next, deafened, pushToTalk, false);
     });
 
     setMuted(next);
@@ -2236,9 +2221,7 @@ export default function App() {
 
       const display = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          width: { ideal: screenQuality === "1080" ? 1920 : 1280 },
-          height: { ideal: screenQuality === "1080" ? 1080 : 720 },
-          frameRate: { ideal: screenFps, max: screenFps }
+          ...createScreenVideoConstraints(screenQuality, screenFps)
         },
         audio: false
       });
@@ -2291,66 +2274,35 @@ export default function App() {
             {connected ? t("app.online") : t("app.connecting")}
           </div>
 
-          <div className="auth-tabs">
-            <button
-              className={authMode === "login" ? "active" : ""}
-              onClick={() => {
-                setAuthMode("login");
-                setError("");
-              }}
-            >
-              {t("auth.login")}
-            </button>
-
-            <button
-              className={authMode === "register" ? "active" : ""}
-              onClick={() => {
-                setAuthMode("register");
-                setError("");
-              }}
-            >
-              {t("auth.register")}
-            </button>
-          </div>
-
-          {authMode === "register" && (
-            <>
-              <label>{t("auth.username")}</label>
-              <input
-                value={authUsername}
-                maxLength={28}
-                onChange={(e) => setAuthUsername(e.target.value)}
-                placeholder={t("auth.usernamePlaceholder")}
-              />
-            </>
-          )}
-
-          <label>{t("auth.email")}</label>
-          <input
-            type="email"
-            value={authEmail}
-            onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder={t("auth.emailPlaceholder")}
-          />
-
-          <label>{t("auth.password")}</label>
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") authSubmit();
+          <AuthForm
+            mode={authMode}
+            labels={{
+              login: t("auth.login"),
+              register: t("auth.register"),
+              username: t("auth.username"),
+              usernamePlaceholder: t("auth.usernamePlaceholder"),
+              email: t("auth.email"),
+              emailPlaceholder: t("auth.emailPlaceholder"),
+              password: t("auth.password"),
+              passwordPlaceholder: t("auth.passwordPlaceholder"),
+              wait: t("common.wait"),
+              submitLogin: t("auth.submitLogin"),
+              submitRegister: t("auth.submitRegister")
             }}
-            placeholder={t("auth.passwordPlaceholder")}
+            connected={connected}
+            busy={authBusy}
+            username={authUsername}
+            email={authEmail}
+            password={authPassword}
+            onModeChange={(mode) => {
+              setAuthMode(mode);
+              setError("");
+            }}
+            onUsernameChange={setAuthUsername}
+            onEmailChange={setAuthEmail}
+            onPasswordChange={setAuthPassword}
+            onSubmit={authSubmit}
           />
-
-          <button className="primary" onClick={authSubmit} disabled={!connected || authBusy}>
-            {authBusy
-              ? t("common.wait")
-              : authMode === "register"
-                ? t("auth.submitRegister")
-                : t("auth.submitLogin")}
-          </button>
 
           <div className="v16-qol">
             <button onClick={checkForUpdates}>{t("update.checking")}</button>
@@ -2360,13 +2312,15 @@ export default function App() {
             <button onClick={testMicrophone}>{t("media.testMicrophone")}</button>
             <span>{t("media.level", { level: micTestLevel })}</span>
             <button onClick={testOutput}>{t("media.testOutput")}</button>
-            <label>
-              {t("locale.select")}
-              <select value={locale} onChange={(e) => changeLocale(e.target.value)}>
-                <option value="en">{t("locale.english")}</option>
-                <option value="tr">{t("locale.turkish")}</option>
-              </select>
-            </label>
+            <LocaleSelect
+              label={t("locale.select")}
+              value={locale}
+              options={[
+                { value: "en", label: t("locale.english") },
+                { value: "tr", label: t("locale.turkish") }
+              ]}
+              onChange={changeLocale}
+            />
             <select value={myStatus} onChange={(e) => setPresenceStatus(e.target.value as any)}>
               <option value="online">{t("status.online")}</option>
               <option value="idle">{t("status.idle")}</option>

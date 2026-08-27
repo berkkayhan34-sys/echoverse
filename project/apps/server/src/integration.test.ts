@@ -21,6 +21,20 @@ function emitWithAck(socket: Socket, event: string, payload: unknown): Promise<A
   });
 }
 
+function waitForEvent<T>(socket: Socket, event: string, timeoutMs = 150): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      socket.off(event, onEvent);
+      resolve(null);
+    }, timeoutMs);
+    const onEvent = (payload: T) => {
+      clearTimeout(timer);
+      resolve(payload);
+    };
+    socket.once(event, onEvent);
+  });
+}
+
 function connectClient(protocolVersion = 2, client = "desktop", locale?: string) {
   const socket = createClient(baseUrl, {
     auth: { protocolVersion, client, ...(locale ? { locale } : {}) },
@@ -188,6 +202,25 @@ describe("server HTTP and Socket.IO boundaries", () => {
     const client = await connectClient(2, "web", "en");
     const socketBody = await emitWithAck(client, "friends:list", null);
     expect(socketBody).toEqual({ ok: false, error: "A session is required." });
+
+    const unsupportedLocaleResponse = await fetch(`${baseUrl}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-EchoVerse-Locale": "trick"
+      },
+      body: JSON.stringify({ email: "missing@example.test", password: "secret123" })
+    });
+    const unsupportedLocaleBody = (await unsupportedLocaleResponse.json()) as AckResponse;
+    expect(unsupportedLocaleBody).toEqual(httpBody);
+
+    const unsupportedLocaleClient = await connectClient(2, "web", "trick");
+    const unsupportedLocaleSocketBody = await emitWithAck(
+      unsupportedLocaleClient,
+      "friends:list",
+      null
+    );
+    expect(unsupportedLocaleSocketBody).toEqual(socketBody);
   });
 
   it("redacts rejected origins and malformed JSON", async () => {
@@ -367,6 +400,81 @@ describe("server HTTP and Socket.IO boundaries", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("limits guild membership, presence, call control, and signaling to authorized peers", async () => {
+    const owner = await registerClient(await connectClient(), "gowner");
+    const member = await registerClient(await connectClient(), "gmember");
+    const outsider = await registerClient(await connectClient(), "goutside");
+
+    const created = await emitWithAck(owner.socket, "guild:create", { name: "Private Guild" });
+    expect(created.ok).toBe(true);
+    const guild = created.guild as { id: string };
+
+    expect(await emitWithAck(member.socket, "join-room", { guildId: guild.id })).toEqual({
+      ok: false,
+      error: tr("server.guildMembershipRequired")
+    });
+    expect(await emitWithAck(member.socket, "guild:join-code", { code: guild.id })).toEqual({
+      ok: true,
+      guild: expect.objectContaining({ id: guild.id })
+    });
+    expect(await emitWithAck(member.socket, "join-room", { guildId: guild.id })).toEqual({
+      ok: true,
+      guildId: guild.id
+    });
+
+    await emitWithAck(outsider.socket, "presence:set", { status: "dnd" });
+    const hiddenPresence = await emitWithAck(owner.socket, "presence:get", {
+      accountIds: [outsider.accountId]
+    });
+    expect(hiddenPresence).toEqual({ ok: true, presence: { [outsider.accountId]: "offline" } });
+
+    await establishFriendship(owner, member);
+    const started = await emitWithAck(owner.socket, "call:start", { friendId: member.accountId });
+    expect(started.ok).toBe(true);
+    const callId = String(started.callId);
+
+    const answered = waitForEvent<AckResponse>(owner.socket, "call:answered");
+    outsider.socket.emit("call:answer", {
+      callId,
+      toSocketId: owner.socket.id,
+      accept: true
+    });
+    member.socket.emit("call:answer", {
+      callId,
+      toSocketId: owner.socket.id,
+      accept: true
+    });
+    await expect(answered).resolves.toMatchObject({ accept: true });
+
+    const unauthorizedSignal = waitForEvent(member.socket, "webrtc-offer");
+    outsider.socket.emit("webrtc-offer", {
+      to: member.socket.id,
+      sdp: { type: "offer", sdp: "v=0 unauthorized" }
+    });
+    await expect(unauthorizedSignal).resolves.toBeNull();
+
+    const authorizedSignal = waitForEvent<{ from: string; sdp: { type: string } }>(
+      member.socket,
+      "webrtc-offer"
+    );
+    owner.socket.emit("webrtc-offer", {
+      to: member.socket.id,
+      sdp: { type: "offer", sdp: "v=0 authorized" }
+    });
+    await expect(authorizedSignal).resolves.toMatchObject({
+      from: owner.socket.id,
+      sdp: { type: "offer" }
+    });
+
+    const unauthorizedEnd = waitForEvent(owner.socket, "call:ended");
+    outsider.socket.emit("call:end", { callId, toSocketId: owner.socket.id });
+    await expect(unauthorizedEnd).resolves.toBeNull();
+
+    const ended = waitForEvent<AckResponse>(owner.socket, "call:ended");
+    member.socket.emit("call:end", { callId, toSocketId: owner.socket.id });
+    await expect(ended).resolves.toMatchObject({ callId });
   });
 
   it("enforces the per-socket authentication rate limit", async () => {

@@ -33,5 +33,7 @@ describe("updater boundary validation", () => {
   it("provides a localized, stable non-sensitive failure message", () => {
     expect(safeUpdaterFailure()).toBe("Güncelleme kontrolü başarısız.");
     expect(safeUpdaterFailure("en")).toBe("Update check failed.");
+    expect(safeUpdaterFailure("tr-TR")).toBe("Güncelleme kontrolü başarısız.");
+    expect(safeUpdaterFailure("trick")).toBe("Update check failed.");
   });
 });

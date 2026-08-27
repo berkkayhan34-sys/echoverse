@@ -32,9 +32,16 @@ function safeUpdatePercent(value) {
   return Math.round(value);
 }
 
+function resolveCatalogLocale(value) {
+  if (typeof value !== "string") return "en";
+  const language = value.trim().toLowerCase().split(/[-_]/u, 1)[0];
+  return language === "tr" ? "tr" : "en";
+}
+
 function safeUpdaterFailure(locale = "tr") {
-  const selected = locale === "tr" ? loadCatalog("tr") : loadCatalog("en");
-  return selected["update.failed"] || "updater_operation_failed";
+  const selected = loadCatalog(resolveCatalogLocale(locale));
+  const english = loadCatalog("en");
+  return selected["update.failed"] || english["update.failed"] || "[update.failed]";
 }
 
 module.exports = { safeUpdateVersion, safeUpdatePercent, safeUpdaterFailure };
