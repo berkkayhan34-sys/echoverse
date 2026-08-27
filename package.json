@@ -10,7 +10,7 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "test:db": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && vitest run apps/server/src/persistence/database.dbtest.ts --reporter=json --outputFile=test-results/database.json",
+    "test:db": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && vitest run --config vitest.db.config.ts apps/server/src/persistence/database.dbtest.ts --reporter=json --outputFile=test-results/database.json",
     "coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
