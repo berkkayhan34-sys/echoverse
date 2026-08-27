@@ -12,9 +12,10 @@ be mistaken for complete product validation.
 ## Current baseline
 
 The v2 workspace now has Vitest contract/configuration tests, an in-memory
-HTTP/Socket.IO boundary suite, and a Playwright smoke suite. The quality
-workflow installs Chromium and runs the browser suite in CI. Database-backed
-integration, feature-level authorization/IDOR depth, WebRTC and installer
+HTTP/Socket.IO security boundary suite, PostgreSQL migration/relationship
+tests, and a Playwright smoke suite. The quality workflow installs Chromium,
+runs the browser suite, and publishes machine-readable evidence in CI.
+Deeper feature-level authorization/IDOR coverage, WebRTC, and installer
 coverage remain release-blocking work tracked on the roadmap.
 
 The workspace now exposes deterministic `format:check`, `lint`,
@@ -25,12 +26,14 @@ and the V8 coverage provider are exact-pinned in the root package manifest;
 `requirements-dev.txt` exact-pins the local REUSE CLI. CI runs the immutable
 REUSE and Gitleaks actions after a root-workspace `npm ci`.
 
-These gates establish the static and unit/coverage tooling baseline. Shared
-contract, configuration, validator, and client adapter fixtures are covered by
-`QUAL-002`; feature-level authorization, database integration, WebRTC,
-artifact checksums, installer launch, rollback evidence, and other
-release-blocking layers remain tracked by `QUAL-003` and later children. No
-current check may be described as covering one of those missing layers.
+These gates establish the static, unit/coverage, server integration, and CI
+evidence baseline. Shared contract, configuration, validator, and client
+adapter fixtures are covered by `QUAL-002`; HTTP/Socket.IO security cases,
+database migration checks, call timeout behavior, and the browser smoke gate
+are covered by `QUAL-003`. WebRTC depth, artifact checksums, installer launch,
+rollback evidence, and other release-blocking layers remain tracked by later
+children. No current check may be described as covering one of those missing
+layers.
 
 ## Required test layers
 

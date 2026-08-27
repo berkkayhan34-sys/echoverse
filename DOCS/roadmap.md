@@ -163,11 +163,11 @@ selectors, adapters, and configuration failures.
 ```yaml
 id: QUAL-003
 type: ci_quality_gate
-status: in_progress
-evidence: null
+status: complete
+evidence: evidence/QUAL-003.md
 ```
 
-[-] Add server HTTP/Socket.IO integration, authorization/IDOR, rate-limit,
+[x] Add server HTTP/Socket.IO integration, authorization/IDOR, rate-limit,
 timeout, origin/security-header, secret-negative, and database test jobs. Run
 the Playwright E2E suite in CI, publish concise command/runtime/result/artifact
 evidence, and make every release-blocking failure visible rather than skipped.

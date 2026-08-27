@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { io as createClient, type Socket } from "socket.io-client";
 import { safeErrorResponseSchema } from "@echoverse/contracts";
 import { httpServer } from "./index.js";
@@ -12,6 +12,7 @@ type AckResponse = { ok: boolean; error?: string; [key: string]: unknown };
 
 let baseUrl = "";
 const clients: Socket[] = [];
+let fixtureSequence = 0;
 
 function emitWithAck(socket: Socket, event: string, payload: unknown): Promise<AckResponse> {
   return new Promise((resolve) => {
@@ -30,6 +31,35 @@ function connectClient(protocolVersion = 2) {
     socket.once("connect", () => resolve(socket));
     socket.once("connect_error", reject);
   });
+}
+
+async function registerClient(socket: Socket, prefix: string) {
+  const suffix = `${Date.now()}-${fixtureSequence++}`;
+  const result = await emitWithAck(socket, "auth:register", {
+    email: `${prefix}-${suffix}@example.test`,
+    username: `${prefix}${suffix}`,
+    password: "secret123"
+  });
+  expect(result.ok).toBe(true);
+  const account = result.account as { id: string };
+  return { accountId: account.id, socket };
+}
+
+async function establishFriendship(
+  requester: { accountId: string; socket: Socket },
+  addressee: { accountId: string; socket: Socket }
+) {
+  expect(
+    await emitWithAck(requester.socket, "friends:request", { targetId: addressee.accountId })
+  ).toEqual({ ok: true });
+
+  const state = await emitWithAck(addressee.socket, "friends:list", null);
+  expect(state.ok).toBe(true);
+  const friendshipId = (state.incoming as Array<{ friendshipId?: string }>)[0]?.friendshipId;
+  expect(friendshipId).toBeTruthy();
+  expect(
+    await emitWithAck(addressee.socket, "friends:respond", { friendshipId, accept: true })
+  ).toEqual({ ok: true });
 }
 
 describe("server HTTP and Socket.IO boundaries", () => {
@@ -83,6 +113,19 @@ describe("server HTTP and Socket.IO boundaries", () => {
     expect(safeErrorResponseSchema.safeParse(malformedBody).success).toBe(true);
   });
 
+  it("rejects oversized HTTP JSON bodies with a safe error", async () => {
+    const response = await fetch(`${baseUrl}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: "x".repeat(1_100_000) })
+    });
+    const body = (await response.json()) as unknown;
+
+    expect(response.status).toBe(400);
+    expect(safeErrorResponseSchema.safeParse(body).success).toBe(true);
+    expect(JSON.stringify(body)).not.toMatch(/stack|payload|x{20}/i);
+  });
+
   it("rejects unsupported Socket.IO protocol versions", async () => {
     await expect(connectClient(1)).rejects.toThrow(/Unsupported protocol version/);
   });
@@ -132,6 +175,55 @@ describe("server HTTP and Socket.IO boundaries", () => {
       body: "private message"
     });
     expect(response).toEqual({ ok: false, error: "Arkadaş değilsiniz." });
+
+    const history = await emitWithAck(sender, "dm:history", { friendId: recipientAccount.id });
+    expect(history).toEqual({ ok: false, error: "Arkadaş değilsiniz." });
+  });
+
+  it("rejects oversized direct-message attachments at the socket boundary", async () => {
+    const sender = await registerClient(await connectClient(), "att-sender");
+    const recipient = await registerClient(await connectClient(), "att-target");
+    await establishFriendship(sender, recipient);
+
+    const response = await emitWithAck(sender.socket, "dm:send", {
+      friendId: recipient.accountId,
+      body: "",
+      attachment: {
+        name: "payload.txt",
+        mime: "text/plain",
+        data: `data:text/plain;base64,${"A".repeat(5_700_001)}`
+      }
+    });
+
+    expect(response).toEqual({ ok: false, error: "Dosya verisi geçersiz." });
+  });
+
+  it("expires unanswered calls and notifies both participants", async () => {
+    const caller = await registerClient(await connectClient(), "call-caller");
+    const target = await registerClient(await connectClient(), "call-target");
+    await establishFriendship(caller, target);
+
+    const callerAnswer = new Promise<AckResponse>((resolve) => {
+      caller.socket.once("call:answered", resolve);
+    });
+    const targetMissed = new Promise<AckResponse>((resolve) => {
+      target.socket.once("call:missed", resolve);
+    });
+
+    vi.useFakeTimers();
+    try {
+      const started = await emitWithAck(caller.socket, "call:start", {
+        friendId: target.accountId
+      });
+      expect(started.ok).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(35_000);
+
+      await expect(callerAnswer).resolves.toMatchObject({ accept: false, reason: "timeout" });
+      await expect(targetMissed).resolves.toMatchObject({ fromAccountId: caller.accountId });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("enforces the per-socket authentication rate limit", async () => {
