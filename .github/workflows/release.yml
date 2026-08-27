@@ -16,8 +16,8 @@ jobs:
     name: Windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Read and validate version
@@ -51,7 +51,7 @@ jobs:
           $escaped = [regex]::Escape($version)
           if ($content -notmatch "version:\s*$escaped") { throw "Windows metadata version mismatch" }
           if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") { throw "Windows metadata filename mismatch" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-release
           path: |
@@ -64,8 +64,8 @@ jobs:
     name: macOS Intel
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Read and validate version
@@ -94,7 +94,7 @@ jobs:
           test -f "tmp/release/desktop/EchoVerse-$V-x64.dmg.blockmap"
           test -f "tmp/release/desktop/EchoVerse-$V-x64.zip"
           test -f "tmp/release/desktop/EchoVerse-$V-x64.zip.blockmap"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-intel-release
           path: |
@@ -108,8 +108,8 @@ jobs:
     name: macOS Apple Silicon
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Read and validate version
@@ -138,7 +138,7 @@ jobs:
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.dmg.blockmap"
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.zip"
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.zip.blockmap"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-arm64-release
           path: |
@@ -153,19 +153,19 @@ jobs:
     needs: [windows, mac-intel, mac-arm64]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: windows-release
           path: release/windows
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mac-intel-release
           path: release/mac-intel
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mac-arm64-release
           path: release/mac-arm64
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: source
       - name: Read version

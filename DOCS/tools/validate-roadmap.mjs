@@ -326,7 +326,7 @@ function validateToolingPolicy() {
       "npm run test:e2e",
       "npm run test:db",
       "playwright install --with-deps chromium",
-      "actions/upload-artifact@v4"
+      "actions/upload-artifact@v7"
     ];
     for (const step of requiredQualitySteps) {
       if (!qualityWorkflow.includes(step)) {

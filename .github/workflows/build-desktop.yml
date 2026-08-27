@@ -23,7 +23,7 @@ jobs:
       run:
         working-directory: project/apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate canonical version
         shell: pwsh
         working-directory: .
@@ -32,13 +32,13 @@ jobs:
           $desktopVersion = (Get-Content "project/apps/desktop/package.json" -Raw | ConvertFrom-Json).version
           if (-not $version) { throw "VERSION is empty" }
           if ($desktopVersion -ne $version) { throw "desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm ci
         working-directory: .
       - run: npm run dist:win
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-Windows
           path: tmp/release/desktop/*.exe
@@ -50,7 +50,7 @@ jobs:
       run:
         working-directory: project/apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate canonical version
         shell: bash
         working-directory: .
@@ -59,7 +59,7 @@ jobs:
           DESKTOP_VERSION=$(node -p "require('./project/apps/desktop/package.json').version")
           test -n "$VERSION"
           test "$DESKTOP_VERSION" = "$VERSION"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm ci
@@ -67,7 +67,7 @@ jobs:
       - env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:mac:x64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Intel
           path: tmp/release/desktop/*.{dmg,zip}
@@ -79,7 +79,7 @@ jobs:
       run:
         working-directory: project/apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate canonical version
         shell: bash
         working-directory: .
@@ -88,7 +88,7 @@ jobs:
           DESKTOP_VERSION=$(node -p "require('./project/apps/desktop/package.json').version")
           test -n "$VERSION"
           test "$DESKTOP_VERSION" = "$VERSION"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm ci
@@ -96,7 +96,7 @@ jobs:
       - env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:mac:arm64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Apple-Silicon
           path: tmp/release/desktop/*.{dmg,zip}
