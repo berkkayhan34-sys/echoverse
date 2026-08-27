@@ -69,8 +69,8 @@ jobs:
             if (!(Test-Path $file)) { throw "Required branding/sound asset missing: $file" }
           }
 
-          $pkg = Get-Content "project/apps/desktop/package.json" -Raw
-          if ($pkg -notmatch '"to":\s*"branding"') { throw "Packaged branding resources are not configured" }
+          $builderConfig = Get-Content "project/apps/desktop/electron-builder.config.cjs" -Raw
+          if ($builderConfig -notmatch 'to:\s*"branding"') { throw "Packaged branding resources are not configured" }
 
           $app = Get-Content "project/apps/desktop/src/App.tsx" -Raw
           if ($app -match 'src="/echoverse-wordmark.png"') { throw "Absolute wordmark URL would break under file:// packaging" }
