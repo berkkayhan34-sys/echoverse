@@ -44,7 +44,29 @@ this policy requires an ADR with a rollback path.
 For a local server, use `http://localhost:3001` (or the port configured by the
 server) and start the server before starting web/desktop. For hosted use, use
 the HTTPS endpoint supplied by the approved deployment and verify CORS, TLS,
-secret configuration, health, and logs before sharing an installer.
+secret configuration, health, and logs before sharing an installer. Local web
+cookies are intentionally non-secure for the HTTP development origin; hosted
+deployments must set `WEB_COOKIE_SECURE=true` and use
+`WEB_COOKIE_SAMESITE=none` when the approved web origin is cross-site. Set
+`TRUST_PROXY=true` only when the service is behind a trusted TLS-terminating
+proxy.
+
+Persistence is selected explicitly: set `SQLITE_PATH=./work/echoverse.sqlite`
+for a local file-backed database, or set `DATABASE_URL` for PostgreSQL. Do not
+set both. SQLite and PostgreSQL use the same migration IDs and table/column
+contract; `npm test` covers SQLite migration, cascade, Unicode, backup, and
+restore behavior, while `npm run test:db` covers the PostgreSQL service.
+
+## Localization workflow
+
+Application-owned text is cataloged in `packages/contracts/src/i18n.ts` and
+consumed through the shared translator in both renderers. Add English and
+Turkish values together, preserve interpolation placeholders exactly, and
+use `resolveLocale` rather than comparing language strings directly. Keep
+protocol names, SQL/CSS identifiers, URLs, and third-party literals out of
+the catalog. Run `npm test`, `npm run typecheck`, and `npm run build` after
+catalog changes; the contract tests cover key parity, fallback, Unicode, and
+locale-aware date/number formatting.
 
 ## Hosted backend and installer
 

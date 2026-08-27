@@ -20,9 +20,9 @@ function emitWithAck(socket: Socket, event: string, payload: unknown): Promise<A
   });
 }
 
-function connectClient(protocolVersion = 2) {
+function connectClient(protocolVersion = 2, client = "desktop") {
   const socket = createClient(baseUrl, {
-    auth: { protocolVersion },
+    auth: { protocolVersion, client },
     transports: ["websocket"],
     reconnection: false
   });
@@ -31,6 +31,13 @@ function connectClient(protocolVersion = 2) {
     socket.once("connect", () => resolve(socket));
     socket.once("connect_error", reject);
   });
+}
+
+function cookieHeader(response: Response) {
+  const raw = response.headers.get("set-cookie") || "";
+  return [...raw.matchAll(/(echoverse_(?:access|refresh))=([^;]*)/g)]
+    .map((match) => `${match[1]}=${match[2]}`)
+    .join("; ");
 }
 
 async function registerClient(socket: Socket, prefix: string) {
@@ -94,6 +101,75 @@ describe("server HTTP and Socket.IO boundaries", () => {
     expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN");
   });
 
+  it("keeps web credentials in HTTP-only cookies and rotates refresh credentials", async () => {
+    const suffix = `${Date.now()}-${fixtureSequence++}`;
+    const registration = await fetch(`${baseUrl}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://localhost:5173",
+        "X-EchoVerse-Client": "web"
+      },
+      body: JSON.stringify({
+        email: `cookie-${suffix}@example.test`,
+        username: `cookie${suffix}`,
+        password: "secret123"
+      })
+    });
+    const body = (await registration.json()) as Record<string, unknown>;
+    const cookies = cookieHeader(registration);
+
+    expect(registration.status).toBe(200);
+    expect(body).toHaveProperty("account");
+    expect(body).not.toHaveProperty("accessToken");
+    expect(body).not.toHaveProperty("refreshToken");
+    expect(cookies).toMatch(/echoverse_access=[^;]+/);
+    expect(cookies).toMatch(/echoverse_refresh=[^;]+/);
+    expect(registration.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(registration.headers.get("set-cookie")).toContain("SameSite=Lax");
+
+    const session = await fetch(`${baseUrl}/auth/session`, {
+      headers: { Cookie: cookies, Origin: "http://localhost:5173" }
+    });
+    expect(session.status).toBe(200);
+
+    const refreshed = await fetch(`${baseUrl}/auth/refresh`, {
+      method: "POST",
+      headers: { Cookie: cookies, Origin: "http://localhost:5173" }
+    });
+    const rotatedCookies = cookieHeader(refreshed);
+    expect(refreshed.status).toBe(200);
+    expect(rotatedCookies).not.toBe(cookies);
+
+    const replay = await fetch(`${baseUrl}/auth/refresh`, {
+      method: "POST",
+      headers: { Cookie: cookies, Origin: "http://localhost:5173" }
+    });
+    expect(replay.status).toBe(401);
+
+    const logout = await fetch(`${baseUrl}/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: rotatedCookies, Origin: "http://localhost:5173" }
+    });
+    expect(logout.status).toBe(200);
+    const afterLogout = await fetch(`${baseUrl}/auth/session`, {
+      headers: { Cookie: rotatedCookies, Origin: "http://localhost:5173" }
+    });
+    expect(afterLogout.status).toBe(401);
+  });
+
+  it("does not expose socket login as a browser credential transport", async () => {
+    const client = await connectClient(2, "web");
+    const response = await emitWithAck(client, "auth:login", {
+      email: "nobody@example.test",
+      password: "secret123"
+    });
+    expect(response).toEqual({
+      ok: false,
+      error: "Web girişleri HTTP oturum uç noktasını kullanmalı."
+    });
+  });
+
   it("redacts rejected origins and malformed JSON", async () => {
     const rejectedOrigin = await fetch(`${baseUrl}/health`, {
       headers: { Origin: "https://untrusted.example" }
@@ -146,10 +222,21 @@ describe("server HTTP and Socket.IO boundaries", () => {
   });
 
   it("returns safe authorization errors for an unauthenticated socket", async () => {
-    const client = await connectClient();
+    const client = await connectClient(2, "web");
     const response = await emitWithAck(client, "friends:list", null);
     expect(safeErrorResponseSchema.safeParse(response).success).toBe(true);
     expect(response.error).toBe("Oturum gerekli.");
+  });
+
+  it("rejects malformed Socket.IO payloads before handlers run", async () => {
+    const client = await connectClient(2, "web");
+    const response = await emitWithAck(client, "friends:search", {
+      query: "valid",
+      unexpected: "field"
+    });
+
+    expect(response).toEqual({ ok: false, error: "Geçersiz istek." });
+    expect(safeErrorResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it("blocks cross-user direct-message access before persistence", async () => {
@@ -195,7 +282,7 @@ describe("server HTTP and Socket.IO boundaries", () => {
       }
     });
 
-    expect(response).toEqual({ ok: false, error: "Dosya verisi geçersiz." });
+    expect(response).toEqual({ ok: false, error: "Geçersiz istek." });
   });
 
   it("expires unanswered calls and notifies both participants", async () => {
@@ -230,12 +317,16 @@ describe("server HTTP and Socket.IO boundaries", () => {
     const client = await connectClient();
     const responses: AckResponse[] = [];
     for (let index = 0; index < 9; index += 1) {
-      responses.push(await emitWithAck(client, "auth:register", null));
+      responses.push(
+        await emitWithAck(client, "auth:register", {
+          email: `rate-${Date.now()}-${index}@example.test`,
+          username: `rate${Date.now()}${index}`,
+          password: "secret123"
+        })
+      );
     }
 
-    expect(
-      responses.slice(0, 8).every((response) => response.error === "Kayıt bilgileri geçersiz.")
-    ).toBe(true);
+    expect(responses.slice(0, 8).every((response) => response.ok === true)).toBe(true);
     expect(responses[8]).toMatchObject({ ok: false });
     expect(responses[8].error).toMatch(/Çok fazla deneme/);
   });

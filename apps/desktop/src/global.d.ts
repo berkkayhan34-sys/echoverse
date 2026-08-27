@@ -7,6 +7,19 @@ declare global {
         serverUrl: string;
         spotifyClientId?: string;
       }>;
+      authSession?: {
+        get: () => Promise<{
+          accessToken: string;
+          refreshToken: string;
+          account: { id: string; email: string; username: string; avatarData?: string | null };
+        } | null>;
+        set: (value: {
+          accessToken: string;
+          refreshToken: string;
+          account: { id: string; email: string; username: string; avatarData?: string | null };
+        }) => Promise<{ ok: boolean }>;
+        clear: () => Promise<{ ok: boolean }>;
+      };
       onUpdateStatus?: (callback: (status: string) => void) => (() => void) | void;
       onUpdateState?: (
         callback: (state: {

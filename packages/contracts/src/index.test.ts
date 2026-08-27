@@ -15,6 +15,7 @@ import {
   protocolReadySchema,
   protocolVersionSchema,
   safeErrorResponseSchema,
+  socketEventPayloadSchemas,
   supportedProtocolVersions,
   createEnvelope,
   registerCredentialsSchema,
@@ -55,6 +56,27 @@ describe("protocol contracts", () => {
   it("bounds attachment payloads", () => {
     expect(
       attachmentSchema.safeParse({ name: "x.txt", mime: "text/plain", data: "not-data" }).success
+    ).toBe(false);
+    expect(
+      attachmentSchema.safeParse({
+        name: "x.txt",
+        mime: "text/plain",
+        data: "data:text/plain;base64,SGVsbG8="
+      }).success
+    ).toBe(true);
+    expect(
+      attachmentSchema.safeParse({
+        name: "x.exe",
+        mime: "application/x-msdownload",
+        data: "data:application/x-msdownload;base64,SGVsbG8="
+      }).success
+    ).toBe(false);
+    expect(
+      attachmentSchema.safeParse({
+        name: "x.txt",
+        mime: "text/plain",
+        data: "data:image/png;base64,SGVsbG8="
+      }).success
     ).toBe(false);
     expect(attachmentMetadataSchema.safeParse({ name: "x.txt", mime: "text/plain" }).success).toBe(
       true
@@ -113,5 +135,62 @@ describe("protocol contracts", () => {
         sdp: { ...description.sdp, extra: true }
       }).success
     ).toBe(false);
+  });
+
+  it("strictly validates every Socket.IO event payload", () => {
+    const expectedEvents = [
+      "auth:register",
+      "auth:login",
+      "auth:resume",
+      "auth:logout",
+      "profile:set-avatar",
+      "identify",
+      "friends:search",
+      "friends:list",
+      "friends:request",
+      "friends:respond",
+      "friends:remove",
+      "friends:block",
+      "friends:unblock",
+      "dm:history",
+      "dm:send",
+      "dm:edit",
+      "dm:delete",
+      "call:start",
+      "call:answer",
+      "call:end",
+      "guild:create",
+      "guild:join-code",
+      "join-room",
+      "voice:sync-request",
+      "leave-room",
+      "chat-message",
+      "spotify:party-start",
+      "spotify:party-stop",
+      "spotify:sync",
+      "webrtc-offer",
+      "webrtc-answer",
+      "webrtc-ice",
+      "presence:set",
+      "presence:get",
+      "dm:typing",
+      "dm:read",
+      "dm:react"
+    ];
+
+    expect(Object.keys(socketEventPayloadSchemas).sort()).toEqual(expectedEvents.sort());
+    expect(
+      socketEventPayloadSchemas["friends:search"].safeParse({ query: "ok", extra: true }).success
+    ).toBe(false);
+    expect(
+      socketEventPayloadSchemas["dm:send"].safeParse({ friendId: "x", body: "x", attachment: null })
+        .success
+    ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["spotify:sync"].safeParse({
+        guildId: "guild",
+        state: { albumImage: "", timestamp: Date.now() }
+      }).success
+    ).toBe(true);
   });
 });

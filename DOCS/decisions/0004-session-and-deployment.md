@@ -29,3 +29,15 @@ This model limits browser token exposure while respecting Electron's native
 secure-storage boundary. It introduces lifecycle and revocation complexity that
 must be implemented and tested before the 2.0.0 cutover. A single deployment
 manifest prevents environment and secret configuration drift.
+
+## Implementation profile
+
+CODE-001 implements the decision with 15-minute access credentials, seven-day
+refresh credentials, server-side refresh-family tracking, and explicit HTTP
+cookie serialization (`SameSite=None` for the hosted cross-site origin).
+Browser auth uses `/auth/*` HTTP endpoints and never
+receives bearer credentials in the response. Desktop auth uses the Socket.IO
+desktop client channel and persists the returned pair only through Electron's
+`safeStorage`-backed main-process bridge. Active session state is currently
+process-local; restart invalidates sessions and durable multi-instance storage
+is deferred to the persistence roadmap.

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { createTranslator, formatLocaleDate, resolveLocale } from "@echoverse/contracts";
 import type {
   Account,
   ChatMessage,
@@ -9,9 +10,9 @@ import type {
   IncomingCall,
   PeerInfo,
   ScreenSource,
-  SpotifyState
+  SpotifyState,
+  Locale
 } from "@echoverse/contracts";
-import { clearSessionToken, readSessionToken, writeSessionToken } from "@echoverse/client-core";
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -20,8 +21,14 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 export default function App() {
   const [serverUrl, setServerUrl] = useState("");
+  const [locale, setLocale] = useState<Locale>(() =>
+    resolveLocale(localStorage.getItem("echoverse_locale") || navigator.language)
+  );
+  const t = useMemo(() => createTranslator(locale), [locale]);
+  const translatorRef = useRef(t);
   const [spotifyConfigured, setSpotifyConfigured] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const refreshingSessionRef = useRef(false);
   const [username, setUsername] = useState(() => localStorage.getItem("echoverse_username") || "");
   const [account, setAccount] = useState<Account | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -127,6 +134,19 @@ export default function App() {
   const [spotifyFollowing, setSpotifyFollowing] = useState(false);
   const [spotifyLeader, setSpotifyLeader] = useState(false);
   const [spotifyMessage, setSpotifyMessage] = useState("");
+
+  useEffect(() => {
+    translatorRef.current = t;
+  }, [t]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    localStorage.setItem("echoverse_locale", locale);
+  }, [locale]);
+
+  function changeLocale(nextLocale: string) {
+    setLocale(resolveLocale(nextLocale));
+  }
 
   const localStream = useRef<MediaStream | null>(null);
   const cameraTrack = useRef<MediaStreamTrack | null>(null);
@@ -320,57 +340,74 @@ export default function App() {
     const s = io(serverUrl, {
       transports: ["websocket", "polling"],
       reconnection: true,
+      withCredentials: true,
       auth: { protocolVersion: 2 }
     });
 
     setSocket(s);
 
+    const refreshWebSession = async () => {
+      if (refreshingSessionRef.current) return;
+      refreshingSessionRef.current = true;
+      try {
+        const response = await fetch(`${serverUrl}/auth/refresh`, {
+          method: "POST",
+          credentials: "include"
+        });
+        if (!response.ok) {
+          setAccount(null);
+          setIdentified(false);
+          return;
+        }
+        s.connect();
+      } catch {
+        setAccount(null);
+        setIdentified(false);
+      } finally {
+        refreshingSessionRef.current = false;
+      }
+    };
+
     s.on("connect", () => {
       setConnected(true);
       setConnectionMessage("");
       setError("");
+    });
 
-      const token = readSessionToken(localStorage);
+    s.on("auth:session", (result: any) => {
+      if (!result?.ok || !result.account) return;
+      localStorage.setItem("echoverse_username", result.account.username);
+      setUsername(result.account.username);
+      setAccount(result.account);
+      setIdentified(true);
+      loadFriends(s);
+      refreshAudioDevices();
 
-      if (token) {
-        s.emit("auth:resume", { token }, (result: any) => {
-          if (!result?.ok) {
-            clearSessionToken(localStorage);
-            setAccount(null);
-            setIdentified(false);
-            return;
-          }
-
-          writeSessionToken(localStorage, result.token);
-          localStorage.setItem("echoverse_username", result.account.username);
-          setUsername(result.account.username);
-          setAccount(result.account);
-          setIdentified(true);
-          loadFriends(s);
-          refreshAudioDevices();
-
-          const guild = activeGuildRef.current;
-          if (joinedRef.current && guild) {
-            reconnectingRef.current = true;
-            lobbyStateReadyRef.current = false;
-            lobbyMembersRef.current = [];
-            s.emit("join-room", { guildId: guild.id });
-          }
-        });
+      const guild = activeGuildRef.current;
+      if (joinedRef.current && guild) {
+        reconnectingRef.current = true;
+        lobbyStateReadyRef.current = false;
+        lobbyMembersRef.current = [];
+        s.emit("join-room", { guildId: guild.id });
       }
+    });
+
+    s.on("auth:expired", () => {
+      void refreshWebSession();
     });
 
     s.on("disconnect", () => {
       setConnected(false);
       reconnectingRef.current = true;
       lobbyStateReadyRef.current = false;
-      setConnectionMessage("Bağlantı kesildi. Yeniden bağlanılıyor…");
+      setConnectionMessage(translatorRef.current("connection.lost"));
     });
 
     s.on("connect_error", (err) => {
       setConnected(false);
-      setConnectionMessage("EchoVerse sunucusuna yeniden bağlanmaya çalışıyor…");
-      setError(`Sunucuya bağlanılamadı: ${err.message}`);
+      setConnectionMessage(translatorRef.current("connection.retrying"));
+      setError(translatorRef.current("error.connectionFailed"));
+      if (/invalid session|session expired/i.test(err.message)) void refreshWebSession();
     });
 
     s.on("guild:list", (list: Guild[]) => setGuilds(list));
@@ -492,7 +529,11 @@ export default function App() {
         setPrivateCallPeer(null);
         setPrivateCallSocketId("");
         setPrivateCallId("");
-        setError(result?.reason === "timeout" ? "Arama cevaplanmadı." : "Arama reddedildi.");
+        setError(
+          result?.reason === "timeout"
+            ? translatorRef.current("call.timeout")
+            : translatorRef.current("call.rejected")
+        );
         return;
       }
 
@@ -609,7 +650,7 @@ export default function App() {
       setSpotifyFollowing(false);
       setSpotifyLeader(false);
       stopSpotifyLeaderTimer();
-      setSpotifyMessage("Spotify Together sona erdi.");
+      setSpotifyMessage(translatorRef.current("spotify.ended"));
     });
 
     s.on("spotify:sync", async (state: SpotifyState) => {
@@ -622,7 +663,7 @@ export default function App() {
         setSpotifyMessage(
           state.trackName
             ? `🎵 ${state.trackName} • ${state.artistName || ""}`
-            : "Spotify senkronize."
+            : translatorRef.current("spotify.synchronized")
         );
       } catch (err: any) {
         setSpotifyMessage(err?.message || "Spotify senkronizasyonu başarısız.");
@@ -829,7 +870,7 @@ export default function App() {
   function sendFriendRequest(targetId: string) {
     socket?.emit("friends:request", { targetId }, (result: any) => {
       if (!result?.ok) {
-        setError(result?.error || "İstek gönderilemedi.");
+        setError(result?.error || t("error.requestFailed"));
         return;
       }
       setFriendSearchResults([]);
@@ -841,7 +882,7 @@ export default function App() {
   function respondFriendRequest(friendshipId: string, accept: boolean) {
     socket?.emit("friends:respond", { friendshipId, accept }, (result: any) => {
       if (!result?.ok) {
-        setError(result?.error || "İstek işlenemedi.");
+        setError(result?.error || t("error.requestFailed"));
         return;
       }
       loadFriends();
@@ -892,7 +933,7 @@ export default function App() {
     if (editingDm) {
       if (!body) return;
       socket.emit("dm:edit", { messageId: editingDm.id, body }, (result: any) => {
-        if (!result?.ok) setError(result?.error || "Mesaj düzenlenemedi.");
+        if (!result?.ok) setError(result?.error || t("chat.editFailed"));
       });
       setEditingDm(null);
       setDmText("");
@@ -917,7 +958,7 @@ export default function App() {
       },
       (result: any) => {
         if (!result?.ok) {
-          setError(result?.error || "Mesaj gönderilemedi.");
+          setError(result?.error || t("chat.sendFailed"));
         }
       }
     );
@@ -933,10 +974,10 @@ export default function App() {
 
   function deleteDm(message: DmMessage) {
     if (!socket || message.senderId !== account?.id || message.deletedAt) return;
-    if (!window.confirm("Bu mesaj silinsin mi?")) return;
+    if (!window.confirm(t("chat.deleteConfirm"))) return;
 
     socket.emit("dm:delete", { messageId: message.id }, (result: any) => {
-      if (!result?.ok) setError(result?.error || "Mesaj silinemedi.");
+      if (!result?.ok) setError(result?.error || t("chat.deleteFailed"));
     });
   }
 
@@ -945,7 +986,7 @@ export default function App() {
 
     const MAX = 4 * 1024 * 1024;
     if (file.size > MAX) {
-      setError("DM dosyaları en fazla 4 MB olabilir.");
+      setError(t("chat.fileTooLarge"));
       return;
     }
 
@@ -963,7 +1004,7 @@ export default function App() {
         data
       });
     } catch {
-      setError("Dosya okunamadı.");
+      setError(t("chat.fileReadFailed"));
     }
   }
 
@@ -989,9 +1030,9 @@ export default function App() {
   }
 
   async function checkForUpdates() {
-    setUpdateStatus("Güncellemeler kontrol ediliyor…");
+    setUpdateStatus(t("update.checking"));
     const result = await window.echoverse?.checkForUpdates?.();
-    if (!result?.ok) setUpdateStatus(result?.error || "Güncelleme kontrolü başarısız.");
+    if (!result?.ok) setUpdateStatus(result?.error || t("update.failed"));
   }
 
   async function testOutput() {
@@ -1039,7 +1080,7 @@ export default function App() {
         }
       }, 80);
     } catch {
-      setError("Mikrofon testi başlatılamadı.");
+      setError(t("media.micTestFailed"));
     }
   }
 
@@ -1190,7 +1231,7 @@ export default function App() {
   async function callFriend(friend: FriendUser) {
     if (!socket) return;
     if (callState !== "idle" || privateCallPeer || incomingCall) {
-      setError("Zaten aktif veya bekleyen bir özel arama var.");
+      setError(t("call.alreadyActive"));
       return;
     }
 
@@ -1208,7 +1249,7 @@ export default function App() {
         setCallState("idle");
         setRinging(false);
         setPrivateCallPeer(null);
-        setError(result?.error || "Arama başlatılamadı.");
+        setError(result?.error || t("call.startFailed"));
         return;
       }
 
@@ -1285,12 +1326,12 @@ export default function App() {
 
   async function spotifyLogin() {
     try {
-      setSpotifyMessage("Spotify giriş sayfası açılıyor…");
+      setSpotifyMessage(t("spotify.opening"));
       await window.echoverse?.spotifyLogin?.();
       await refreshSpotifyStatus();
-      setSpotifyMessage("Spotify bağlandı ✅");
-    } catch (err: any) {
-      setSpotifyMessage(err?.message || "Spotify bağlanamadı.");
+      setSpotifyMessage(t("spotify.connected"));
+    } catch {
+      setSpotifyMessage(t("spotify.loginFailed"));
     }
   }
 
@@ -1301,7 +1342,7 @@ export default function App() {
     setSpotifyFollowing(false);
     setSpotifyLeader(false);
     stopSpotifyLeaderTimer();
-    setSpotifyMessage("Spotify bağlantısı kaldırıldı.");
+    setSpotifyMessage(t("spotify.disconnected"));
   }
 
   function stopSpotifyLeaderTimer() {
@@ -1317,7 +1358,7 @@ export default function App() {
     try {
       const state = await window.echoverse?.spotifyPlayback?.();
       if (!state) {
-        setSpotifyMessage("Spotify'da önce bir şarkı aç.");
+        setSpotifyMessage(t("spotify.openTrackFirst"));
         return;
       }
 
@@ -1337,7 +1378,7 @@ export default function App() {
 
       setSpotifyMessage(`🎵 ${state.trackName} • ${state.artistName}`);
     } catch (err: any) {
-      setSpotifyMessage(err?.message || "Spotify okunamadı.");
+      setSpotifyMessage(err?.message || t("spotify.syncFailed"));
     }
   }
 
@@ -1370,12 +1411,12 @@ export default function App() {
     stopSpotifyLeaderTimer();
     setSpotifyLeader(false);
     setSpotifyParty(null);
-    setSpotifyMessage("Spotify Together durduruldu.");
+    setSpotifyMessage(t("spotify.stopped"));
   }
 
   async function followSpotifyParty() {
     if (!spotifyConnected) {
-      setSpotifyMessage("Önce Spotify hesabını bağla.");
+      setSpotifyMessage(t("spotify.connectFirst"));
       return;
     }
 
@@ -1384,9 +1425,9 @@ export default function App() {
     if (spotifyParty?.trackUri) {
       try {
         await window.echoverse?.spotifyApplySync?.(spotifyParty);
-        setSpotifyMessage(`Takip ediliyor: ${spotifyParty.trackName || "Spotify"}`);
-      } catch (err: any) {
-        setSpotifyMessage(err?.message || "Spotify uygulamasında önce bir şarkı aç.");
+        setSpotifyMessage(t("spotify.following", { track: spotifyParty.trackName || "Spotify" }));
+      } catch {
+        setSpotifyMessage(t("spotify.openTrackFirst"));
       }
     }
   }
@@ -1560,19 +1601,19 @@ export default function App() {
     const password = authPassword;
 
     if (!email || !password) {
-      setError("E-posta ve şifreyi doldur.");
+      setError(t("auth.invalid"));
       return;
     }
 
     if (authMode === "register" && authUsername.trim().length < 3) {
-      setError("Kullanıcı adı en az 3 karakter olmalı.");
+      setError(t("auth.invalid"));
       return;
     }
 
     setAuthBusy(true);
     setError("");
 
-    const event = authMode === "register" ? "auth:register" : "auth:login";
+    const endpoint = authMode === "register" ? "register" : "login";
 
     const payload =
       authMode === "register"
@@ -1586,36 +1627,52 @@ export default function App() {
             password
           };
 
-    socket.emit(event, payload, async (result: any) => {
+    try {
+      const response = await fetch(`${serverUrl}/auth/${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-EchoVerse-Client": "web" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
       setAuthBusy(false);
 
-      if (!result?.ok) {
-        setError(result?.error || "İşlem başarısız.");
+      if (!response.ok || !result?.ok) {
+        setError(result?.error || t("error.operationFailed"));
         return;
       }
 
-      localStorage.setItem("echoverse_token", result.token);
       localStorage.setItem("echoverse_username", result.account.username);
 
       setAccount(result.account);
       setUsername(result.account.username);
       setIdentified(true);
-      loadFriends(socket);
-      refreshAudioDevices();
+      socket.disconnect();
+      socket.connect();
       setAuthPassword("");
       setError("");
 
       try {
         await ensureMicrophone();
       } catch (err: any) {
-        setError(`Giriş yapıldı ama mikrofon açılamadı: ${err?.message || "izin verilmedi"}`);
+        setError(
+          t("auth.microphoneUnavailable", {
+            reason: err?.message || t("media.micPermissionDenied")
+          })
+        );
       }
-    });
+    } catch (err: any) {
+      setAuthBusy(false);
+      setError(err?.message || t("error.operationFailed"));
+    }
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await fetch(`${serverUrl}/auth/logout`, { method: "POST", credentials: "include" });
+    } catch {}
     socket?.emit("auth:logout");
-    localStorage.removeItem("echoverse_token");
+    socket?.disconnect();
     localStorage.removeItem("echoverse_username");
     setAccount(null);
     setIdentified(false);
@@ -1662,11 +1719,10 @@ export default function App() {
 
     try {
       const avatarData = await resizeAvatar(file);
-      const token = localStorage.getItem("echoverse_token");
 
-      socket.emit("profile:set-avatar", { token, avatarData }, (result: any) => {
+      socket.emit("profile:set-avatar", { avatarData }, (result: any) => {
         if (!result?.ok) {
-          setError(result?.error || "Profil fotoğrafı değiştirilemedi.");
+          setError(result?.error || t("error.avatarFailed"));
           return;
         }
 
@@ -1674,37 +1730,27 @@ export default function App() {
         setError("");
       });
     } catch (err: any) {
-      setError(err?.message || "Profil fotoğrafı değiştirilemedi.");
+      setError(err?.message || t("error.avatarFailed"));
     }
   }
 
   async function _identify() {
     if (!socket || !connected) return;
-
-    const token = localStorage.getItem("echoverse_token");
-
-    if (!token) {
-      setIdentified(false);
-      return;
-    }
-
-    socket.emit("auth:resume", { token }, async (result: any) => {
-      if (!result?.ok) {
-        localStorage.removeItem("echoverse_token");
+    try {
+      const response = await fetch(`${serverUrl}/auth/session`, { credentials: "include" });
+      const result = await response.json();
+      if (!response.ok || !result?.ok) {
         setIdentified(false);
         setAccount(null);
         return;
       }
-
-      localStorage.setItem("echoverse_token", result.token);
       setAccount(result.account);
       setUsername(result.account.username);
       setIdentified(true);
-
-      try {
-        await ensureMicrophone();
-      } catch {}
-    });
+    } catch {
+      setIdentified(false);
+      setAccount(null);
+    }
   }
 
   async function joinGuild(guild: Guild) {
@@ -1736,7 +1782,7 @@ export default function App() {
 
     socket.emit("guild:create", { name }, (result: any) => {
       if (!result?.ok) {
-        setError(result?.error || "Sunucu oluşturulamadı.");
+        setError(result?.error || t("error.guildCreateFailed"));
         return;
       }
 
@@ -1752,7 +1798,7 @@ export default function App() {
 
     socket.emit("guild:join-code", { code }, (result: any) => {
       if (!result?.ok) {
-        setError(result?.error || "Sunucu bulunamadı.");
+        setError(result?.error || t("error.guildJoinFailed"));
         return;
       }
 
@@ -1940,7 +1986,11 @@ export default function App() {
       if (!screenOn) await setOutboundVideo(nextTrack);
       oldTrack?.stop();
     } catch (err: any) {
-      setError(`Kamera değiştirilemedi: ${err?.message || "bilinmeyen hata"}`);
+      setError(
+        t("media.cameraSwitchFailed", {
+          reason: err?.message || t("media.unknownError")
+        })
+      );
     }
   }
 
@@ -1975,7 +2025,11 @@ export default function App() {
         await setOutboundVideo(cameraTrack.current);
       }
     } catch (err: any) {
-      setError(`Kamera açılamadı: ${err?.message || "izin verilmedi"}`);
+      setError(
+        t("media.cameraFailed", {
+          reason: err?.message || t("media.micPermissionDenied")
+        })
+      );
     }
   }
 
@@ -2006,12 +2060,10 @@ export default function App() {
           permission === "restricted" ||
           permission === "not-determined"
         ) {
-          setError(
-            "macOS ekran kaydı izni gerekli. Sistem Ayarları → Gizlilik ve Güvenlik → Ekran ve Sistem Ses Kaydı bölümünden EchoVerse'e izin ver, sonra EchoVerse'i tamamen kapatıp tekrar aç."
-          );
+          setError(t("media.screenPermissionWeb"));
           await window.echoverse?.openScreenSettings?.();
         } else {
-          setError("Paylaşılabilecek ekran/pencere bulunamadı.");
+          setError(t("media.screenNoSources"));
         }
         return;
       }
@@ -2019,7 +2071,11 @@ export default function App() {
       setScreenSources(sources);
       setShowScreenPicker(true);
     } catch (err: any) {
-      setError(`Ekran kaynakları alınamadı: ${err?.message || "bilinmeyen hata"}`);
+      setError(
+        t("media.screenSourcesFailed", {
+          reason: err?.message || t("media.unknownError")
+        })
+      );
     }
   }
 
@@ -2054,19 +2110,17 @@ export default function App() {
         setScreenOn(false);
         await setOutboundVideo(cameraTrack.current);
       };
-    } catch (err: any) {
+    } catch {
       setShowScreenPicker(false);
 
       const permission = await window.echoverse?.screenPermission?.();
       setScreenPermission(permission || "");
 
       if (permission === "denied" || permission === "restricted") {
-        setError(
-          "macOS EchoVerse'e ekran kaydı izni vermemiş. Sistem Ayarları → Gizlilik ve Güvenlik → Ekran ve Sistem Ses Kaydı → EchoVerse'i aç ve uygulamayı yeniden başlat."
-        );
+        setError(t("media.screenPermissionWeb"));
         await window.echoverse?.openScreenSettings?.();
       } else {
-        setError(`Ekran paylaşımı açılamadı: ${err?.message || "iptal edildi"}`);
+        setError(t("error.operationFailed"));
       }
     }
   }
@@ -2077,11 +2131,11 @@ export default function App() {
         <div className="welcome-card auth-card">
           <div className="logo-orb">E</div>
           <h1>EchoVerse</h1>
-          <p>Arkadaşlarınla konuş, yazış, izle.</p>
+          <p>{t("app.tagline")}</p>
 
           <div className={`server-state ${connected ? "online" : "offline"}`}>
             <span className="dot" />
-            {connected ? "EchoVerse sunucusu online" : "Sunucuya bağlanıyor..."}
+            {connected ? t("app.online") : t("app.connecting")}
           </div>
 
           <div className="auth-tabs">
@@ -2092,7 +2146,7 @@ export default function App() {
                 setError("");
               }}
             >
-              Giriş Yap
+              {t("auth.login")}
             </button>
 
             <button
@@ -2102,31 +2156,31 @@ export default function App() {
                 setError("");
               }}
             >
-              Kayıt Ol
+              {t("auth.register")}
             </button>
           </div>
 
           {authMode === "register" && (
             <>
-              <label>Kullanıcı adı</label>
+              <label>{t("auth.username")}</label>
               <input
                 value={authUsername}
                 maxLength={28}
                 onChange={(e) => setAuthUsername(e.target.value)}
-                placeholder="Kullanıcı adın"
+                placeholder={t("auth.usernamePlaceholder")}
               />
             </>
           )}
 
-          <label>E-posta</label>
+          <label>{t("auth.email")}</label>
           <input
             type="email"
             value={authEmail}
             onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder="mail@example.com"
+            placeholder={t("auth.emailPlaceholder")}
           />
 
-          <label>Şifre</label>
+          <label>{t("auth.password")}</label>
           <input
             type="password"
             value={authPassword}
@@ -2134,26 +2188,37 @@ export default function App() {
             onKeyDown={(e) => {
               if (e.key === "Enter") authSubmit();
             }}
-            placeholder="En az 6 karakter"
+            placeholder={t("auth.passwordPlaceholder")}
           />
 
           <button className="primary" onClick={authSubmit} disabled={!connected || authBusy}>
-            {authBusy ? "Bekle…" : authMode === "register" ? "Hesap Oluştur" : "Giriş Yap"}
+            {authBusy
+              ? t("common.wait")
+              : authMode === "register"
+                ? t("auth.submitRegister")
+                : t("auth.submitLogin")}
           </button>
 
           <div className="v16-qol">
-            <button onClick={checkForUpdates}>Güncelleme kontrolü</button>
+            <button onClick={checkForUpdates}>{t("update.checking")}</button>
             {updateProgress > 0 && updateProgress < 100 && (
               <progress max="100" value={updateProgress} />
             )}
-            <button onClick={testMicrophone}>Mikrofon testi</button>
-            <span>Mic {micTestLevel}%</span>
-            <button onClick={testOutput}>Output test sesi</button>
+            <button onClick={testMicrophone}>{t("media.testMicrophone")}</button>
+            <span>{t("media.level", { level: micTestLevel })}</span>
+            <button onClick={testOutput}>{t("media.testOutput")}</button>
+            <label>
+              {t("locale.select")}
+              <select value={locale} onChange={(e) => changeLocale(e.target.value)}>
+                <option value="en">{t("locale.english")}</option>
+                <option value="tr">{t("locale.turkish")}</option>
+              </select>
+            </label>
             <select value={myStatus} onChange={(e) => setPresenceStatus(e.target.value as any)}>
-              <option value="online">Online</option>
-              <option value="idle">Idle</option>
-              <option value="dnd">DND</option>
-              <option value="invisible">Invisible</option>
+              <option value="online">{t("status.online")}</option>
+              <option value="idle">{t("status.idle")}</option>
+              <option value="dnd">{t("status.dndShort")}</option>
+              <option value="invisible">{t("status.invisible")}</option>
             </select>
           </div>
           {updateStatus && <div className="update-box">{updateStatus}</div>}
@@ -2171,8 +2236,8 @@ export default function App() {
         <div className="welcome-card guild-picker">
           <div className="picker-head">
             <div>
-              <h1>Sunucular</h1>
-              <p>Bir sunucu seç veya yenisini oluştur.</p>
+              <h1>{t("guild.list")}</h1>
+              <p>{t("guild.choose")}</p>
             </div>
 
             <button className="icon-btn" onClick={() => setShowCreate(true)}>
@@ -2187,34 +2252,34 @@ export default function App() {
 
                 <span>
                   <b>{g.name}</b>
-                  <small>Kod: {g.id}</small>
+                  <small>{t("guild.code", { id: g.id })}</small>
                 </span>
               </button>
             ))}
           </div>
 
           <button className="secondary-wide" onClick={() => setShowJoin(true)}>
-            Sunucu koduyla katıl
+            {t("guild.joinByCode")}
           </button>
 
           {showCreate && (
             <div className="modal-backdrop">
               <div className="modal">
-                <h2>Yeni sunucu</h2>
+                <h2>{t("guild.new")}</h2>
 
                 <input
                   autoFocus
-                  placeholder="Sunucu adı"
+                  placeholder={t("guild.namePlaceholder")}
                   value={newGuildName}
                   onChange={(e) => setNewGuildName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && createGuild()}
                 />
 
                 <div className="modal-actions">
-                  <button onClick={() => setShowCreate(false)}>Vazgeç</button>
+                  <button onClick={() => setShowCreate(false)}>{t("guild.cancel")}</button>
 
                   <button className="primary-small" onClick={createGuild}>
-                    Oluştur
+                    {t("guild.create")}
                   </button>
                 </div>
               </div>
@@ -2224,21 +2289,21 @@ export default function App() {
           {showJoin && (
             <div className="modal-backdrop">
               <div className="modal">
-                <h2>Sunucuya katıl</h2>
+                <h2>{t("guild.join")}</h2>
 
                 <input
                   autoFocus
-                  placeholder="Sunucu kodu"
+                  placeholder={t("guild.codePlaceholder")}
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && joinGuildByCode()}
                 />
 
                 <div className="modal-actions">
-                  <button onClick={() => setShowJoin(false)}>Vazgeç</button>
+                  <button onClick={() => setShowJoin(false)}>{t("guild.cancel")}</button>
 
                   <button className="primary-small" onClick={joinGuildByCode}>
-                    Katıl
+                    {t("guild.joinAction")}
                   </button>
                 </div>
               </div>
@@ -2291,15 +2356,15 @@ export default function App() {
         </div>
 
         <div className="channel-group">
-          <div className="channel-title">TEXT CHANNELS</div>
-          <button className="channel active"># general</button>
-          <button className="channel"># music</button>
+          <div className="channel-title">{t("guild.textChannels")}</div>
+          <button className="channel active"># {t("guild.general")}</button>
+          <button className="channel"># {t("guild.music")}</button>
         </div>
 
         <div className="channel-group">
-          <div className="channel-title">VOICE CHANNELS</div>
+          <div className="channel-title">{t("guild.voiceChannels")}</div>
 
-          <button className="channel voice active">🔊 Lobby</button>
+          <button className="channel voice active">🔊 {t("guild.lobby")}</button>
 
           <div className="voice-users">
             {presence.map((p) => {
@@ -2317,7 +2382,7 @@ export default function App() {
                       <span className="mini-dot" />
                     )}
                     {p.username}
-                    {isSelf ? " (sen)" : ""}
+                    {isSelf ? t("guild.self") : ""}
                   </div>
 
                   {!isSelf && (
@@ -2325,7 +2390,7 @@ export default function App() {
                       <button
                         className={peerMuted[p.socketId] ? "peer-muted" : ""}
                         onClick={() => togglePeerMute(p.socketId)}
-                        title="Sadece sende sustur"
+                        title={t("media.muteOnlyYou")}
                       >
                         {peerMuted[p.socketId] ? "🔇" : "🔊"}
                       </button>
@@ -2356,14 +2421,14 @@ export default function App() {
           </div>
 
           {!spotifyConfigured ? (
-            <small>Spotify Client ID gerekli.</small>
+            <small>{t("spotify.clientRequired")}</small>
           ) : !spotifyConnected ? (
             <button className="spotify-connect" onClick={spotifyLogin}>
-              Spotify Bağla
+              {t("spotify.connect")}
             </button>
           ) : (
             <>
-              <small>{spotifyName || "Spotify bağlı"}</small>
+              <small>{spotifyName || t("spotify.connectedLabel")}</small>
 
               {spotifyParty?.active && (
                 <div className="spotify-now">
@@ -2378,23 +2443,25 @@ export default function App() {
 
               {!spotifyParty?.active ? (
                 <button className="spotify-action" onClick={startSpotifyParty}>
-                  ▶ Party Başlat
+                  ▶ {t("spotify.startParty")}
                 </button>
               ) : spotifyLeader ? (
                 <button className="spotify-stop" onClick={stopSpotifyParty}>
-                  ■ Party Durdur
+                  ■ {t("spotify.stopParty")}
                 </button>
               ) : (
                 <button
                   className={spotifyFollowing ? "spotify-following" : "spotify-action"}
                   onClick={followSpotifyParty}
                 >
-                  {spotifyFollowing ? "✓ Senkron dinleniyor" : "🎧 Birlikte Dinle"}
+                  {spotifyFollowing
+                    ? `✓ ${t("spotify.followingLabel")}`
+                    : `🎧 ${t("spotify.listenTogether")}`}
                 </button>
               )}
 
               <button className="spotify-logout" onClick={spotifyLogout}>
-                Spotify çıkış
+                {t("spotify.logout")}
               </button>
             </>
           )}
@@ -2403,7 +2470,7 @@ export default function App() {
         </div>
 
         <div className="user-panel">
-          <label className="user-avatar avatar-upload-label" title="Profil fotoğrafını değiştir">
+          <label className="user-avatar avatar-upload-label" title={t("profile.changeAvatar")}>
             {account?.avatarData ? (
               <img src={account.avatarData} alt="" />
             ) : (
@@ -2424,14 +2491,14 @@ export default function App() {
 
           <div className="user-info">
             <b>{username}</b>
-            <small>Voice connected • v{appVersion}</small>
+            <small>{t("profile.voiceConnected", { version: appVersion })}</small>
           </div>
 
-          <button onClick={toggleMute} title="Mikrofon">
+          <button onClick={toggleMute} title={t("media.microphone")}>
             {muted ? "🔇" : "🎙️"}
           </button>
 
-          <button onClick={logout} title="Çıkış yap">
+          <button onClick={logout} title={t("auth.logout")}>
             ↪
           </button>
         </div>
@@ -2469,12 +2536,12 @@ export default function App() {
                     {dmTyping[activeDmFriend.id]
                       ? "yazıyor…"
                       : activeDmFriend.status === "online"
-                        ? "Çevrimiçi"
+                        ? t("presence.online")
                         : activeDmFriend.status === "idle"
-                          ? "Boşta"
+                          ? t("presence.idle")
                           : activeDmFriend.status === "dnd"
-                            ? "Rahatsız Etmeyin"
-                            : "Çevrimdışı"}
+                            ? t("presence.dnd")
+                            : t("presence.offline")}
                   </small>
                 </div>
               </div>
@@ -2484,16 +2551,21 @@ export default function App() {
                   className="dm-header-search"
                   value={dmSearch}
                   onChange={(e) => setDmSearch(e.target.value)}
-                  placeholder="Mesaj ara"
+                  placeholder={t("chat.searchPlaceholder")}
                 />
                 <button
                   className="dm-block-button"
-                  title="Kullanıcıyı engelle"
+                  title={t("friends.block")}
                   onClick={() => {
                     if (!socket || !activeDmFriend) return;
-                    if (!window.confirm(`${activeDmFriend.username} engellensin mi?`)) return;
+                    if (
+                      !window.confirm(
+                        t("friends.blockConfirm", { username: activeDmFriend.username })
+                      )
+                    )
+                      return;
                     socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
-                      if (!result?.ok) return setError(result?.error || "Engellenemedi.");
+                      if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
                       setViewMode("server");
                       setActiveDmFriend(null);
                       loadFriends();
@@ -2513,10 +2585,10 @@ export default function App() {
                   }}
                 >
                   {callState === "calling"
-                    ? "📞 Çalıyor…"
+                    ? `📞 ${t("call.ringing")}`
                     : callState === "connected"
-                      ? "☎ Aramayı Bitir"
-                      : "📞 Ara"}
+                      ? `☎ ${t("call.end")}`
+                      : `📞 ${t("friends.call")}`}
                 </button>
               </div>
             </header>
@@ -2534,28 +2606,30 @@ export default function App() {
                 <h2>{activeDmFriend.username}</h2>
                 <p>
                   {callState === "calling"
-                    ? "Aranıyor…"
+                    ? t("call.ringing")
                     : callState === "connected"
-                      ? `Özel konuşma • ${formatCallTime(callSeconds)}`
-                      : "Gelen arama"}
+                      ? t("call.privateConversation", { time: formatCallTime(callSeconds) })
+                      : t("call.incoming")}
                 </p>
 
                 {callState === "connected" && (
                   <div className="private-call-controls">
                     <button onClick={toggleMute}>
-                      {muted ? "🔇 Mikrofonu Aç" : "🎙️ Mikrofon"}
+                      {muted ? `🔇 ${t("common.unmute")}` : `🎙️ ${t("media.microphone")}`}
                     </button>
-                    <button onClick={toggleDeafen}>{deafened ? "🔊 Sesi Aç" : "🎧 Deafen"}</button>
+                    <button onClick={toggleDeafen}>
+                      {deafened ? `🔊 ${t("common.undeafen")}` : `🎧 ${t("common.deafen")}`}
+                    </button>
                     <button
                       className={pushToTalk ? "active" : ""}
                       onClick={() => setPushToTalk((v) => !v)}
-                      title="Push-to-talk açıkken konuşmak için V tuşunu basılı tut"
+                      title={t("call.pushToTalkTitle")}
                     >
                       {pushToTalk
                         ? pttPressed
-                          ? "🟢 Konuşuyorsun"
-                          : "⌨ V ile Konuş"
-                        : "🎙 Voice Activity"}
+                          ? `🟢 ${t("call.speaking")}`
+                          : `⌨ ${t("call.pressToTalk")}`
+                        : `🎙 ${t("call.voiceActivity")}`}
                     </button>
                     <button className="hangup" onClick={() => stopPrivateCall(true)}>
                       ☎ Kapat
@@ -2576,7 +2650,7 @@ export default function App() {
                     )}
                   </div>
                   <h2>{activeDmFriend.username}</h2>
-                  <p>Bu, {activeDmFriend.username} ile olan sohbetinin başlangıcı.</p>
+                  <p>{t("chat.startOfConversation", { username: activeDmFriend.username })}</p>
                 </div>
               )}
 
@@ -2635,7 +2709,7 @@ export default function App() {
                                 minute: "2-digit"
                               })}
                             </small>
-                            {m.editedAt && !m.deletedAt && <small>(düzenlendi)</small>}
+                            {m.editedAt && !m.deletedAt && <small>{t("chat.edited")}</small>}
                           </div>
 
                           {replied && (
@@ -2648,7 +2722,7 @@ export default function App() {
                           )}
 
                           {m.deletedAt ? (
-                            <div className="dm-deleted-text">Mesaj silindi.</div>
+                            <div className="dm-deleted-text">{t("chat.deleted")}</div>
                           ) : (
                             <>
                               {m.body && <div className="dm-discord-text">{m.body}</div>}
@@ -2666,7 +2740,9 @@ export default function App() {
                                   )}
                                   <div>
                                     <b>{m.attachmentName}</b>
-                                    <button onClick={() => downloadAttachment(m)}>İndir</button>
+                                    <button onClick={() => downloadAttachment(m)}>
+                                      {t("common.download")}
+                                    </button>
                                   </div>
                                 </div>
                               )}
@@ -2687,16 +2763,18 @@ export default function App() {
 
                           {!m.deletedAt && (
                             <div className="dm-message-actions">
-                              <button onClick={() => setReplyTo(m)}>↩ Yanıtla</button>
+                              <button onClick={() => setReplyTo(m)}>↩ {t("common.reply")}</button>
                               {["👍", "❤️", "😂", "🔥"].map((emoji) => (
                                 <button key={emoji} onClick={() => reactDm(m.id, emoji)}>
                                   {emoji}
                                 </button>
                               ))}
-                              {mine && <button onClick={() => editDm(m)}>✏ Düzenle</button>}
+                              {mine && (
+                                <button onClick={() => editDm(m)}>✏ {t("chat.editButton")}</button>
+                              )}
                               {mine && (
                                 <button className="danger" onClick={() => deleteDm(m)}>
-                                  🗑 Sil
+                                  🗑 {t("chat.delete")}
                                 </button>
                               )}
                             </div>
@@ -2711,14 +2789,21 @@ export default function App() {
             <div className="dm-composer-zone">
               {(replyTo || editingDm || dmAttachment) && (
                 <div className="dm-compose-context">
-                  {editingDm && <span>✏ Mesaj düzenleniyor</span>}
+                  {editingDm && <span>✏ {t("chat.editing")}</span>}
                   {replyTo && !editingDm && (
                     <span>
-                      ↩ {replyTo.senderId === account?.id ? "Kendine" : activeDmFriend.username}{" "}
-                      yanıtlanıyor
+                      ↩{" "}
+                      {t("chat.replyingTo", {
+                        username:
+                          replyTo.senderId === account?.id ? username : activeDmFriend.username
+                      })}
                     </span>
                   )}
-                  {dmAttachment && <span>📎 {dmAttachment.name} · gönderime hazır</span>}
+                  {dmAttachment && (
+                    <span>
+                      📎 {dmAttachment.name} · {t("chat.attachmentReady")}
+                    </span>
+                  )}
                   <button
                     onClick={() => {
                       setReplyTo(null);
@@ -2752,7 +2837,7 @@ export default function App() {
                   chooseDmFile(e.dataTransfer.files?.[0] || null);
                 }}
               >
-                {dmDragActive && <div className="dm-drop-hint">Dosyayı bırak</div>}
+                {dmDragActive && <div className="dm-drop-hint">{t("chat.dropFile")}</div>}
                 <input
                   ref={dmFileInputRef}
                   type="file"
@@ -2765,7 +2850,7 @@ export default function App() {
 
                 <button
                   className="dm-attach-button"
-                  title="Dosya gönder (maks. 4 MB)"
+                  title={t("chat.sendFile")}
                   onClick={() => dmFileInputRef.current?.click()}
                 >
                   ＋
@@ -2785,13 +2870,9 @@ export default function App() {
                       sendDm();
                     }
                   }}
-                  placeholder={
-                    editingDm
-                      ? "Mesajı düzenle"
-                      : `${activeDmFriend.username} kişisine mesaj gönder`
-                  }
+                  placeholder={editingDm ? t("chat.edit") : t("chat.messagePlaceholder")}
                 />
-                <button onClick={sendDm}>{editingDm ? "Kaydet" : "Gönder"}</button>
+                <button onClick={sendDm}>{editingDm ? t("common.save") : t("common.send")}</button>
               </div>
             </div>
           </div>
@@ -2799,7 +2880,7 @@ export default function App() {
           <>
             <header className="topbar">
               <div>
-                <b># general</b>
+                <b># {t("guild.general")}</b>
                 <span>{activeGuild?.name}</span>
               </div>
 
@@ -2810,7 +2891,7 @@ export default function App() {
                     setShowAudioSettings(true);
                   }}
                 >
-                  ⚙ Ses & Video
+                  ⚙ {t("media.videoShare")}
                 </button>
 
                 <button
@@ -2819,7 +2900,7 @@ export default function App() {
                     setShowFriends(true);
                   }}
                 >
-                  👥 Arkadaşlar
+                  👥 {t("friends.list")}
                   {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
                 </button>
 
@@ -2827,27 +2908,27 @@ export default function App() {
                   className="presence-select"
                   value={myStatus}
                   onChange={(e) => setPresenceStatus(e.target.value as any)}
-                  title="Durum"
+                  title={t("status.label")}
                 >
-                  <option value="online">🟢 Çevrimiçi</option>
-                  <option value="idle">🌙 Boşta</option>
-                  <option value="dnd">⛔ Rahatsız Etmeyin</option>
-                  <option value="invisible">⚫ Görünmez</option>
+                  <option value="online">🟢 {t("presence.online")}</option>
+                  <option value="idle">🌙 {t("presence.idle")}</option>
+                  <option value="dnd">⛔ {t("presence.dnd")}</option>
+                  <option value="invisible">⚫ {t("status.invisible")}</option>
                 </select>
 
-                <div className="top-state">✨ Noise suppression</div>
+                <div className="top-state">✨ {t("media.noiseSuppression")}</div>
               </div>
             </header>
 
             <div className="video-toolbar">
               <div>
-                <b>Video & Paylaşım</b>
+                <b>{t("media.videoShare")}</b>
                 <span>
                   {screenOn
-                    ? `Ekran paylaşımı · ${screenQuality}p ${screenFps} FPS`
+                    ? t("media.screenQuality", { quality: screenQuality, fps: screenFps })
                     : cameraOn
-                      ? "Kamera açık · 720p"
-                      : "Video kapalı"}
+                      ? t("media.cameraOn")
+                      : t("media.cameraOff")}
                 </span>
               </div>
               <div className="video-layout-actions">
@@ -2855,13 +2936,13 @@ export default function App() {
                   className={videoLayout === "grid" ? "active" : ""}
                   onClick={() => setVideoLayout("grid")}
                 >
-                  ▦ Grid
+                  ▦ {t("media.grid")}
                 </button>
                 <button
                   className={videoLayout === "focus" ? "active" : ""}
                   onClick={() => setVideoLayout("focus")}
                 >
-                  ▣ Focus
+                  ▣ {t("media.focus")}
                 </button>
               </div>
             </div>
@@ -2888,9 +2969,9 @@ export default function App() {
               <div className="channel-intro">
                 <div className="big-hash">#</div>
 
-                <h2># general'a hoş geldin</h2>
+                <h2>{t("ui.welcomeChannel")}</h2>
 
-                <p>{activeGuild?.name} sohbetinin başlangıcı.</p>
+                <p>{t("ui.channelBeginning", { guild: activeGuild?.name || "" })}</p>
               </div>
 
               {messages.map((m) => (
@@ -2909,7 +2990,7 @@ export default function App() {
                     <div className="message-meta">
                       <b>{m.username}</b>
 
-                      <small>{new Date(m.createdAt).toLocaleTimeString()}</small>
+                      <small>{formatLocaleDate(m.createdAt, locale)}</small>
                     </div>
 
                     <div className="message-text">{m.text}</div>
@@ -2925,34 +3006,36 @@ export default function App() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="#general kanalına mesaj gönder"
+                placeholder={t("chat.sendPlaceholder")}
               />
 
               <button onClick={() => setText((v) => v + " 😂")}>😂</button>
 
               <button className="send" onClick={sendMessage}>
-                Gönder
+                {t("common.send")}
               </button>
             </div>
 
             <div className="call-controls">
               <button className={muted ? "danger" : ""} onClick={toggleMute}>
-                {muted ? "🔇 Mikrofon kapalı" : "🎙️ Mikrofon"}
+                {muted ? `🔇 ${t("common.mute")}` : `🎙️ ${t("media.microphone")}`}
               </button>
 
               <button className={cameraOn ? "active-control" : ""} onClick={toggleCamera}>
-                📹 {cameraOn ? "Kamerayı kapat" : "Kamera"}
+                📹 {cameraOn ? t("media.cameraOff") : t("media.camera")}
               </button>
 
               <button className={screenOn ? "active-control" : ""} onClick={toggleScreen}>
-                🖥️ {screenOn ? "Paylaşımı durdur" : "Ekran paylaş"}
+                🖥️ {screenOn ? t("media.stopScreenShare") : t("media.screenShare")}
               </button>
 
               <button className="disconnect-btn" onClick={() => leaveVoice(true)}>
-                ☎ Disconnect
+                ☎ {t("common.endCall")}
               </button>
 
-              <span className="connection">● {connected ? "Online" : "Offline"}</span>
+              <span className="connection">
+                ● {connected ? t("connection.online") : t("connection.offline")}
+              </span>
             </div>
 
             {error && (
@@ -2965,7 +3048,7 @@ export default function App() {
       </main>
 
       <aside className="members">
-        <div className="members-title">ONLINE — {presence.length}</div>
+        <div className="members-title">{t("ui.onlineCount", { count: presence.length })}</div>
 
         {presence.map((p) => {
           const isSelf = p.socketId === socket?.id;
@@ -2994,7 +3077,7 @@ export default function App() {
 
                 <span>
                   {p.username}
-                  {isSelf ? " (sen)" : ""}
+                  {isSelf ? t("guild.self") : ""}
                 </span>
               </div>
 
@@ -3003,7 +3086,7 @@ export default function App() {
                   <button
                     className={peerMuted[p.socketId] ? "peer-muted" : ""}
                     onClick={() => togglePeerMute(p.socketId)}
-                    title="Sadece sende sustur"
+                    title={t("media.muteOnlyYou")}
                   >
                     {peerMuted[p.socketId] ? "🔇" : "🔊"}
                   </button>
@@ -3025,7 +3108,7 @@ export default function App() {
           );
         })}
 
-        <div className="members-title bots">BOTS — 1</div>
+        <div className="members-title bots">{t("ui.botsCount")}</div>
 
         <div className="member">
           <div className="avatar bot">EB</div>
@@ -3040,14 +3123,12 @@ export default function App() {
       {showAudioSettings && (
         <div className="modal-backdrop">
           <div className="modal audio-settings-modal">
-            <h2>Ses & Video</h2>
-            <p className="settings-subtitle">
-              Mikrofon, hoparlör, kamera ve ekran paylaşımı ayarları.
-            </p>
+            <h2>{t("media.audioVideoSettings")}</h2>
+            <p className="settings-subtitle">{t("media.settingsDescription")}</p>
 
-            <label>Mikrofon / Input</label>
+            <label>{t("media.microphoneInput")}</label>
             <select value={selectedInput} onChange={(e) => switchInput(e.target.value)}>
-              <option value="">Sistem varsayılanı</option>
+              <option value="">{t("media.systemDefault")}</option>
               {audioInputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
@@ -3055,9 +3136,9 @@ export default function App() {
               ))}
             </select>
 
-            <label>Hoparlör / Output</label>
+            <label>{t("media.speakerOutput")}</label>
             <select value={selectedOutput} onChange={(e) => switchOutput(e.target.value)}>
-              <option value="">Sistem varsayılanı</option>
+              <option value="">{t("media.systemDefault")}</option>
               {audioOutputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Hoparlör ${d.deviceId.slice(0, 6)}`}
@@ -3067,9 +3148,9 @@ export default function App() {
 
             <div className="settings-divider">VIDEO</div>
 
-            <label>Kamera</label>
+            <label>{t("media.cameraInput")}</label>
             <select value={selectedCamera} onChange={(e) => switchCamera(e.target.value)}>
-              <option value="">Sistem varsayılanı</option>
+              <option value="">{t("media.systemDefault")}</option>
               {videoInputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Kamera ${d.deviceId.slice(0, 6)}`}
@@ -3079,7 +3160,7 @@ export default function App() {
 
             <div className="video-quality-grid">
               <div>
-                <label>Ekran paylaşım kalitesi</label>
+                <label>{t("media.screenQualityLabel")}</label>
                 <select
                   value={screenQuality}
                   onChange={(e) => {
@@ -3093,7 +3174,7 @@ export default function App() {
                 </select>
               </div>
               <div>
-                <label>FPS</label>
+                <label>{t("media.fps")}</label>
                 <select
                   value={screenFps}
                   onChange={(e) => {
@@ -3109,15 +3190,15 @@ export default function App() {
             </div>
 
             <div className="screen-share-note">
-              🖥️ {screenQuality}p · {screenFps} FPS paylaşım profili
-              <small>Değişiklik bir sonraki ekran paylaşımında uygulanır.</small>
+              🖥️ {t("media.shareProfile", { quality: screenQuality, fps: screenFps })}
+              <small>{t("media.changeNotice")}</small>
             </div>
 
             <div className="sound-settings-block">
               <label className="sound-toggle-row">
                 <span>
-                  <b>Lobi giriş / çıkış sesleri</b>
-                  <small>Bulunduğun ses lobisine biri katıldığında veya ayrıldığında çalar.</small>
+                  <b>{t("media.lobbySounds")}</b>
+                  <small>{t("media.lobbySoundsDescription")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -3130,7 +3211,7 @@ export default function App() {
                 />
               </label>
 
-              <label>Efekt ses seviyesi · %{effectVolume}</label>
+              <label>{t("media.effectVolume", { volume: effectVolume })}</label>
               <input
                 type="range"
                 min="0"
@@ -3145,7 +3226,7 @@ export default function App() {
             </div>
 
             <div className="modal-actions">
-              <button onClick={() => setShowAudioSettings(false)}>Kapat</button>
+              <button onClick={() => setShowAudioSettings(false)}>{t("common.close")}</button>
             </div>
           </div>
         </div>
@@ -3155,7 +3236,7 @@ export default function App() {
         <div className="modal-backdrop">
           <div className="modal friends-modal">
             <div className="friends-header">
-              <h2>Arkadaşlar</h2>
+              <h2>{t("ui.friends")}</h2>
               <button onClick={() => setShowFriends(false)}>✕</button>
             </div>
 
@@ -3164,14 +3245,14 @@ export default function App() {
                 value={friendSearch}
                 onChange={(e) => setFriendSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && searchFriends()}
-                placeholder="Kullanıcı adı ara"
+                placeholder={t("friends.searchPlaceholder")}
               />
-              <button onClick={searchFriends}>Ara</button>
+              <button onClick={searchFriends}>{t("friends.search")}</button>
             </div>
 
             {friendSearchResults.length > 0 && (
               <div className="friend-section">
-                <h3>Arama sonucu</h3>
+                <h3>{t("ui.searchResults")}</h3>
                 {friendSearchResults.map((f) => (
                   <div className="friend-row" key={f.id}>
                     <div className="friend-user">
@@ -3184,7 +3265,7 @@ export default function App() {
                       </div>
                       <b>{f.username}</b>
                     </div>
-                    <button onClick={() => sendFriendRequest(f.id)}>＋ Ekle</button>
+                    <button onClick={() => sendFriendRequest(f.id)}>＋ {t("friends.add")}</button>
                   </div>
                 ))}
               </div>
@@ -3192,7 +3273,7 @@ export default function App() {
 
             {incomingRequests.length > 0 && (
               <div className="friend-section">
-                <h3>Gelen istekler</h3>
+                <h3>{t("ui.incomingRequests")}</h3>
                 {incomingRequests.map((f) => (
                   <div className="friend-row" key={f.id}>
                     <div className="friend-user">
@@ -3217,8 +3298,8 @@ export default function App() {
             )}
 
             <div className="friend-section">
-              <h3>Arkadaşlarım</h3>
-              {friends.length === 0 && <small>Henüz arkadaşın yok.</small>}
+              <h3>{t("ui.myFriends")}</h3>
+              {friends.length === 0 && <small>{t("ui.noFriends")}</small>}
 
               {friends.map((f) => (
                 <div className="friend-row" key={f.id}>
@@ -3261,7 +3342,7 @@ export default function App() {
           </div>
           <div className="call-info">
             <b>{incomingCall.fromUsername}</b>
-            <span>Özel arama geliyor…</span>
+            <span>{t("ui.incomingPrivateCall")}</span>
           </div>
           <button className="answer-call" onClick={() => answerIncomingCall(true)}>
             📞
@@ -3276,9 +3357,11 @@ export default function App() {
         <div className="private-call-bar">
           <span>
             📞 {privateCallPeer.username}
-            {ringing ? " aranıyor…" : ` ile özel konuşma • ${formatCallTime(callSeconds)}`}
+            {ringing
+              ? ` ${t("call.ringing")}`
+              : ` ${t("call.privateConversation", { time: formatCallTime(callSeconds) })}`}
           </span>
-          <button onClick={() => stopPrivateCall(true)}>Aramayı Bitir</button>
+          <button onClick={() => stopPrivateCall(true)}>{t("common.endCall")}</button>
         </div>
       )}
 
@@ -3287,17 +3370,17 @@ export default function App() {
           <div className="modal screen-picker-modal">
             <div className="screen-picker-header">
               <div>
-                <h2>Ekran veya pencere paylaş</h2>
-                <p>Paylaşmak istediğin kaynağı seç.</p>
+                <h2>{t("ui.screenShare")}</h2>
+                <p>{t("ui.chooseSource")}</p>
               </div>
               <button onClick={() => setShowScreenPicker(false)}>✕</button>
             </div>
 
             {screenPermission === "denied" && (
               <div className="screen-permission-warning">
-                macOS ekran kaydı izni kapalı.
+                {t("ui.screenPermissionOff")}
                 <button onClick={() => window.echoverse?.openScreenSettings?.()}>
-                  Sistem Ayarlarını Aç
+                  {t("ui.openSystemSettings")}
                 </button>
               </div>
             )}
@@ -3323,21 +3406,21 @@ export default function App() {
       {showCreate && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h2>Yeni sunucu</h2>
+            <h2>{t("guild.new")}</h2>
 
             <input
               autoFocus
-              placeholder="Sunucu adı"
+              placeholder={t("guild.namePlaceholder")}
               value={newGuildName}
               onChange={(e) => setNewGuildName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && createGuild()}
             />
 
             <div className="modal-actions">
-              <button onClick={() => setShowCreate(false)}>Vazgeç</button>
+              <button onClick={() => setShowCreate(false)}>{t("guild.cancel")}</button>
 
               <button className="primary-small" onClick={createGuild}>
-                Oluştur
+                {t("guild.create")}
               </button>
             </div>
           </div>

@@ -80,16 +80,35 @@ export const registerCredentialsSchema = authCredentialsSchema.extend({
     .regex(/^[\p{L}\p{N}_.-]+$/u)
 });
 
-export const attachmentSchema = z.object({
+export const attachmentMimeSchema = z.enum([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "text/csv",
+  "text/plain",
+  "application/json",
+  "application/pdf",
+  "application/zip"
+]);
+
+const attachmentShape = z.object({
   name: z.string().trim().min(1).max(180),
-  mime: z.string().trim().min(1).max(120),
+  mime: attachmentMimeSchema,
   data: z
     .string()
-    .regex(/^data:[^;]+;base64,/)
+    .regex(/^data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,/i)
     .max(5_700_000)
 });
 
-export const attachmentMetadataSchema = attachmentSchema.pick({ name: true, mime: true }).strict();
+export const attachmentSchema = attachmentShape.superRefine((value, context) => {
+  const declaredMime = value.data.slice(5, value.data.indexOf(";"));
+  if (declaredMime.toLowerCase() !== value.mime) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["data"], message: "MIME mismatch" });
+  }
+});
+
+export const attachmentMetadataSchema = attachmentShape.pick({ name: true, mime: true }).strict();
 
 export const chatMessageSchema = z.object({
   guildId: z.string().min(1).max(80),
@@ -138,6 +157,97 @@ export const webrtcIceCandidateEventSchema = z
     candidate: webrtcIceCandidateSchema.shape.candidate
   })
   .strict();
+
+const identifierSchema = z.string().trim().min(1).max(128);
+const optionalEmptyPayloadSchema = z.union([z.undefined(), z.null(), z.object({}).strict()]);
+
+export const socketEventPayloadSchemas = {
+  "auth:register": registerCredentialsSchema,
+  "auth:login": authCredentialsSchema,
+  "auth:resume": z
+    .object({
+      token: z.string().max(4096).optional(),
+      refreshToken: z.string().max(4096).optional()
+    })
+    .strict(),
+  "auth:logout": z.object({ token: z.string().max(4096).optional() }).strict(),
+  "profile:set-avatar": z
+    .object({
+      token: z.string().max(4096).optional(),
+      avatarData: z
+        .string()
+        .regex(/^data:image\/(?:png|jpeg|webp);base64,/i)
+        .max(700_000)
+        .nullable()
+        .optional()
+    })
+    .strict(),
+  identify: z
+    .object({
+      token: z.string().max(4096).optional(),
+      userId: identifierSchema.optional(),
+      username: z.string().trim().max(80).optional()
+    })
+    .strict(),
+  "friends:search": z.object({ query: z.string().trim().max(40) }).strict(),
+  "friends:list": optionalEmptyPayloadSchema,
+  "friends:request": z.object({ targetId: identifierSchema }).strict(),
+  "friends:respond": z.object({ friendshipId: identifierSchema, accept: z.boolean() }).strict(),
+  "friends:remove": z.object({ targetId: identifierSchema }).strict(),
+  "friends:block": z.object({ targetId: identifierSchema }).strict(),
+  "friends:unblock": z.object({ targetId: identifierSchema }).strict(),
+  "dm:history": z.object({ friendId: identifierSchema }).strict(),
+  "dm:send": z
+    .object({
+      friendId: identifierSchema,
+      body: z.string().max(2500),
+      replyToId: identifierSchema.nullable().optional(),
+      attachment: attachmentSchema.nullable().optional()
+    })
+    .strict(),
+  "dm:edit": z.object({ messageId: identifierSchema, body: z.string().max(2500) }).strict(),
+  "dm:delete": z.object({ messageId: identifierSchema }).strict(),
+  "call:start": z.object({ friendId: identifierSchema }).strict(),
+  "call:answer": z
+    .object({ callId: identifierSchema, toSocketId: identifierSchema, accept: z.boolean() })
+    .strict(),
+  "call:end": z.object({ toSocketId: identifierSchema, callId: identifierSchema }).strict(),
+  "guild:create": z.object({ name: z.string().trim().min(1).max(32) }).strict(),
+  "guild:join-code": z.object({ code: z.string().trim().min(1).max(80) }).strict(),
+  "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
+  "voice:sync-request": optionalEmptyPayloadSchema,
+  "leave-room": optionalEmptyPayloadSchema,
+  "chat-message": chatMessageSchema,
+  "spotify:party-start": z.object({ guildId: identifierSchema }).strict(),
+  "spotify:party-stop": z.object({ guildId: identifierSchema }).strict(),
+  "spotify:sync": z
+    .object({
+      guildId: identifierSchema,
+      state: z
+        .object({
+          trackUri: z.string().max(512).optional(),
+          trackName: z.string().max(512).optional(),
+          artistName: z.string().max(512).optional(),
+          albumImage: z.union([z.literal(""), z.string().url().max(2048)]).optional(),
+          positionMs: z.number().finite().min(0).max(86_400_000).optional(),
+          isPlaying: z.boolean().optional(),
+          timestamp: z.number().int().min(0).max(9_999_999_999_999).optional(),
+          updatedAt: z.number().int().min(0).max(9_999_999_999_999).optional()
+        })
+        .strict()
+    })
+    .strict(),
+  "webrtc-offer": webrtcDescriptionSchema,
+  "webrtc-answer": webrtcDescriptionSchema,
+  "webrtc-ice": webrtcIceCandidateSchema,
+  "presence:set": z.object({ status: z.enum(["online", "idle", "dnd", "invisible"]) }).strict(),
+  "presence:get": z.object({ accountIds: z.array(identifierSchema).max(100) }).strict(),
+  "dm:typing": z.object({ friendId: identifierSchema, typing: z.boolean() }).strict(),
+  "dm:read": z.object({ friendId: identifierSchema }).strict(),
+  "dm:react": z
+    .object({ messageId: identifierSchema, emoji: z.string().trim().min(1).max(12) })
+    .strict()
+} as const;
 
 export type AuthCredentials = z.infer<typeof authCredentialsSchema>;
 export type RegisterCredentials = z.infer<typeof registerCredentialsSchema>;
@@ -203,3 +313,5 @@ export type SpotifyState = {
   isPlaying?: boolean;
   updatedAt?: number;
 };
+
+export * from "./i18n.js";

@@ -53,7 +53,11 @@ describe("PostgreSQL persistence boundary", () => {
 
   it("applies every migration exactly once", async () => {
     const result = await pool.query("SELECT id FROM echoverse_schema_migrations ORDER BY id");
-    expect(result.rows.map((row) => row.id)).toEqual(["001_initial", "002_dm_metadata"]);
+    expect(result.rows.map((row) => row.id)).toEqual([
+      "001_initial",
+      "002_dm_metadata",
+      "003_friendship_updated_at"
+    ]);
   });
 
   it("enforces cascading user deletion for friendships and messages", async () => {
@@ -66,5 +70,31 @@ describe("PostgreSQL persistence boundary", () => {
       [friendshipId, messageId]
     );
     expect(relationships.rows[0]).toMatchObject({ friendships: "0", messages: "0" });
+  });
+
+  it("keeps friendship timestamps and DM metadata available after migration", async () => {
+    const friendshipColumns = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'echoverse_friendships' AND column_name = 'updated_at'`
+    );
+    const messageColumns = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'echoverse_dm_messages'
+         AND column_name IN ('reply_to_id', 'edited_at', 'deleted_at', 'attachment_name', 'attachment_mime', 'attachment_data', 'reactions')
+       ORDER BY column_name`
+    );
+
+    expect(friendshipColumns.rowCount).toBe(1);
+    expect(messageColumns.rows.map((row) => row.column_name)).toEqual([
+      "attachment_data",
+      "attachment_mime",
+      "attachment_name",
+      "deleted_at",
+      "edited_at",
+      "reactions",
+      "reply_to_id"
+    ]);
   });
 });

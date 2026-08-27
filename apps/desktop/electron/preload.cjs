@@ -2,6 +2,11 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("echoverse", {
   getConfig: () => ipcRenderer.invoke("echoverse:getConfig"),
+  authSession: {
+    get: () => ipcRenderer.invoke("auth:get-session"),
+    set: (value) => ipcRenderer.invoke("auth:set-session", value),
+    clear: () => ipcRenderer.invoke("auth:clear-session")
+  },
 
   onUpdateStatus: (callback) => {
     const listener = (_event, status) => callback(status);

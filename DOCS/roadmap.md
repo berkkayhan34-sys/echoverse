@@ -179,11 +179,11 @@ evidence, and make every release-blocking failure visible rather than skipped.
 ```yaml
 id: CODE-001
 type: runtime_security
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-001.md
 ```
 
-[ ] Implement and test the documented hybrid session model: short-lived
+[x] Implement and test the documented hybrid session model: short-lived
 `Secure`/`HttpOnly` web cookies, desktop OS secure storage, refresh rotation,
 revocation, expiry, logout, origin checks, CORS/trusted-proxy/TLS settings,
 security headers, and fail-closed production secret validation.
@@ -193,11 +193,11 @@ security headers, and fail-closed production secret validation.
 ```yaml
 id: CODE-002
 type: runtime_security
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-002.md
 ```
 
-[ ] Enforce boundary schemas, size/type limits, rate limits, timeouts, bounded
+[x] Enforce boundary schemas, size/type limits, rate limits, timeouts, bounded
 resource use, and privacy-safe error responses for every HTTP route, Socket.IO
 event, upload, OAuth callback, media/signaling operation, and updater input.
 Prove that stack traces, credentials, tokens, message bodies, and other users'
@@ -208,11 +208,11 @@ data never cross the response or log boundary.
 ```yaml
 id: CODE-003
 type: persistence_and_compatibility
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-003.md
 ```
 
-[ ] Implement the production SQLite adapter, complete PostgreSQL integration
+[x] Implement the production SQLite adapter, complete PostgreSQL integration
 coverage, and add migration, schema, backup/restore, rollback, and
 SQLite/PostgreSQL compatibility tests. Keep hosted PostgreSQL migrations and
 the local adapter behavior explicitly aligned.
@@ -222,11 +222,11 @@ the local adapter behavior explicitly aligned.
 ```yaml
 id: CODE-004A-LOCALIZATION
 type: localization_foundation
-status: incomplete
+status: in_progress
 evidence: null
 ```
 
-[ ] Inventory every application-owned string, including visible UI text,
+[-] Inventory every application-owned string, including visible UI text,
 validation and error messages, notifications, empty/loading states, server
 responses, logs, and other runtime text users may not directly see. Move the
 complete inventory into key/value locale catalogs with no hard-coded natural
@@ -254,6 +254,21 @@ work in both English and Turkish. Tests must also cover non-ASCII, combining,
 emoji, and CJK fixtures through the complete client/server/database/search
 path, plus locale-aware formatting and future-direction-safe layout behavior.
 Record static string-inventory and browser acceptance evidence.
+
+Current blockers recorded on 2026-08-27:
+
+- Server-owned response, notification, and user-facing diagnostic strings in
+  `apps/server/src/index.ts` still need to be moved behind the shared catalog
+  or a catalog-backed error-code envelope.
+- The complete web/desktop English and Turkish browser-flow acceptance matrix
+  and static string-inventory evidence have not yet been recorded; the current
+  Playwright smoke test covers only the web shell.
+- End-to-end Unicode coverage is present for catalog and SQLite persistence
+  fixtures, but still needs coverage through client/server search, export or
+  import, and updater metadata flows before this child can close.
+- Local REUSE, gitleaks, and PostgreSQL integration validation remain
+  environment-blocked because the required executables or PostgreSQL service
+  are unavailable on the current host; CI must provide that evidence.
 
 ### server-feature-extraction
 

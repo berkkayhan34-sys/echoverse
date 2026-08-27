@@ -61,8 +61,11 @@ at the platform-appropriate boundary, rotate refresh credentials, revoke on
 logout or security action, reject expired/revoked credentials, and record only
 privacy-safe correlation data. Web uses `Secure`/`HttpOnly` cookies; desktop
 uses operating-system secure storage, as defined by
-[ADR-0004](decisions/0004-session-and-deployment.md). The current token flow is
-not complete until `CODE-001` and its negative tests pass.
+[ADR-0004](decisions/0004-session-and-deployment.md). CODE-001 implements this
+baseline with an in-memory server-side session registry, refresh-family replay
+revocation, HTTP cookie endpoints, and a narrow Electron secure-storage IPC
+bridge. A process restart invalidates active sessions; durable multi-instance
+session storage remains a later persistence concern.
 
 ### Input and resource limits
 
@@ -73,12 +76,41 @@ and bounded resource use. Error responses must not disclose credentials,
 tokens, stack traces, or private records.
 
 The current baseline has a 1 MiB HTTP JSON limit, an 8 MiB Socket.IO transport
-buffer, 2,500-character chat text, 5,700,000-character base64 attachment data,
-and 700,000-character avatar data. It also has HTTP, authentication, and DM
-rate-limit defaults plus a 35-second pending-call timeout. These values are
-inventory facts, not a complete security guarantee: MIME allowlists, all event
-limits, timeout coverage, and bounded resource behavior require the negative
-tests in `QUAL-002` and `QUAL-003`.
+buffer and serialized packet ceiling, 2,500-character chat text,
+5,700,000-character base64 attachment data, 700,000-character avatar data,
+15-second HTTP request and 10-second header timeouts, and a 5-second keep-alive
+timeout. HTTP is limited to 240 requests per minute globally and 20 requests per
+minute across auth routes. Socket.IO events have a default 120-per-minute
+limit, with auth at 8, DM sends at 30, call starts at 10, and WebRTC ICE at
+240; WebRTC SDP is capped at 200,000 characters and ICE candidates at 10,000.
+These values are now executable policy for the implemented boundaries. DM
+attachments use an explicit MIME allowlist and the declared MIME must match the
+data-URL header. WebRTC carries bounded signaling metadata rather than media
+bytes; media capture remains a browser/Electron resource concern covered by
+CODE-007. Spotify's loopback callback enforces PKCE/state checks and validates
+provider token responses before storage. Updater metadata and progress values
+are validated before logging, UI display, or installation state changes.
+
+#### Executable boundary budget
+
+| Boundary                     | Limit or invariant                                                                                                    | Enforcement                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| HTTP JSON                    | 1 MiB body; 15-second request timeout; 10-second header timeout; 5-second keep-alive                                  | Express parser and HTTP server settings              |
+| HTTP requests                | 240 requests/minute globally; 20 requests/minute across `/auth/*`                                                     | Express rate limiters                                |
+| Socket.IO packet             | 8,000,000 serialized UTF-8 bytes; 8,000,000-byte transport ceiling                                                    | Socket packet middleware and Socket.IO configuration |
+| Unclassified Socket.IO event | 120 events/minute per socket                                                                                          | Socket packet middleware                             |
+| Authentication events        | 8 attempts/minute per socket                                                                                          | Authentication handlers                              |
+| Direct-message sends         | 30/minute per socket; attachments capped at 5,700,000 base64 characters and restricted to the declared MIME allowlist | DM handler and attachment schema                     |
+| Calls                        | 10 starts/minute; unanswered calls expire after 35 seconds                                                            | Call handler and pending-call timer                  |
+| Chat                         | 120 messages/minute; 2,500 characters                                                                                 | Packet limiter and contract/sanitizer                |
+| WebRTC descriptions          | 200,000-character SDP; validated event shape                                                                          | Contract schema at the relay boundary                |
+| WebRTC ICE                   | 240 events/minute; 10,000-character candidate                                                                         | Packet limiter and contract schema                   |
+| Avatar data                  | 700,000 characters; PNG, JPEG, or WebP data URL                                                                       | Avatar handler                                       |
+| Updater metadata             | Semantic version max 64 chars; progress finite and 0–100                                                              | Electron updater boundary                            |
+
+All rejected boundary inputs return a stable, non-sensitive error or are
+dropped before relay. Request and packet errors do not serialize payloads,
+credentials, cookies, stack traces, or database records.
 
 Every limit must have an explicit owner, a rejection response, a test for the
 boundary and over-limit case, and release evidence showing the command and
@@ -88,8 +120,12 @@ format changes.
 ### Browser, transport, and cookies
 
 CORS origins, trusted proxy behavior, TLS assumptions, cookie flags, token
-storage, and session expiry must be explicit configuration. Security headers and
-origin checks must be covered by automated tests before production release.
+storage, session expiry, and `SameSite` policy are explicit configuration.
+Production refuses insecure web-cookie configuration; the authoritative Render
+manifest enables the HTTPS cookie, cross-site `SameSite=None` policy, and proxy
+settings for the GitHub Pages origin. Security
+headers, CORS rejection, cookie attributes, refresh replay, expiry, and logout
+invalidation are covered by the CODE-001 evidence record.
 
 ### Electron and updates
 
@@ -118,15 +154,15 @@ least-privilege and server-authorized. Retention is the minimum needed for that
 purpose, and deletion covers primary storage, derived data, media, exports,
 backups, caches, and logs where applicable.
 
-| Data class                     | Current storage                                                          | Required retention/deletion rule                                                                                                         | Test and release evidence owner                                                    |
-| ------------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Credentials and account data   | Password hash and account profile in PostgreSQL; memory fallback locally | Never retain plaintext passwords. Delete account data through an authorized, auditable request path and invalidate sessions.             | `CODE-001`, `CODE-005`, `CODE-003`; release evidence in the completed child record |
-| Sessions and tokens            | Current in-memory socket state and signed tokens                         | Short expiry, rotation, revocation, logout invalidation, and no token values in logs or exports.                                         | `QUAL-002`, `QUAL-003`, `CODE-001`; release evidence in the completed child record |
-| Messages and attachments       | PostgreSQL/SQLite message tables; attachment data is bounded inline data | User deletion must remove or irreversibly clear message content and attachments from active stores, with tombstone semantics documented. | `CODE-002`, `CODE-003`, `CODE-005`; release evidence in the completed child record |
-| Presence, calls, and signaling | Transient server memory and peer state                                   | Clear on disconnect, timeout, logout, and failed negotiation; do not persist signaling payloads by default.                              | `QUAL-003`, `CODE-007`, `OPS-002`; release evidence in the completed child record  |
-| OAuth/provider data            | Provider credentials and playback metadata at integration boundaries     | Store only the minimum token/metadata needed, revoke or discard credentials on disconnect/deletion, and redact callback data.            | `CODE-002`, `CODE-005`; release evidence in the completed child record             |
-| Logs and diagnostics           | Application/host logging systems                                         | Define retention and access roles, redact before emission, and delete on the approved schedule.                                          | `OPS-001`, `OPS-004`; release evidence in the completed child record               |
-| Backups and exports            | Not yet defined as a product surface                                     | Every backup/export must have an owner, expiry, access restriction, deletion job, and deletion verification.                             | `CODE-003`, `OPS-001`, `OPS-004`; release evidence in the completed child record   |
+| Data class                     | Current storage                                                                          | Required retention/deletion rule                                                                                                         | Test and release evidence owner                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Credentials and account data   | Password hash and account profile in PostgreSQL; memory fallback locally                 | Never retain plaintext passwords. Delete account data through an authorized, auditable request path and invalidate sessions.             | `CODE-001`, `CODE-005`, `CODE-003`; release evidence in the completed child record |
+| Sessions and tokens            | In-memory server-side session registry; web HTTP-only cookies; desktop OS secure storage | Short expiry, rotation, revocation, logout invalidation, and no token values in logs or exports.                                         | `QUAL-002`, `QUAL-003`, `CODE-001`; release evidence in the completed child record |
+| Messages and attachments       | PostgreSQL/SQLite message tables; attachment data is bounded inline data                 | User deletion must remove or irreversibly clear message content and attachments from active stores, with tombstone semantics documented. | `CODE-002`, `CODE-003`, `CODE-005`; release evidence in the completed child record |
+| Presence, calls, and signaling | Transient server memory and peer state                                                   | Clear on disconnect, timeout, logout, and failed negotiation; do not persist signaling payloads by default.                              | `QUAL-003`, `CODE-007`, `OPS-002`; release evidence in the completed child record  |
+| OAuth/provider data            | Provider credentials and playback metadata at integration boundaries                     | Store only the minimum token/metadata needed, revoke or discard credentials on disconnect/deletion, and redact callback data.            | `CODE-002`, `CODE-005`; release evidence in the completed child record             |
+| Logs and diagnostics           | Application/host logging systems                                                         | Define retention and access roles, redact before emission, and delete on the approved schedule.                                          | `OPS-001`, `OPS-004`; release evidence in the completed child record               |
+| Backups and exports            | Not yet defined as a product surface                                                     | Every backup/export must have an owner, expiry, access restriction, deletion job, and deletion verification.                             | `CODE-003`, `OPS-001`, `OPS-004`; release evidence in the completed child record   |
 
 An account or data-deletion operation must be idempotent, authorization-checked,
 bounded, and safe to retry. Its deletion evidence records the request and

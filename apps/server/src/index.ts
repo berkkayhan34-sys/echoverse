@@ -3,7 +3,6 @@ import cors from "cors";
 import http from "http";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import pg from "pg";
 import { Server } from "socket.io";
 import helmet from "helmet";
@@ -15,9 +14,15 @@ import {
   PROTOCOL_VERSION,
   attachmentSchema,
   authCredentialsSchema,
-  registerCredentialsSchema
+  chatMessageSchema,
+  registerCredentialsSchema,
+  socketEventPayloadSchemas,
+  webrtcDescriptionSchema,
+  webrtcIceCandidateSchema
 } from "@echoverse/contracts";
 import { runMigrations } from "./persistence/migrations.js";
+import { type PersistenceDatabase, SqliteDatabase } from "./persistence/sqlite.js";
+import { runSqliteMigrations } from "./persistence/sqlite-migrations.js";
 import { sanitizeEmail, sanitizeName, sanitizeText, validEmail } from "./domain/validation.js";
 import type {
   Account,
@@ -28,7 +33,19 @@ import type {
   User
 } from "./domain/types.js";
 import { utilityBotResponse } from "./features/chat/commands.js";
-import { allowSocketEvent, clearSocketLimits } from "./runtime/limits.js";
+import {
+  allowSocketEvent,
+  clearSocketLimits,
+  MAX_SOCKET_PACKET_BYTES,
+  socketEventLimit,
+  socketPayloadWithinLimit
+} from "./runtime/limits.js";
+import {
+  parseCookies,
+  serializeCookie,
+  SessionManager,
+  type SessionTokens
+} from "./auth/session.js";
 import {
   accountPresence,
   dmReadAt,
@@ -48,6 +65,7 @@ const config = loadServerConfig();
 
 const app = express();
 app.disable("x-powered-by");
+app.set("trust proxy", config.trustProxy);
 app.use(helmet());
 app.use(
   cors({
@@ -77,7 +95,7 @@ app.get("/", (_req, res) => {
     version: APP_VERSION,
     protocolVersion: PROTOCOL_VERSION,
     ok: true,
-    database: config.databaseUrl ? "postgres" : "memory",
+    database: config.databaseUrl ? "postgres" : config.sqlitePath ? "sqlite" : "memory",
     time: new Date().toISOString()
   });
 });
@@ -87,11 +105,14 @@ app.get("/health", (_req, res) => {
     ok: true,
     version: APP_VERSION,
     protocolVersion: PROTOCOL_VERSION,
-    database: config.databaseUrl ? "postgres" : "memory"
+    database: config.databaseUrl ? "postgres" : config.sqlitePath ? "sqlite" : "memory"
   });
 });
 
 const httpServer = http.createServer(app);
+httpServer.requestTimeout = 15_000;
+httpServer.headersTimeout = 10_000;
+httpServer.keepAliveTimeout = 5_000;
 
 const io = new Server(httpServer, {
   cors: { origin: config.corsOrigins, credentials: true, methods: ["GET", "POST"] },
@@ -99,18 +120,49 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 8e6
 });
 
-io.use((socket, next) => {
+const sessionManager = new SessionManager({
+  jwtSecret: config.jwtSecret,
+  accessTtlSeconds: config.sessionAccessTtlSeconds,
+  refreshTtlSeconds: config.sessionRefreshTtlSeconds
+});
+
+io.use(async (socket, next) => {
   const requested = Number(socket.handshake.auth?.protocolVersion);
   if (requested !== PROTOCOL_VERSION) {
     next(new Error(`Unsupported protocol version: ${requested}`));
     return;
   }
+
+  const authToken = String(
+    socket.handshake.auth?.accessToken ||
+      parseCookies(socket.handshake.headers.cookie).echoverse_access ||
+      ""
+  );
+
+  if (authToken) {
+    const verified = sessionManager.verifyAccess(authToken);
+    if (!verified) {
+      next(new Error("Invalid session"));
+      return;
+    }
+
+    const account = await accountById(verified.userId);
+    if (!account) {
+      next(new Error("Invalid session"));
+      return;
+    }
+
+    socket.data.account = account;
+    socket.data.sessionId = verified.sessionId;
+    socket.data.accessToken = authToken;
+  }
+
+  socket.data.client = socket.handshake.auth?.client === "desktop" ? "desktop" : "web";
+
   next();
 });
 
-const JWT_SECRET = config.jwtSecret;
-
-const pool = config.databaseUrl
+const postgresPool = config.databaseUrl
   ? new Pool({
       connectionString: config.databaseUrl,
       ssl:
@@ -119,6 +171,9 @@ const pool = config.databaseUrl
           : undefined
     })
   : null;
+
+const sqliteDatabase = config.sqlitePath ? new SqliteDatabase(config.sqlitePath) : null;
+const pool: PersistenceDatabase | null = postgresPool || sqliteDatabase;
 
 guilds.set("echoverse", {
   id: "echoverse",
@@ -136,34 +191,125 @@ function publicAccount(account: Account): PublicAccount {
   };
 }
 
-function signToken(account: Account) {
-  return jwt.sign(
-    {
-      sub: account.id,
-      username: account.username,
-      email: account.email
-    },
-    JWT_SECRET,
-    { expiresIn: "30d" }
-  );
+function verifyToken(token: string) {
+  return sessionManager.verifyAccess(token)?.userId || "";
 }
 
-function verifyToken(token: string) {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
-    return String(decoded.sub || "");
-  } catch {
-    return "";
-  }
+function sessionResponse(account: Account, tokens: SessionTokens) {
+  return {
+    token: tokens.accessToken,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    account: publicAccount(account)
+  };
 }
+
+const ACCESS_COOKIE = "echoverse_access";
+const REFRESH_COOKIE = "echoverse_refresh";
+const authHttpRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+function onValidatedSocketEvent(
+  socket: any,
+  event: keyof typeof socketEventPayloadSchemas,
+  handler: (payload: any, callback?: (response: unknown) => void) => unknown
+) {
+  const schema = socketEventPayloadSchemas[event];
+  socket.on(event, (payload: unknown, callback?: (response: unknown) => void) => {
+    const actualCallback =
+      typeof payload === "function" ? (payload as (response: unknown) => void) : callback;
+    const candidate = typeof payload === "function" ? undefined : payload;
+    const parsed = schema.safeParse(candidate);
+    if (!parsed.success) {
+      actualCallback?.({ ok: false, error: "Geçersiz istek." });
+      return;
+    }
+    return handler(parsed.data, actualCallback);
+  });
+}
+
+function isDesktopRequest(req: express.Request) {
+  return req.get("X-EchoVerse-Client") === "desktop";
+}
+
+function setWebSessionCookies(res: express.Response, tokens: SessionTokens) {
+  res.setHeader("Set-Cookie", [
+    serializeCookie(ACCESS_COOKIE, tokens.accessToken, {
+      maxAge: config.sessionAccessTtlSeconds,
+      path: "/",
+      secure: config.webCookieSecure,
+      sameSite: config.webCookieSameSite
+    }),
+    serializeCookie(REFRESH_COOKIE, tokens.refreshToken, {
+      maxAge: config.sessionRefreshTtlSeconds,
+      path: "/auth",
+      secure: config.webCookieSecure,
+      sameSite: config.webCookieSameSite
+    })
+  ]);
+}
+
+function clearWebSessionCookies(res: express.Response) {
+  res.setHeader("Set-Cookie", [
+    serializeCookie(ACCESS_COOKIE, "", {
+      maxAge: 0,
+      path: "/",
+      secure: config.webCookieSecure,
+      sameSite: config.webCookieSameSite
+    }),
+    serializeCookie(REFRESH_COOKIE, "", {
+      maxAge: 0,
+      path: "/auth",
+      secure: config.webCookieSecure,
+      sameSite: config.webCookieSameSite
+    })
+  ]);
+}
+
+function bearerToken(req: express.Request) {
+  const authorization = req.get("Authorization") || "";
+  return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+}
+
+function requestAccessToken(req: express.Request) {
+  return bearerToken(req) || parseCookies(req.headers.cookie).echoverse_access || "";
+}
+
+function requestRefreshToken(req: express.Request) {
+  return String(req.body?.refreshToken || parseCookies(req.headers.cookie).echoverse_refresh || "");
+}
+
+function clientAuthResponse(
+  req: express.Request,
+  res: express.Response,
+  account: Account,
+  tokens: SessionTokens
+) {
+  if (isDesktopRequest(req)) {
+    return res.json({ ok: true, ...sessionResponse(account, tokens) });
+  }
+  setWebSessionCookies(res, tokens);
+  return res.json({ ok: true, account: publicAccount(account) });
+}
+
+app.use("/auth", authHttpRateLimit);
 
 async function initDatabase() {
   if (!pool) {
     console.log("EchoVerse accounts: in-memory fallback");
     return;
   }
-  await runMigrations(pool);
-  console.log("EchoVerse accounts/friends/DM: PostgreSQL ready");
+  if (postgresPool) {
+    await runMigrations(postgresPool);
+    console.log("EchoVerse accounts/friends/DM: PostgreSQL ready");
+    return;
+  }
+  await runSqliteMigrations(sqliteDatabase!);
+  console.log("EchoVerse accounts/friends/DM: SQLite ready");
 }
 
 async function accountById(id: string): Promise<Account | null> {
@@ -286,6 +432,27 @@ async function updateAvatar(accountId: string, avatarData: string | null) {
 
 function friendshipKey(a: string, b: string) {
   return [a, b].sort().join(":");
+}
+
+function parseReactions(value: unknown): Record<string, string[]> {
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const reactions: Record<string, string[]> = {};
+  for (const [emoji, accountIds] of Object.entries(value)) {
+    if (!Array.isArray(accountIds)) continue;
+    const validAccountIds = accountIds.filter(
+      (accountId): accountId is string => typeof accountId === "string" && accountId.length <= 128
+    );
+    if (validAccountIds.length) reactions[emoji] = validAccountIds;
+  }
+  return reactions;
 }
 
 async function publicUserById(id: string) {
@@ -531,7 +698,7 @@ async function loadDmHistory(a: string, b: string) {
     attachmentName: row.deleted_at ? null : row.attachment_name || null,
     attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
     attachmentData: row.deleted_at ? null : row.attachment_data || null,
-    reactions: row.reactions || {}
+    reactions: parseReactions(row.reactions)
   }));
 }
 
@@ -565,7 +732,7 @@ async function dmById(messageId: string): Promise<StoredDm | null> {
     attachmentName: row.deleted_at ? null : row.attachment_name || null,
     attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
     attachmentData: row.deleted_at ? null : row.attachment_data || null,
-    reactions: row.reactions || {}
+    reactions: parseReactions(row.reactions)
   };
 }
 
@@ -660,7 +827,7 @@ function leaveCurrentRoom(socket: any, user: User) {
   broadcastPresence(oldRoom);
 }
 
-async function attachAccountToSocket(socket: any, account: Account) {
+function attachAccountToSocket(socket: any, account: Account, sessionId?: string) {
   const current = users.get(socket.id);
 
   const user: User = {
@@ -674,11 +841,10 @@ async function attachAccountToSocket(socket: any, account: Account) {
   };
 
   users.set(socket.id, user);
+  socket.data.account = account;
+  if (sessionId) socket.data.sessionId = sessionId;
 
-  return {
-    token: signToken(account),
-    account: publicAccount(account)
-  };
+  return publicAccount(account);
 }
 
 io.on("connection", (socket) => {
@@ -686,7 +852,51 @@ io.on("connection", (socket) => {
   socket.emit("protocol:ready", { version: PROTOCOL_VERSION });
   socket.emit("guild:list", guildList());
 
-  socket.on("auth:register", async (payload, callback) => {
+  if (socket.data.account) {
+    attachAccountToSocket(socket, socket.data.account, socket.data.sessionId);
+    socket.emit("auth:session", { ok: true, account: publicAccount(socket.data.account) });
+  }
+
+  const handlerRateLimitedEvents = new Set([
+    "auth:register",
+    "auth:login",
+    "dm:send",
+    "webrtc-offer",
+    "webrtc-answer",
+    "webrtc-ice"
+  ]);
+
+  socket.use(([event, payload], next) => {
+    const eventName = String(event);
+    if (!socketPayloadWithinLimit(payload)) {
+      next(new Error(`Payload exceeds ${MAX_SOCKET_PACKET_BYTES} bytes`));
+      return;
+    }
+    if (
+      !handlerRateLimitedEvents.has(eventName) &&
+      !allowSocketEvent(socket.id, eventName, socketEventLimit(eventName))
+    ) {
+      next(new Error("Too many requests"));
+      return;
+    }
+    if (!socket.data.sessionId) {
+      next();
+      return;
+    }
+    if (sessionManager.verifyAccess(String(socket.data.accessToken || ""))) {
+      next();
+      return;
+    }
+    socket.emit("auth:expired");
+    socket.disconnect(true);
+    next(new Error("Session expired"));
+  });
+
+  onValidatedSocketEvent(socket, "auth:register", async (payload, callback) => {
+    if (socket.data.client !== "desktop") {
+      callback?.({ ok: false, error: "Web girişleri HTTP oturum uç noktasını kullanmalı." });
+      return;
+    }
     if (!allowSocketEvent(socket.id, "auth", 8)) {
       callback?.({ ok: false, error: "Çok fazla deneme. Lütfen biraz sonra tekrar dene." });
       return;
@@ -728,16 +938,22 @@ io.on("connection", (socket) => {
 
       const hash = await bcrypt.hash(password, 12);
       const account = await createAccount(email, username, hash);
-      const session = await attachAccountToSocket(socket, account);
+      const tokens = sessionManager.issue(account.id);
+      attachAccountToSocket(socket, account, tokens.sessionId);
+      socket.data.accessToken = tokens.accessToken;
 
-      callback?.({ ok: true, ...session });
-    } catch (err: any) {
-      console.error("register error", err);
+      callback?.({ ok: true, ...sessionResponse(account, tokens) });
+    } catch {
+      console.error("register error");
       callback?.({ ok: false, error: "Hesap oluşturulamadı." });
     }
   });
 
-  socket.on("auth:login", async (payload, callback) => {
+  onValidatedSocketEvent(socket, "auth:login", async (payload, callback) => {
+    if (socket.data.client !== "desktop") {
+      callback?.({ ok: false, error: "Web girişleri HTTP oturum uç noktasını kullanmalı." });
+      return;
+    }
     if (!allowSocketEvent(socket.id, "auth", 8)) {
       callback?.({ ok: false, error: "Çok fazla deneme. Lütfen biraz sonra tekrar dene." });
       return;
@@ -758,17 +974,28 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const session = await attachAccountToSocket(socket, account);
-      callback?.({ ok: true, ...session });
-    } catch (err) {
-      console.error("login error", err);
+      const tokens = sessionManager.issue(account.id);
+      attachAccountToSocket(socket, account, tokens.sessionId);
+      socket.data.accessToken = tokens.accessToken;
+      callback?.({ ok: true, ...sessionResponse(account, tokens) });
+    } catch {
+      console.error("login error");
       callback?.({ ok: false, error: "Giriş yapılamadı." });
     }
   });
 
-  socket.on("auth:resume", async ({ token }, callback) => {
+  onValidatedSocketEvent(socket, "auth:resume", async (payload, callback) => {
+    if (socket.data.client !== "desktop") {
+      callback?.({ ok: false });
+      return;
+    }
     try {
-      const accountId = verifyToken(String(token || ""));
+      const token = String(payload?.token || "");
+      const refreshToken = String(payload?.refreshToken || "");
+      const current = refreshToken ? sessionManager.rotate(refreshToken) : null;
+      const accountId = current?.sessionId
+        ? sessionManager.verifyAccess(current.accessToken)?.userId || ""
+        : verifyToken(token);
       const account = await accountById(accountId);
 
       if (!account) {
@@ -776,22 +1003,30 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const session = await attachAccountToSocket(socket, account);
-      callback?.({ ok: true, ...session });
+      const tokens = current || sessionManager.issue(account.id);
+      attachAccountToSocket(socket, account, tokens.sessionId);
+      socket.data.accessToken = tokens.accessToken;
+      callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
       callback?.({ ok: false });
     }
   });
 
-  socket.on("auth:logout", () => {
+  onValidatedSocketEvent(socket, "auth:logout", (payload) => {
+    const token = String(payload?.token || "");
+    if (socket.data.sessionId) sessionManager.revokeSession(String(socket.data.sessionId));
+    if (token) sessionManager.revokeAccess(token);
     const current = users.get(socket.id);
     if (current?.roomId) leaveCurrentRoom(socket, current);
     users.delete(socket.id);
+    socket.data.account = undefined;
+    socket.data.sessionId = undefined;
+    socket.data.accessToken = undefined;
   });
 
-  socket.on("profile:set-avatar", async ({ token, avatarData }, callback) => {
+  onValidatedSocketEvent(socket, "profile:set-avatar", async (payload, callback) => {
     try {
-      const accountId = verifyToken(String(token || ""));
+      const accountId = socket.data.account?.id || verifyToken(String(payload?.token || ""));
       if (!accountId) {
         callback?.({ ok: false, error: "Oturum geçersiz." });
         return;
@@ -799,8 +1034,8 @@ io.on("connection", (socket) => {
 
       let clean: string | null = null;
 
-      if (avatarData) {
-        clean = String(avatarData);
+      if (payload?.avatarData) {
+        clean = String(payload.avatarData);
 
         if (!/^data:image\/(png|jpeg|webp);base64,/i.test(clean)) {
           callback?.({ ok: false, error: "Geçersiz profil fotoğrafı." });
@@ -831,20 +1066,20 @@ io.on("connection", (socket) => {
         ok: true,
         account: publicAccount(account)
       });
-    } catch (err) {
-      console.error("avatar error", err);
+    } catch {
+      console.error("avatar error");
       callback?.({ ok: false, error: "Profil fotoğrafı güncellenemedi." });
     }
   });
 
   // Backward compatibility for old clients during rollout.
-  socket.on("identify", async ({ token, userId, username }) => {
+  onValidatedSocketEvent(socket, "identify", async ({ token, userId, username }) => {
     const accountId = verifyToken(String(token || ""));
 
     if (accountId) {
       const account = await accountById(accountId);
       if (account) {
-        await attachAccountToSocket(socket, account);
+        attachAccountToSocket(socket, account, socket.data.sessionId);
         socket.emit("guild:list", guildList());
         return;
       }
@@ -860,7 +1095,7 @@ io.on("connection", (socket) => {
     socket.emit("guild:list", guildList());
   });
 
-  socket.on("friends:search", async ({ query }, callback) => {
+  onValidatedSocketEvent(socket, "friends:search", async ({ query }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
       callback?.({ ok: false, error: "Oturum gerekli." });
@@ -870,13 +1105,13 @@ io.on("connection", (socket) => {
     try {
       const results = await findUsersByUsername(query, user.accountId);
       callback?.({ ok: true, results });
-    } catch (err) {
-      console.error("friends search error", err);
+    } catch {
+      console.error("friends search error");
       callback?.({ ok: false, error: "Kullanıcı araması başarısız." });
     }
   });
 
-  socket.on("friends:list", async (_payload, callback) => {
+  onValidatedSocketEvent(socket, "friends:list", async (_payload, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
       callback?.({ ok: false, error: "Oturum gerekli." });
@@ -886,13 +1121,13 @@ io.on("connection", (socket) => {
     try {
       const state = await listFriendState(user.accountId);
       callback?.({ ok: true, ...state });
-    } catch (err) {
-      console.error("friends list error", err);
+    } catch {
+      console.error("friends list error");
       callback?.({ ok: false, error: "Arkadaşlar alınamadı." });
     }
   });
 
-  socket.on("friends:request", async ({ targetId }, callback) => {
+  onValidatedSocketEvent(socket, "friends:request", async ({ targetId }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
       callback?.({ ok: false, error: "Oturum gerekli." });
@@ -922,11 +1157,12 @@ io.on("connection", (socket) => {
         createdAt: new Date().toISOString()
       });
     } else {
+      const createdAt = new Date().toISOString();
       await pool.query(
         `INSERT INTO echoverse_friendships
-          (id, requester_id, addressee_id, status)
-         VALUES ($1, $2, $3, 'pending')`,
-        [id, user.accountId, target.id]
+          (id, requester_id, addressee_id, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 'pending', $4, $4)`,
+        [id, user.accountId, target.id, createdAt]
       );
     }
 
@@ -944,7 +1180,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("friends:respond", async ({ friendshipId, accept }, callback) => {
+  onValidatedSocketEvent(socket, "friends:respond", async ({ friendshipId, accept }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
       callback?.({ ok: false, error: "Oturum gerekli." });
@@ -1003,7 +1239,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("friends:remove", async ({ targetId }, callback) => {
+  onValidatedSocketEvent(socket, "friends:remove", async ({ targetId }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
       callback?.({ ok: false, error: "Oturum gerekli." });
@@ -1032,7 +1268,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("friends:block", async ({ targetId }, callback) => {
+  onValidatedSocketEvent(socket, "friends:block", async ({ targetId }, callback) => {
     const account = (socket.data as any).account;
     const target = String(targetId || "");
     if (!account || !target || account.id === target) {
@@ -1072,7 +1308,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("friends:unblock", async ({ targetId }, callback) => {
+  onValidatedSocketEvent(socket, "friends:unblock", async ({ targetId }, callback) => {
     const account = (socket.data as any).account;
     const target = String(targetId || "");
     if (!account || !target) return callback?.({ ok: false });
@@ -1093,7 +1329,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("dm:history", async ({ friendId }, callback) => {
+  onValidatedSocketEvent(socket, "dm:history", async ({ friendId }, callback) => {
     const user = users.get(socket.id);
     const friend = String(friendId || "");
 
@@ -1106,54 +1342,58 @@ io.on("connection", (socket) => {
     callback?.({ ok: true, messages });
   });
 
-  socket.on("dm:send", async ({ friendId, body, replyToId, attachment }, callback) => {
-    if (!allowSocketEvent(socket.id, "dm:send", 30)) {
-      callback?.({ ok: false, error: "Çok hızlı mesaj gönderiyorsun." });
-      return;
+  onValidatedSocketEvent(
+    socket,
+    "dm:send",
+    async ({ friendId, body, replyToId, attachment }, callback) => {
+      if (!allowSocketEvent(socket.id, "dm:send", 30)) {
+        callback?.({ ok: false, error: "Çok hızlı mesaj gönderiyorsun." });
+        return;
+      }
+      const user = users.get(socket.id);
+      const friend = String(friendId || "");
+      const clean = sanitizeText(body);
+
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: "Oturum gerekli." });
+        return;
+      }
+
+      if (!(await areFriends(user.accountId, friend))) {
+        callback?.({ ok: false, error: "Arkadaş değilsiniz." });
+        return;
+      }
+
+      const checkedAttachment = validateAttachment(attachment);
+      if (!checkedAttachment.ok) {
+        callback?.({ ok: false, error: checkedAttachment.error });
+        return;
+      }
+
+      if (!clean && !checkedAttachment.value) {
+        callback?.({ ok: false, error: "Boş mesaj gönderilemez." });
+        return;
+      }
+
+      const msg = await storeDm(user.accountId, friend, clean, {
+        replyToId: replyToId ? String(replyToId) : null,
+        attachmentName: checkedAttachment.value?.name || null,
+        attachmentMime: checkedAttachment.value?.mime || null,
+        attachmentData: checkedAttachment.value?.data || null
+      });
+
+      const payload = {
+        ...msg,
+        senderUsername: user.username,
+        senderAvatarData: user.avatarData
+      };
+
+      emitDmPair(msg, "dm:message", payload);
+      callback?.({ ok: true, message: payload });
     }
-    const user = users.get(socket.id);
-    const friend = String(friendId || "");
-    const clean = sanitizeText(body);
+  );
 
-    if (!user?.accountId) {
-      callback?.({ ok: false, error: "Oturum gerekli." });
-      return;
-    }
-
-    if (!(await areFriends(user.accountId, friend))) {
-      callback?.({ ok: false, error: "Arkadaş değilsiniz." });
-      return;
-    }
-
-    const checkedAttachment = validateAttachment(attachment);
-    if (!checkedAttachment.ok) {
-      callback?.({ ok: false, error: checkedAttachment.error });
-      return;
-    }
-
-    if (!clean && !checkedAttachment.value) {
-      callback?.({ ok: false, error: "Boş mesaj gönderilemez." });
-      return;
-    }
-
-    const msg = await storeDm(user.accountId, friend, clean, {
-      replyToId: replyToId ? String(replyToId) : null,
-      attachmentName: checkedAttachment.value?.name || null,
-      attachmentMime: checkedAttachment.value?.mime || null,
-      attachmentData: checkedAttachment.value?.data || null
-    });
-
-    const payload = {
-      ...msg,
-      senderUsername: user.username,
-      senderAvatarData: user.avatarData
-    };
-
-    emitDmPair(msg, "dm:message", payload);
-    callback?.({ ok: true, message: payload });
-  });
-
-  socket.on("dm:edit", async ({ messageId, body }, callback) => {
+  onValidatedSocketEvent(socket, "dm:edit", async ({ messageId, body }, callback) => {
     const account = (socket.data as any).account;
     const msg = await dmById(String(messageId || ""));
     const clean = sanitizeText(body);
@@ -1182,7 +1422,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true, message: msg });
   });
 
-  socket.on("dm:delete", async ({ messageId }, callback) => {
+  onValidatedSocketEvent(socket, "dm:delete", async ({ messageId }, callback) => {
     const account = (socket.data as any).account;
     const msg = await dmById(String(messageId || ""));
 
@@ -1218,7 +1458,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("call:start", async ({ friendId }, callback) => {
+  onValidatedSocketEvent(socket, "call:start", async ({ friendId }, callback) => {
     const user = users.get(socket.id);
     const friend = String(friendId || "");
 
@@ -1274,7 +1514,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("call:answer", ({ callId, toSocketId, accept }) => {
+  onValidatedSocketEvent(socket, "call:answer", ({ callId, toSocketId, accept }) => {
     const user = users.get(socket.id);
     if (!user) return;
 
@@ -1294,7 +1534,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("call:end", ({ toSocketId, callId }) => {
+  onValidatedSocketEvent(socket, "call:end", ({ toSocketId, callId }) => {
     const pending = pendingCalls.get(String(callId));
     if (pending) {
       clearTimeout(pending.timer);
@@ -1303,7 +1543,7 @@ io.on("connection", (socket) => {
     io.to(String(toSocketId)).emit("call:ended", { callId });
   });
 
-  socket.on("guild:create", ({ name }, callback) => {
+  onValidatedSocketEvent(socket, "guild:create", ({ name }, callback) => {
     const user = users.get(socket.id);
     if (!user) {
       callback?.({ ok: false, error: "Önce giriş yap." });
@@ -1332,7 +1572,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true, guild });
   });
 
-  socket.on("guild:join-code", ({ code }, callback) => {
+  onValidatedSocketEvent(socket, "guild:join-code", ({ code }, callback) => {
     const id = String(code ?? "")
       .trim()
       .toLowerCase();
@@ -1345,7 +1585,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true, guild: guilds.get(id) });
   });
 
-  socket.on("join-room", ({ guildId }) => {
+  onValidatedSocketEvent(socket, "join-room", ({ guildId }) => {
     const user = users.get(socket.id);
     if (!user) return;
 
@@ -1378,7 +1618,7 @@ io.on("connection", (socket) => {
     broadcastPresence(roomId);
   });
 
-  socket.on("voice:sync-request", () => {
+  onValidatedSocketEvent(socket, "voice:sync-request", () => {
     const user = users.get(socket.id);
     if (!user?.roomId) {
       socket.emit("voice:lobby-state", { members: [], syncedAt: Date.now() });
@@ -1387,7 +1627,7 @@ io.on("connection", (socket) => {
     sendLobbyState(socket, user.roomId);
   });
 
-  socket.on("leave-room", () => {
+  onValidatedSocketEvent(socket, "leave-room", () => {
     const user = users.get(socket.id);
     if (!user) return;
     leaveCurrentRoom(socket, user);
@@ -1395,8 +1635,11 @@ io.on("connection", (socket) => {
     socket.emit("voice:lobby-state", { members: [], syncedAt: Date.now() });
   });
 
-  socket.on("chat-message", ({ guildId, text }) => {
+  onValidatedSocketEvent(socket, "chat-message", (payload) => {
     const user = users.get(socket.id);
+    const parsed = chatMessageSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { guildId, text } = parsed.data;
     if (!user || !user.roomId || user.guildId !== guildId) return;
 
     const safeText = sanitizeText(text);
@@ -1433,7 +1676,7 @@ io.on("connection", (socket) => {
     if (botText) bot(botText);
   });
 
-  socket.on("spotify:party-start", ({ guildId }) => {
+  onValidatedSocketEvent(socket, "spotify:party-start", ({ guildId }) => {
     const user = users.get(socket.id);
     if (!user || user.guildId !== guildId || !user.roomId) return;
 
@@ -1449,7 +1692,7 @@ io.on("connection", (socket) => {
     io.to(user.roomId).emit("spotify:party-state", state);
   });
 
-  socket.on("spotify:party-stop", ({ guildId }) => {
+  onValidatedSocketEvent(socket, "spotify:party-stop", ({ guildId }) => {
     const user = users.get(socket.id);
     const party = spotifyParties.get(guildId);
 
@@ -1459,7 +1702,7 @@ io.on("connection", (socket) => {
     io.to(roomFor(guildId)).emit("spotify:party-ended");
   });
 
-  socket.on("spotify:sync", ({ guildId, state }) => {
+  onValidatedSocketEvent(socket, "spotify:sync", ({ guildId, state }) => {
     const user = users.get(socket.id);
     const party = spotifyParties.get(guildId);
 
@@ -1479,31 +1722,40 @@ io.on("connection", (socket) => {
     socket.to(roomFor(guildId)).emit("spotify:sync", next);
   });
 
-  socket.on("webrtc-offer", ({ to, sdp }) => {
+  onValidatedSocketEvent(socket, "webrtc-offer", (payload) => {
     if (!allowSocketEvent(socket.id, "webrtc", 120)) return;
+    const parsed = webrtcDescriptionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { to, sdp } = parsed.data;
     io.to(String(to)).emit("webrtc-offer", {
       from: socket.id,
       sdp
     });
   });
 
-  socket.on("webrtc-answer", ({ to, sdp }) => {
+  onValidatedSocketEvent(socket, "webrtc-answer", (payload) => {
     if (!allowSocketEvent(socket.id, "webrtc", 120)) return;
+    const parsed = webrtcDescriptionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { to, sdp } = parsed.data;
     io.to(String(to)).emit("webrtc-answer", {
       from: socket.id,
       sdp
     });
   });
 
-  socket.on("webrtc-ice", ({ to, candidate }) => {
+  onValidatedSocketEvent(socket, "webrtc-ice", (payload) => {
     if (!allowSocketEvent(socket.id, "webrtc", 240)) return;
+    const parsed = webrtcIceCandidateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { to, candidate } = parsed.data;
     io.to(String(to)).emit("webrtc-ice", {
       from: socket.id,
       candidate
     });
   });
 
-  socket.on("presence:set", ({ status }, callback) => {
+  onValidatedSocketEvent(socket, "presence:set", ({ status }, callback) => {
     const account = (socket.data as any).account;
     if (!account) return callback?.({ ok: false, error: "Oturum gerekli." });
     const allowed = ["online", "idle", "dnd", "invisible"];
@@ -1513,13 +1765,13 @@ io.on("connection", (socket) => {
     callback?.({ ok: true, status: value });
   });
 
-  socket.on("presence:get", ({ accountIds }, callback) => {
+  onValidatedSocketEvent(socket, "presence:get", ({ accountIds }, callback) => {
     const presence: Record<string, string> = {};
     for (const id of accountIds || []) presence[id] = accountPresence.get(id) || "offline";
     callback?.({ ok: true, presence });
   });
 
-  socket.on("dm:typing", ({ friendId, typing }) => {
+  onValidatedSocketEvent(socket, "dm:typing", ({ friendId, typing }) => {
     const account = (socket.data as any).account;
     if (!account || !friendId) return;
     for (const peer of io.sockets.sockets.values()) {
@@ -1529,14 +1781,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("dm:read", ({ friendId }, callback) => {
+  onValidatedSocketEvent(socket, "dm:read", ({ friendId }, callback) => {
     const account = (socket.data as any).account;
     if (!account || !friendId) return callback?.({ ok: false });
     dmReadAt.set(`${account.id}:${friendId}`, Date.now());
     callback?.({ ok: true });
   });
 
-  socket.on("dm:react", async ({ messageId, emoji }, callback) => {
+  onValidatedSocketEvent(socket, "dm:react", async ({ messageId, emoji }, callback) => {
     const account = (socket.data as any).account;
     const msg = await dmById(String(messageId || ""));
     const cleanEmoji = String(emoji || "").slice(0, 12);
@@ -1602,6 +1854,101 @@ io.on("connection", (socket) => {
   });
 });
 
+app.post("/auth/register", async (req, res) => {
+  try {
+    const parsed = registerCredentialsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ ok: false, error: "Kayıt bilgileri geçersiz." });
+      return;
+    }
+
+    const email = sanitizeEmail(parsed.data.email);
+    const username = sanitizeName(parsed.data.username);
+    if (!validEmail(email) || username.length < 3 || parsed.data.password.length < 6) {
+      res.status(400).json({ ok: false, error: "Kayıt bilgileri geçersiz." });
+      return;
+    }
+    if (await accountByEmail(email)) {
+      res.status(409).json({ ok: false, error: "Bu e-posta zaten kayıtlı." });
+      return;
+    }
+    if (await usernameExists(username)) {
+      res.status(409).json({ ok: false, error: "Bu kullanıcı adı alınmış." });
+      return;
+    }
+
+    const account = await createAccount(
+      email,
+      username,
+      await bcrypt.hash(parsed.data.password, 12)
+    );
+    return clientAuthResponse(req, res, account, sessionManager.issue(account.id));
+  } catch {
+    console.error("http register error");
+    res.status(500).json({ ok: false, error: "Hesap oluşturulamadı." });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const parsed = authCredentialsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(401).json({ ok: false, error: "E-posta veya şifre yanlış." });
+      return;
+    }
+
+    const account = await accountByEmail(sanitizeEmail(parsed.data.email));
+    if (!account || !(await bcrypt.compare(parsed.data.password, account.passwordHash))) {
+      res.status(401).json({ ok: false, error: "E-posta veya şifre yanlış." });
+      return;
+    }
+
+    return clientAuthResponse(req, res, account, sessionManager.issue(account.id));
+  } catch {
+    console.error("http login error");
+    res.status(500).json({ ok: false, error: "Giriş yapılamadı." });
+  }
+});
+
+app.post("/auth/refresh", async (req, res) => {
+  const refreshToken = requestRefreshToken(req);
+  const tokens = refreshToken ? sessionManager.rotate(refreshToken) : null;
+  if (!tokens) {
+    clearWebSessionCookies(res);
+    res.status(401).json({ ok: false, error: "Oturum yenilenemedi." });
+    return;
+  }
+
+  const verified = sessionManager.verifyAccess(tokens.accessToken);
+  const account = verified ? await accountById(verified.userId) : null;
+  if (!account) {
+    clearWebSessionCookies(res);
+    res.status(401).json({ ok: false, error: "Oturum yenilenemedi." });
+    return;
+  }
+
+  return clientAuthResponse(req, res, account, tokens);
+});
+
+app.get("/auth/session", async (req, res) => {
+  const verified = sessionManager.verifyAccess(requestAccessToken(req));
+  const account = verified ? await accountById(verified.userId) : null;
+  if (!account) {
+    res.status(401).json({ ok: false, error: "Oturum gerekli." });
+    return;
+  }
+  res.json({ ok: true, account: publicAccount(account) });
+});
+
+app.post("/auth/logout", (req, res) => {
+  const accessToken = requestAccessToken(req);
+  const refreshToken = requestRefreshToken(req);
+  if (accessToken) sessionManager.revokeAccess(accessToken);
+  if (refreshToken) sessionManager.revokeRefresh(refreshToken);
+  clearWebSessionCookies(res);
+  res.json({ ok: true });
+});
+
 app.use(
   (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) {
@@ -1623,8 +1970,8 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
         console.log(`EchoVerse Server v${APP_VERSION} listening on ${PORT}`);
       });
     })
-    .catch((err) => {
-      console.error("Database init failed", err);
+    .catch(() => {
+      console.error("Database init failed");
       process.exit(1);
     });
 }

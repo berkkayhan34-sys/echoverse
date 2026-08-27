@@ -13,6 +13,11 @@ const {
   Notification
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const {
+  safeUpdatePercent,
+  safeUpdateVersion,
+  safeUpdaterFailure
+} = require("./updater-validation.cjs");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -75,8 +80,8 @@ function saveSpotifyTokens(tokens) {
       ? safeStorage.encryptString(raw.toString("utf8"))
       : raw;
     fs.writeFileSync(spotifyTokenPath(), out);
-  } catch (err) {
-    console.error("Spotify token save error", err);
+  } catch {
+    console.error("Spotify token save error");
   }
 }
 
@@ -103,8 +108,86 @@ function clearSpotifyTokens() {
   } catch {}
 }
 
+function authSessionPath() {
+  return path.join(app.getPath("userData"), "auth-session.bin");
+}
+
+function validAuthSession(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    typeof value.accessToken === "string" &&
+    value.accessToken.length > 0 &&
+    typeof value.refreshToken === "string" &&
+    value.refreshToken.length > 0 &&
+    value.account &&
+    typeof value.account.id === "string" &&
+    typeof value.account.email === "string" &&
+    typeof value.account.username === "string"
+  );
+}
+
+function loadAuthSession() {
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try {
+    if (!fs.existsSync(authSessionPath())) return null;
+    const encrypted = fs.readFileSync(authSessionPath());
+    const value = JSON.parse(safeStorage.decryptString(encrypted));
+    return validAuthSession(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuthSession(value) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("OS secure storage is unavailable");
+  }
+  if (!validAuthSession(value)) throw new Error("Invalid auth session");
+  const encrypted = safeStorage.encryptString(JSON.stringify(value));
+  fs.mkdirSync(path.dirname(authSessionPath()), { recursive: true });
+  fs.writeFileSync(authSessionPath(), encrypted, { mode: 0o600 });
+  return { ok: true };
+}
+
+function clearAuthSession() {
+  try {
+    if (fs.existsSync(authSessionPath())) fs.unlinkSync(authSessionPath());
+  } catch {}
+  return { ok: true };
+}
+
 function b64url(buffer) {
   return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function validatedSpotifyTokenResponse(value) {
+  if (!value || typeof value !== "object") return null;
+  if (
+    typeof value.access_token !== "string" ||
+    value.access_token.length < 1 ||
+    value.access_token.length > 4096
+  ) {
+    return null;
+  }
+  if (value.token_type !== "Bearer") return null;
+  if (!Number.isInteger(value.expires_in) || value.expires_in < 1 || value.expires_in > 86_400) {
+    return null;
+  }
+  if (
+    value.refresh_token !== undefined &&
+    (typeof value.refresh_token !== "string" ||
+      value.refresh_token.length < 1 ||
+      value.refresh_token.length > 4096)
+  ) {
+    return null;
+  }
+  return {
+    access_token: value.access_token,
+    token_type: value.token_type,
+    expires_in: value.expires_in,
+    ...(value.refresh_token ? { refresh_token: value.refresh_token } : {})
+  };
 }
 
 async function refreshSpotifyToken() {
@@ -134,7 +217,11 @@ async function refreshSpotifyToken() {
     throw new Error(`Spotify token yenilenemedi (${res.status}).`);
   }
 
-  const next = await res.json();
+  const next = validatedSpotifyTokenResponse(await res.json());
+  if (!next) {
+    clearSpotifyTokens();
+    throw new Error("Spotify token yanıtı geçersiz.");
+  }
   saveSpotifyTokens({
     ...spotifyTokens,
     ...next,
@@ -176,11 +263,7 @@ async function spotifyApi(endpoint, options = {}) {
   }
 
   if (!res.ok) {
-    let details = "";
-    try {
-      details = JSON.stringify(await res.json());
-    } catch {}
-    throw new Error(`Spotify API ${res.status}: ${details}`);
+    throw new Error("Spotify API isteği başarısız oldu.");
   }
 
   return res.json();
@@ -197,12 +280,27 @@ async function activeSpotifyDevice() {
 
 ipcMain.handle("echoverse:getConfig", () => readConfig());
 
-ipcMain.handle("echoverse:notify", (_evt, { title, body }) => {
+ipcMain.handle("auth:get-session", () => loadAuthSession());
+ipcMain.handle("auth:set-session", (_evt, value) => saveAuthSession(value));
+ipcMain.handle("auth:clear-session", () => clearAuthSession());
+
+ipcMain.handle("echoverse:notify", (_evt, payload) => {
   try {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof payload.title !== "string" ||
+      typeof payload.body !== "string" ||
+      payload.title.length > 200 ||
+      payload.body.length > 1000
+    ) {
+      return { ok: false, error: "Bildirim verisi geçersiz." };
+    }
+    const { title, body } = payload;
     if (Notification.isSupported()) {
       new Notification({
-        title: String(title || "EchoVerse"),
-        body: String(body || "")
+        title: title.trim() || "EchoVerse",
+        body: body.trim()
       }).show();
     }
   } catch {}
@@ -234,7 +332,10 @@ ipcMain.handle("capture:listSources", async () => {
 });
 
 ipcMain.handle("capture:selectSource", (_evt, sourceId) => {
-  selectedDisplaySourceId = String(sourceId || "");
+  if (typeof sourceId !== "string" || sourceId.length < 1 || sourceId.length > 256) {
+    return { ok: false, error: "Ekran kaynağı geçersiz." };
+  }
+  selectedDisplaySourceId = sourceId;
   return { ok: true };
 });
 
@@ -272,11 +373,11 @@ ipcMain.handle("spotify:status", async () => {
       configured: true,
       displayName: me.display_name || me.id
     };
-  } catch (err) {
+  } catch {
     return {
       connected: false,
       configured: true,
-      error: String(err.message || err)
+      error: "Spotify bağlantısı doğrulanamadı."
     };
   }
 });
@@ -365,7 +466,8 @@ ipcMain.handle("spotify:login", async () => {
           throw new Error(`Spotify token alınamadı (${tokenRes.status}).`);
         }
 
-        const tokens = await tokenRes.json();
+        const tokens = validatedSpotifyTokenResponse(await tokenRes.json());
+        if (!tokens) throw new Error("Spotify token yanıtı geçersiz.");
 
         saveSpotifyTokens({
           ...tokens,
@@ -394,7 +496,7 @@ ipcMain.handle("spotify:login", async () => {
       } catch (err) {
         clearTimeout(timeout);
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end(String(err.message || err));
+        res.end("Spotify bağlantısı kurulamadı.");
         try {
           spotifyLoginServer?.close();
         } catch {}
@@ -415,18 +517,54 @@ ipcMain.handle("spotify:playback", async () => {
   const state = await spotifyApi("/me/player");
   if (!state || !state.item) return null;
 
+  const trackUri = state.item.uri;
+  const trackName = state.item.name;
+  const artistName = (state.item.artists || []).map((a) => a.name).join(", ");
+  const albumImage = state.item.album?.images?.[0]?.url || "";
+  if (
+    typeof trackUri !== "string" ||
+    trackUri.length > 512 ||
+    typeof trackName !== "string" ||
+    trackName.length > 512 ||
+    typeof artistName !== "string" ||
+    artistName.length > 512 ||
+    typeof albumImage !== "string" ||
+    albumImage.length > 2048 ||
+    (albumImage && !/^https:\/\//i.test(albumImage))
+  ) {
+    return null;
+  }
+
   return {
-    trackUri: state.item.uri,
-    trackName: state.item.name,
-    artistName: (state.item.artists || []).map((a) => a.name).join(", "),
-    albumImage: state.item.album?.images?.[0]?.url || "",
-    positionMs: state.progress_ms || 0,
+    trackUri,
+    trackName,
+    artistName,
+    albumImage,
+    positionMs: Number.isFinite(state.progress_ms) ? Math.max(0, state.progress_ms) : 0,
     isPlaying: !!state.is_playing,
     timestamp: Date.now()
   };
 });
 
 ipcMain.handle("spotify:applySync", async (_evt, sync) => {
+  if (
+    !sync ||
+    typeof sync !== "object" ||
+    (sync.trackUri !== undefined &&
+      (typeof sync.trackUri !== "string" || sync.trackUri.length > 512)) ||
+    (sync.positionMs !== undefined &&
+      (typeof sync.positionMs !== "number" ||
+        !Number.isFinite(sync.positionMs) ||
+        sync.positionMs < 0 ||
+        sync.positionMs > 86_400_000)) ||
+    (sync.updatedAt !== undefined &&
+      (typeof sync.updatedAt !== "number" ||
+        !Number.isFinite(sync.updatedAt) ||
+        sync.updatedAt < 0)) ||
+    (sync.isPlaying !== undefined && typeof sync.isPlaying !== "boolean")
+  ) {
+    return { ok: false, error: "Spotify durumu geçersiz." };
+  }
   const device = await activeSpotifyDevice();
 
   if (!device) {
@@ -515,23 +653,34 @@ async function runUpdateCheck(source = "automatic") {
   }
 
   try {
-    logUpdater(`Checking for updates (${source})`, `current=${app.getVersion()}`);
+    const currentVersion = safeUpdateVersion(app.getVersion());
+    if (!currentVersion || !["automatic", "manual", "startup"].includes(source)) {
+      logUpdater("Update check rejected");
+      return { ok: false, error: safeUpdaterFailure() };
+    }
+    logUpdater(`Checking for updates (${source})`, `current=${currentVersion}`);
     const result = await autoUpdater.checkForUpdates();
+    const version = result?.updateInfo?.version
+      ? safeUpdateVersion(result.updateInfo.version)
+      : null;
+    if (result?.updateInfo?.version && !version) {
+      logUpdater("Update metadata rejected");
+      return { ok: false, error: safeUpdaterFailure() };
+    }
 
     return {
       ok: true,
-      version: result?.updateInfo?.version || null
+      version
     };
-  } catch (error) {
-    const message = error?.message || String(error);
-    logUpdater("Update check failed", message);
+  } catch {
+    logUpdater("Update check failed");
     sendUpdateState({
       phase: "error",
-      status: `Güncelleme hatası: ${message}`,
-      error: message
+      status: safeUpdaterFailure(),
+      error: safeUpdaterFailure()
     });
 
-    return { ok: false, error: message };
+    return { ok: false, error: safeUpdaterFailure() };
   }
 }
 
@@ -556,26 +705,45 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-available", (info) => {
-    logUpdater("update-available", `version=${info.version}`);
+    const version = safeUpdateVersion(info?.version);
+    if (!version) {
+      logUpdater("update-available metadata rejected");
+      sendUpdateState({
+        phase: "error",
+        status: safeUpdaterFailure(),
+        error: safeUpdaterFailure()
+      });
+      return;
+    }
+    logUpdater("update-available", `version=${version}`);
     sendUpdateState({
       phase: "downloading",
-      version: info.version,
-      status: `Yeni EchoVerse ${info.version} sürümü bulundu. İndiriliyor…`,
+      version,
+      status: `Yeni EchoVerse ${version} sürümü bulundu. İndiriliyor…`,
       percent: 0,
       error: null
     });
 
-    showUpdateNotification(
-      "EchoVerse güncellemesi bulundu",
-      `v${info.version} otomatik indiriliyor.`
-    );
+    showUpdateNotification("EchoVerse güncellemesi bulundu", `v${version} otomatik indiriliyor.`);
   });
 
   autoUpdater.on("update-not-available", (info) => {
-    logUpdater("update-not-available", `latest=${info?.version || "unknown"}`);
+    const version = info?.version
+      ? safeUpdateVersion(info.version)
+      : safeUpdateVersion(app.getVersion());
+    if (!version) {
+      logUpdater("update-not-available metadata rejected");
+      sendUpdateState({
+        phase: "error",
+        status: safeUpdaterFailure(),
+        error: safeUpdaterFailure()
+      });
+      return;
+    }
+    logUpdater("update-not-available", `latest=${version}`);
     sendUpdateState({
       phase: "current",
-      version: info?.version || app.getVersion(),
+      version,
       status: "EchoVerse güncel.",
       percent: 100,
       error: null
@@ -590,7 +758,11 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("download-progress", (progress) => {
-    const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
+    const percent = safeUpdatePercent(progress?.percent);
+    if (percent === null) {
+      logUpdater("download-progress rejected");
+      return;
+    }
     sendUpdateState({
       phase: "downloading",
       status: `Güncelleme indiriliyor… %${percent}`,
@@ -600,35 +772,44 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    logUpdater("update-downloaded", `version=${info.version}`);
+    const version = safeUpdateVersion(info?.version);
+    if (!version) {
+      logUpdater("update-downloaded metadata rejected");
+      sendUpdateState({
+        phase: "error",
+        status: safeUpdaterFailure(),
+        error: safeUpdaterFailure()
+      });
+      return;
+    }
+    logUpdater("update-downloaded", `version=${version}`);
 
     sendUpdateState({
       phase: "ready",
-      version: info.version,
-      status: `EchoVerse ${info.version} hazır. Uygun olduğunda yeniden başlatıp kurabilirsin.`,
+      version,
+      status: `EchoVerse ${version} hazır. Uygun olduğunda yeniden başlatıp kurabilirsin.`,
       percent: 100,
       error: null
     });
 
     showUpdateNotification(
       "EchoVerse güncellemesi hazır",
-      `v${info.version} kurulum için uygulamayı yeniden başlatacak.`
+      `v${version} kurulum için uygulamayı yeniden başlatacak.`
     );
   });
 
-  autoUpdater.on("error", (err) => {
-    const message = err?.message || String(err);
-    logUpdater("autoUpdater error", message);
+  autoUpdater.on("error", () => {
+    logUpdater("autoUpdater error");
 
     // IMPORTANT: never hide updater errors. This is how Defender/download
     // failures become visible to the user instead of silently disappearing.
     sendUpdateState({
       phase: "error",
-      status: `Güncelleme hatası: ${message}`,
-      error: message
+      status: safeUpdaterFailure(),
+      error: safeUpdaterFailure()
     });
 
-    showUpdateNotification("EchoVerse güncelleme hatası", message);
+    showUpdateNotification("EchoVerse güncelleme hatası", safeUpdaterFailure());
   });
 
   // Give renderer time to attach its listeners, then check automatically.
@@ -664,8 +845,8 @@ async function setupScreenCapture() {
       callback({
         video: source
       });
-    } catch (err) {
-      console.error("Display capture failed:", err);
+    } catch {
+      console.error("Display capture failed");
       selectedDisplaySourceId = null;
       callback({});
     }
@@ -739,8 +920,8 @@ function createTray() {
       mainWindow?.show();
       mainWindow?.focus();
     });
-  } catch (err) {
-    console.error("Tray setup failed:", err);
+  } catch {
+    console.error("Tray setup failed");
   }
 }
 
@@ -822,8 +1003,8 @@ function createSplash() {
 
     splashWindow.loadFile(splashImage);
     splashWindow.once("ready-to-show", () => splashWindow?.show());
-  } catch (err) {
-    console.error("Splash setup failed:", err);
+  } catch {
+    console.error("Splash setup failed");
   }
 }
 
@@ -875,9 +1056,8 @@ ipcMain.handle("update:install", async () => {
     logUpdater("Manual quitAndInstall");
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
-  } catch (error) {
-    const message = error?.message || String(error);
-    return { ok: false, error: message };
+  } catch {
+    return { ok: false, error: safeUpdaterFailure() };
   }
 });
 

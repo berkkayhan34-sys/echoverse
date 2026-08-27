@@ -17,9 +17,10 @@ rejected by the server.
 
 The server keeps one deployable process while separating validation, runtime
 state, feature utilities, configuration, and persistence migrations. Hosted
-PostgreSQL migrations are versioned SQL files; the SQLite schema is maintained
-as the local adapter reference until the adapter is enabled in a follow-up
-change.
+PostgreSQL migrations and the local SQLite adapter have parallel, versioned
+SQL histories with the same migration IDs and table/column contract. SQLite is
+selected explicitly with `SQLITE_PATH`; PostgreSQL is selected explicitly with
+`DATABASE_URL`, and configuring both is rejected.
 
 ## Migration and rollback
 
@@ -31,7 +32,9 @@ paths; database migrations are additive and can remain applied.
 
 - Build, typecheck, Vitest, Playwright, and dependency gates run from one root.
 - Protocol and input validation are shared by clients and server.
-- Existing persisted tables retain their names and columns.
+- Existing persisted tables retain their names and columns across PostgreSQL
+  and SQLite. SQLite backup/restore is the local rollback mechanism; hosted
+  PostgreSQL rollback remains an operational restore procedure.
 - Full feature-by-feature extraction of the large renderer files remains a
   bounded follow-up, but no new runtime may be added outside `apps/`.
 

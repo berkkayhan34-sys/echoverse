@@ -19,6 +19,11 @@ describe("server configuration", () => {
     expect(config.corsOrigins).toEqual(["https://example.test"]);
     expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
     expect(config.databaseSslRejectUnauthorized).toBe(true);
+    expect(config.webCookieSecure).toBe(false);
+    expect(config.webCookieSameSite).toBe("lax");
+    expect(config.trustProxy).toBe(false);
+    expect(config.sessionAccessTtlSeconds).toBe(900);
+    expect(config.sessionRefreshTtlSeconds).toBe(604800);
   });
 
   it("allows hosted providers with self-signed database certificates to opt out explicitly", () => {
@@ -41,6 +46,47 @@ describe("server configuration", () => {
       CORS_ORIGINS: " https://one.example, ,https://two.example "
     });
     expect(config.databaseUrl).toBe("postgres://example.test/db");
+    expect(config.sqlitePath).toBeUndefined();
     expect(config.corsOrigins).toEqual(["https://one.example", "https://two.example"]);
+  });
+
+  it("supports one explicit local SQLite path and rejects mixed database modes", () => {
+    const config = loadServerConfig({ SQLITE_PATH: " ./data/echoverse.sqlite " });
+    expect(config.sqlitePath).toBe("./data/echoverse.sqlite");
+    expect(() =>
+      loadServerConfig({ DATABASE_URL: "postgres://example.test/db", SQLITE_PATH: "local.db" })
+    ).toThrow(/cannot be configured together/);
+  });
+
+  it("loads explicit proxy, cookie, and session lifetime settings", () => {
+    const config = loadServerConfig({
+      NODE_ENV: "production",
+      JWT_SECRET: "x".repeat(32),
+      TRUST_PROXY: "true",
+      WEB_COOKIE_SECURE: "true",
+      SESSION_ACCESS_TTL_SECONDS: "600",
+      SESSION_REFRESH_TTL_SECONDS: "86400"
+    });
+
+    expect(config.trustProxy).toBe(true);
+    expect(config.webCookieSecure).toBe(true);
+    expect(config.webCookieSameSite).toBe("none");
+    expect(config.sessionAccessTtlSeconds).toBe(600);
+    expect(config.sessionRefreshTtlSeconds).toBe(86400);
+  });
+
+  it("rejects insecure production cookies and malformed booleans", () => {
+    expect(() =>
+      loadServerConfig({
+        NODE_ENV: "production",
+        JWT_SECRET: "x".repeat(32),
+        WEB_COOKIE_SECURE: "false"
+      })
+    ).toThrow(/WEB_COOKIE_SECURE/);
+    expect(() => loadServerConfig({ TRUST_PROXY: "yes" })).toThrow(/TRUST_PROXY/);
+    expect(() => loadServerConfig({ WEB_COOKIE_SAMESITE: "none" })).toThrow(/WEB_COOKIE_SECURE/);
+    expect(() => loadServerConfig({ WEB_COOKIE_SAMESITE: "invalid" })).toThrow(
+      /WEB_COOKIE_SAMESITE/
+    );
   });
 });
