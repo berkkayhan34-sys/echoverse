@@ -42,6 +42,7 @@ jobs:
         with:
           name: EchoVerse-Windows
           path: tmp/release/desktop/*.exe
+          if-no-files-found: error
 
   mac-intel:
     name: macOS Intel
@@ -70,7 +71,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Intel
-          path: tmp/release/desktop/*.{dmg,zip}
+          path: |
+            tmp/release/desktop/*.dmg
+            tmp/release/desktop/*.zip
+          if-no-files-found: error
 
   mac-arm64:
     name: macOS Apple Silicon
@@ -99,4 +103,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Apple-Silicon
-          path: tmp/release/desktop/*.{dmg,zip}
+          path: |
+            tmp/release/desktop/*.dmg
+            tmp/release/desktop/*.zip
+          if-no-files-found: error
