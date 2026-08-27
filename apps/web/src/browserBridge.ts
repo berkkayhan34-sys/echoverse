@@ -5,7 +5,9 @@ const updateCallbacks = new Set<UpdateCallback>();
 async function requestNotifications() {
   if (!("Notification" in window)) return;
   if (Notification.permission === "default") {
-    try { await Notification.requestPermission(); } catch {}
+    try {
+      await Notification.requestPermission();
+    } catch {}
   }
 }
 

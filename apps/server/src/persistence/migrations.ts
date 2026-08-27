@@ -16,7 +16,7 @@ export async function runMigrations(pool: pg.Pool) {
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
 
-  const files = (await readdir(migrationsDir)).filter(file => file.endsWith(".sql")).sort();
+  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   for (const file of files) {
     const id = file.replace(/\.sql$/, "");
     const exists = await pool.query("SELECT 1 FROM echoverse_schema_migrations WHERE id=$1", [id]);

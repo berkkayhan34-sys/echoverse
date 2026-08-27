@@ -33,15 +33,14 @@ jobs:
           Write-Host "Testing EchoVerse $version"
 
       - name: Install dependencies
-        working-directory: apps/desktop
-        run: npm install
+        working-directory: .
+        run: npm ci
 
       - name: Build Windows
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
-
 
       - name: Verify branding and sound assets
         shell: pwsh

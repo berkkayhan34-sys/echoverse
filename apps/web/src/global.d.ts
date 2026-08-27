@@ -21,12 +21,14 @@ declare global {
       spotifyApplySync?: (state: any) => Promise<{ ok: boolean }>;
 
       screenPermission?: () => Promise<string>;
-      listScreenSources?: () => Promise<Array<{
-        id: string;
-        name: string;
-        thumbnail?: string;
-        appIcon?: string;
-      }>>;
+      listScreenSources?: () => Promise<
+        Array<{
+          id: string;
+          name: string;
+          thumbnail?: string;
+          appIcon?: string;
+        }>
+      >;
       selectScreenSource?: (sourceId: string) => Promise<{ ok: boolean }>;
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       checkForUpdates?: () => Promise<{ ok: boolean; version?: string | null; error?: string }>;

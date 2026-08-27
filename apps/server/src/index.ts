@@ -19,7 +19,14 @@ import {
 } from "@echoverse/contracts";
 import { runMigrations } from "./persistence/migrations.js";
 import { sanitizeEmail, sanitizeName, sanitizeText, validEmail } from "./domain/validation.js";
-import type { Account, Guild, PublicAccount, SpotifyPartyState, StoredDm, User } from "./domain/types.js";
+import type {
+  Account,
+  Guild,
+  PublicAccount,
+  SpotifyPartyState,
+  StoredDm,
+  User
+} from "./domain/types.js";
 import { utilityBotResponse } from "./features/chat/commands.js";
 import { allowSocketEvent, clearSocketLimits } from "./runtime/limits.js";
 import {
@@ -42,23 +49,27 @@ const config = loadServerConfig();
 const app = express();
 app.disable("x-powered-by");
 app.use(helmet());
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || config.corsOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error("Origin is not allowed"));
-  },
-  credentials: true
-}));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || config.corsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error("Origin is not allowed"));
+    },
+    credentials: true
+  })
+);
 app.use(express.json({ limit: "1mb" }));
-app.use(rateLimit({
-  windowMs: 60_000,
-  limit: 240,
-  standardHeaders: true,
-  legacyHeaders: false
-}));
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    limit: 240,
+    standardHeaders: true,
+    legacyHeaders: false
+  })
+);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -215,7 +226,7 @@ async function accountByEmail(email: string): Promise<Account | null> {
 async function usernameExists(username: string) {
   if (!pool) {
     return [...memoryAccounts.values()].some(
-      a => a.username.toLowerCase() === username.toLowerCase()
+      (a) => a.username.toLowerCase() === username.toLowerCase()
     );
   }
 
@@ -265,14 +276,13 @@ async function updateAvatar(accountId: string, avatarData: string | null) {
     return account;
   }
 
-  await pool.query(
-    `UPDATE echoverse_users SET avatar_data = $1 WHERE id = $2`,
-    [avatarData, accountId]
-  );
+  await pool.query(`UPDATE echoverse_users SET avatar_data = $1 WHERE id = $2`, [
+    avatarData,
+    accountId
+  ]);
 
   return accountById(accountId);
 }
-
 
 function friendshipKey(a: string, b: string) {
   return [a, b].sort().join(":");
@@ -289,17 +299,17 @@ async function publicUserById(id: string) {
 }
 
 async function findUsersByUsername(query: string, selfId: string) {
-  const clean = String(query || "").trim().toLowerCase().slice(0, 40);
+  const clean = String(query || "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 40);
   if (!clean) return [];
 
   if (!pool) {
     return [...memoryAccounts.values()]
-      .filter(a =>
-        a.id !== selfId &&
-        a.username.toLowerCase().includes(clean)
-      )
+      .filter((a) => a.id !== selfId && a.username.toLowerCase().includes(clean))
       .slice(0, 20)
-      .map(a => ({
+      .map((a) => ({
         id: a.id,
         username: a.username,
         avatarData: a.avatarData
@@ -315,7 +325,7 @@ async function findUsersByUsername(query: string, selfId: string) {
     [selfId, `%${clean}%`]
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     id: row.id,
     username: row.username,
     avatarData: row.avatar_data || null
@@ -348,8 +358,7 @@ async function listFriendState(accountId: string) {
     const outgoing: any[] = [];
 
     for (const f of memoryFriendships.values()) {
-      if (f.status === "accepted" &&
-          (f.requesterId === accountId || f.addresseeId === accountId)) {
+      if (f.status === "accepted" && (f.requesterId === accountId || f.addresseeId === accountId)) {
         const otherId = f.requesterId === accountId ? f.addresseeId : f.requesterId;
         const other = await publicUserById(otherId);
         if (other) accepted.push(other);
@@ -481,9 +490,9 @@ async function storeDm(
 async function loadDmHistory(a: string, b: string) {
   if (!pool) {
     return memoryDmMessages
-      .filter(m =>
-        (m.senderId === a && m.recipientId === b) ||
-        (m.senderId === b && m.recipientId === a)
+      .filter(
+        (m) =>
+          (m.senderId === a && m.recipientId === b) || (m.senderId === b && m.recipientId === a)
       )
       .slice(-200);
   }
@@ -510,7 +519,7 @@ async function loadDmHistory(a: string, b: string) {
     [a, b]
   );
 
-  return result.rows.map(row => ({
+  return result.rows.map((row) => ({
     id: row.id,
     senderId: row.sender_id,
     recipientId: row.recipient_id,
@@ -528,7 +537,7 @@ async function loadDmHistory(a: string, b: string) {
 
 async function dmById(messageId: string): Promise<StoredDm | null> {
   if (!pool) {
-    return memoryDmMessages.find(m => m.id === messageId) || null;
+    return memoryDmMessages.find((m) => m.id === messageId) || null;
   }
 
   const result = await pool.query(
@@ -592,7 +601,7 @@ function validateAttachment(input: any) {
 }
 
 function socketForAccount(accountId: string) {
-  return [...users.values()].find(u => u.accountId === accountId);
+  return [...users.values()].find((u) => u.accountId === accountId);
 }
 
 function guildList() {
@@ -605,8 +614,8 @@ function roomFor(guildId: string) {
 
 function getPresence(roomId: string) {
   return [...users.values()]
-    .filter(u => u.roomId === roomId)
-    .map(u => ({
+    .filter((u) => u.roomId === roomId)
+    .map((u) => ({
       socketId: u.socketId,
       userId: u.userId,
       username: u.username,
@@ -672,7 +681,7 @@ async function attachAccountToSocket(socket: any, account: Account) {
   };
 }
 
-io.on("connection", socket => {
+io.on("connection", (socket) => {
   socket.data.protocolVersion = PROTOCOL_VERSION;
   socket.emit("protocol:ready", { version: PROTOCOL_VERSION });
   socket.emit("guild:list", guildList());
@@ -851,7 +860,6 @@ io.on("connection", socket => {
     socket.emit("guild:list", guildList());
   });
 
-
   socket.on("friends:search", async ({ query }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
@@ -946,7 +954,7 @@ io.on("connection", socket => {
     const id = String(friendshipId || "");
 
     if (!pool) {
-      const row = [...memoryFriendships.values()].find(f => f.id === id);
+      const row = [...memoryFriendships.values()].find((f) => f.id === id);
       if (!row || row.addresseeId !== user.accountId || row.status !== "pending") {
         callback?.({ ok: false, error: "İstek bulunamadı." });
         return;
@@ -984,10 +992,7 @@ io.on("connection", socket => {
           [id]
         );
       } else {
-        await pool.query(
-          `DELETE FROM echoverse_friendships WHERE id = $1`,
-          [id]
-        );
+        await pool.query(`DELETE FROM echoverse_friendships WHERE id = $1`, [id]);
       }
 
       const otherSocket = socketForAccount(row.requester_id);
@@ -1031,7 +1036,7 @@ io.on("connection", socket => {
     const account = (socket.data as any).account;
     const target = String(targetId || "");
     if (!account || !target || account.id === target) {
-      callback?.({ ok:false, error:"Kullanıcı engellenemedi." });
+      callback?.({ ok: false, error: "Kullanıcı engellenemedi." });
       return;
     }
 
@@ -1064,17 +1069,17 @@ io.on("connection", socket => {
 
     socket.emit("friends:changed");
     emitToAccount(target, "friends:changed", {});
-    callback?.({ ok:true });
+    callback?.({ ok: true });
   });
 
   socket.on("friends:unblock", async ({ targetId }, callback) => {
     const account = (socket.data as any).account;
     const target = String(targetId || "");
-    if (!account || !target) return callback?.({ ok:false });
+    if (!account || !target) return callback?.({ ok: false });
 
     const existing = await friendshipBetween(account.id, target);
     if (!existing || existing.status !== "blocked") {
-      return callback?.({ ok:false, error:"Engel bulunamadı." });
+      return callback?.({ ok: false, error: "Engel bulunamadı." });
     }
 
     if (!pool) {
@@ -1085,7 +1090,7 @@ io.on("connection", socket => {
 
     socket.emit("friends:changed");
     emitToAccount(target, "friends:changed", {});
-    callback?.({ ok:true });
+    callback?.({ ok: true });
   });
 
   socket.on("dm:history", async ({ friendId }, callback) => {
@@ -1164,10 +1169,11 @@ io.on("connection", socket => {
       msg.body = clean;
       msg.editedAt = editedAt;
     } else {
-      await pool.query(
-        `UPDATE echoverse_dm_messages SET body=$1, edited_at=$2 WHERE id=$3`,
-        [clean, editedAt, msg.id]
-      );
+      await pool.query(`UPDATE echoverse_dm_messages SET body=$1, edited_at=$2 WHERE id=$3`, [
+        clean,
+        editedAt,
+        msg.id
+      ]);
       msg.body = clean;
       msg.editedAt = editedAt;
     }
@@ -1327,7 +1333,9 @@ io.on("connection", socket => {
   });
 
   socket.on("guild:join-code", ({ code }, callback) => {
-    const id = String(code ?? "").trim().toLowerCase();
+    const id = String(code ?? "")
+      .trim()
+      .toLowerCase();
 
     if (!guilds.has(id)) {
       callback?.({ ok: false, error: "Sunucu kodu bulunamadı." });
@@ -1341,9 +1349,7 @@ io.on("connection", socket => {
     const user = users.get(socket.id);
     if (!user) return;
 
-    const safeGuild = guilds.has(String(guildId))
-      ? String(guildId)
-      : "echoverse";
+    const safeGuild = guilds.has(String(guildId)) ? String(guildId) : "echoverse";
 
     leaveCurrentRoom(socket, user);
 
@@ -1354,9 +1360,7 @@ io.on("connection", socket => {
 
     socket.join(roomId);
 
-    const peers = getPresence(roomId).filter(
-      p => p.socketId !== socket.id
-    );
+    const peers = getPresence(roomId).filter((p) => p.socketId !== socket.id);
 
     socket.emit("room-peers", peers);
     sendLobbyState(socket, roomId);
@@ -1499,7 +1503,6 @@ io.on("connection", socket => {
     });
   });
 
-  
   socket.on("presence:set", ({ status }, callback) => {
     const account = (socket.data as any).account;
     if (!account) return callback?.({ ok: false, error: "Oturum gerekli." });
@@ -1511,8 +1514,8 @@ io.on("connection", socket => {
   });
 
   socket.on("presence:get", ({ accountIds }, callback) => {
-    const presence: Record<string,string> = {};
-    for (const id of (accountIds || [])) presence[id] = accountPresence.get(id) || "offline";
+    const presence: Record<string, string> = {};
+    for (const id of accountIds || []) presence[id] = accountPresence.get(id) || "offline";
     callback?.({ ok: true, presence });
   });
 
@@ -1528,9 +1531,9 @@ io.on("connection", socket => {
 
   socket.on("dm:read", ({ friendId }, callback) => {
     const account = (socket.data as any).account;
-    if (!account || !friendId) return callback?.({ ok:false });
+    if (!account || !friendId) return callback?.({ ok: false });
     dmReadAt.set(`${account.id}:${friendId}`, Date.now());
-    callback?.({ ok:true });
+    callback?.({ ok: true });
   });
 
   socket.on("dm:react", async ({ messageId, emoji }, callback) => {
@@ -1539,18 +1542,19 @@ io.on("connection", socket => {
     const cleanEmoji = String(emoji || "").slice(0, 12);
 
     if (!account || !msg || !cleanEmoji) {
-      callback?.({ ok:false, error:"Reaction eklenemedi." });
+      callback?.({ ok: false, error: "Reaction eklenemedi." });
       return;
     }
 
     if (account.id !== msg.senderId && account.id !== msg.recipientId) {
-      callback?.({ ok:false, error:"Bu mesaja erişimin yok." });
+      callback?.({ ok: false, error: "Bu mesaja erişimin yok." });
       return;
     }
 
     const reactions = { ...(msg.reactions || {}) };
     const set = new Set(reactions[cleanEmoji] || []);
-    set.has(account.id) ? set.delete(account.id) : set.add(account.id);
+    if (set.has(account.id)) set.delete(account.id);
+    else set.add(account.id);
 
     if (set.size) reactions[cleanEmoji] = [...set];
     else delete reactions[cleanEmoji];
@@ -1558,20 +1562,20 @@ io.on("connection", socket => {
     msg.reactions = reactions;
 
     if (!pool) {
-      const memory = memoryDmMessages.find(m => m.id === msg.id);
+      const memory = memoryDmMessages.find((m) => m.id === msg.id);
       if (memory) memory.reactions = reactions;
     } else {
-      await pool.query(
-        `UPDATE echoverse_dm_messages SET reactions=$1::jsonb WHERE id=$2`,
-        [JSON.stringify(reactions), msg.id]
-      );
+      await pool.query(`UPDATE echoverse_dm_messages SET reactions=$1::jsonb WHERE id=$2`, [
+        JSON.stringify(reactions),
+        msg.id
+      ]);
     }
 
     emitDmPair(msg, "dm:reaction", { messageId: msg.id, reactions });
-    callback?.({ ok:true, reactions });
+    callback?.({ ok: true, reactions });
   });
 
-socket.on("disconnect", () => {
+  socket.on("disconnect", () => {
     const user = users.get(socket.id);
 
     if (user?.roomId && user.guildId) {
@@ -1595,16 +1599,18 @@ socket.on("disconnect", () => {
       users.delete(socket.id);
       clearSocketLimits(socket.id);
     }
-});
+  });
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (res.headersSent) {
-    next(error);
-    return;
+app.use(
+  (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    res.status(400).json({ ok: false, error: "İstek işlenemedi." });
   }
-  res.status(400).json({ ok: false, error: "İstek işlenemedi." });
-});
+);
 
 const PORT = config.port;
 
@@ -1617,7 +1623,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
         console.log(`EchoVerse Server v${APP_VERSION} listening on ${PORT}`);
       });
     })
-    .catch(err => {
+    .catch((err) => {
       console.error("Database init failed", err);
       process.exit(1);
     });

@@ -41,7 +41,6 @@ let updaterState = {
   error: null
 };
 
-
 const SPOTIFY_CALLBACK_PORT = 43821;
 const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
 
@@ -105,11 +104,7 @@ function clearSpotifyTokens() {
 }
 
 function b64url(buffer) {
-  return buffer
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 async function refreshSpotifyToken() {
@@ -154,10 +149,7 @@ async function spotifyAccessToken() {
   if (!spotifyTokens) loadSpotifyTokens();
   if (!spotifyTokens) throw new Error("Spotify bağlı değil.");
 
-  if (
-    !spotifyTokens.expires_at ||
-    Date.now() > spotifyTokens.expires_at - 60_000
-  ) {
+  if (!spotifyTokens.expires_at || Date.now() > spotifyTokens.expires_at - 60_000) {
     return refreshSpotifyToken();
   }
 
@@ -197,8 +189,8 @@ async function spotifyApi(endpoint, options = {}) {
 async function activeSpotifyDevice() {
   const devices = await spotifyApi("/me/player/devices");
   return (
-    devices?.devices?.find(d => d.is_active) ||
-    devices?.devices?.find(d => !d.is_restricted) ||
+    devices?.devices?.find((d) => d.is_active) ||
+    devices?.devices?.find((d) => !d.is_restricted) ||
     null
   );
 }
@@ -233,15 +225,11 @@ ipcMain.handle("capture:listSources", async () => {
     fetchWindowIcons: true
   });
 
-  return sources.map(source => ({
+  return sources.map((source) => ({
     id: source.id,
     name: source.name,
-    thumbnail: source.thumbnail && !source.thumbnail.isEmpty()
-      ? source.thumbnail.toDataURL()
-      : "",
-    appIcon: source.appIcon && !source.appIcon.isEmpty()
-      ? source.appIcon.toDataURL()
-      : ""
+    thumbnail: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : "",
+    appIcon: source.appIcon && !source.appIcon.isEmpty() ? source.appIcon.toDataURL() : ""
   }));
 });
 
@@ -306,14 +294,14 @@ ipcMain.handle("spotify:login", async () => {
   }
 
   if (spotifyLoginServer) {
-    try { spotifyLoginServer.close(); } catch {}
+    try {
+      spotifyLoginServer.close();
+    } catch {}
     spotifyLoginServer = null;
   }
 
   const verifier = b64url(crypto.randomBytes(64));
-  const challenge = b64url(
-    crypto.createHash("sha256").update(verifier).digest()
-  );
+  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
   const state = b64url(crypto.randomBytes(16));
 
   const scopes = [
@@ -333,7 +321,9 @@ ipcMain.handle("spotify:login", async () => {
 
   const loginResult = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      try { spotifyLoginServer?.close(); } catch {}
+      try {
+        spotifyLoginServer?.close();
+      } catch {}
       spotifyLoginServer = null;
       reject(new Error("Spotify giriş süresi doldu."));
     }, 180000);
@@ -394,7 +384,9 @@ ipcMain.handle("spotify:login", async () => {
 
         clearTimeout(timeout);
         setTimeout(() => {
-          try { spotifyLoginServer?.close(); } catch {}
+          try {
+            spotifyLoginServer?.close();
+          } catch {}
           spotifyLoginServer = null;
         }, 500);
 
@@ -403,7 +395,9 @@ ipcMain.handle("spotify:login", async () => {
         clearTimeout(timeout);
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
         res.end(String(err.message || err));
-        try { spotifyLoginServer?.close(); } catch {}
+        try {
+          spotifyLoginServer?.close();
+        } catch {}
         spotifyLoginServer = null;
         reject(err);
       }
@@ -424,7 +418,7 @@ ipcMain.handle("spotify:playback", async () => {
   return {
     trackUri: state.item.uri,
     trackName: state.item.name,
-    artistName: (state.item.artists || []).map(a => a.name).join(", "),
+    artistName: (state.item.artists || []).map((a) => a.name).join(", "),
     albumImage: state.item.album?.images?.[0]?.url || "",
     positionMs: state.progress_ms || 0,
     isPlaying: !!state.is_playing,
@@ -561,7 +555,7 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.on("update-available", info => {
+  autoUpdater.on("update-available", (info) => {
     logUpdater("update-available", `version=${info.version}`);
     sendUpdateState({
       phase: "downloading",
@@ -577,7 +571,7 @@ function setupAutoUpdater() {
     );
   });
 
-  autoUpdater.on("update-not-available", info => {
+  autoUpdater.on("update-not-available", (info) => {
     logUpdater("update-not-available", `latest=${info?.version || "unknown"}`);
     sendUpdateState({
       phase: "current",
@@ -595,7 +589,7 @@ function setupAutoUpdater() {
     }, 3500);
   });
 
-  autoUpdater.on("download-progress", progress => {
+  autoUpdater.on("download-progress", (progress) => {
     const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
     sendUpdateState({
       phase: "downloading",
@@ -605,7 +599,7 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.on("update-downloaded", info => {
+  autoUpdater.on("update-downloaded", (info) => {
     logUpdater("update-downloaded", `version=${info.version}`);
 
     sendUpdateState({
@@ -620,9 +614,9 @@ function setupAutoUpdater() {
       "EchoVerse güncellemesi hazır",
       `v${info.version} kurulum için uygulamayı yeniden başlatacak.`
     );
-});
+  });
 
-  autoUpdater.on("error", err => {
+  autoUpdater.on("error", (err) => {
     const message = err?.message || String(err);
     logUpdater("autoUpdater error", message);
 
@@ -634,10 +628,7 @@ function setupAutoUpdater() {
       error: message
     });
 
-    showUpdateNotification(
-      "EchoVerse güncelleme hatası",
-      message
-    );
+    showUpdateNotification("EchoVerse güncelleme hatası", message);
   });
 
   // Give renderer time to attach its listeners, then check automatically.
@@ -646,49 +637,40 @@ function setupAutoUpdater() {
   }, 4500);
 }
 
-
 async function setupScreenCapture() {
-  session.defaultSession.setDisplayMediaRequestHandler(
-    async (_request, callback) => {
-      try {
-        const sources = await desktopCapturer.getSources({
-          types: ["screen", "window"],
-          thumbnailSize: { width: 0, height: 0 },
-          fetchWindowIcons: false
-        });
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 0, height: 0 },
+        fetchWindowIcons: false
+      });
 
-        let source = null;
+      let source = null;
 
-        if (selectedDisplaySourceId) {
-          source = sources.find(s => s.id === selectedDisplaySourceId) || null;
-        }
-
-        source =
-          source ||
-          sources.find(s => s.id.startsWith("screen:")) ||
-          sources[0] ||
-          null;
-
-        selectedDisplaySourceId = null;
-
-        if (!source) {
-          callback({});
-          return;
-        }
-
-        callback({
-          video: source
-        });
-      } catch (err) {
-        console.error("Display capture failed:", err);
-        selectedDisplaySourceId = null;
-        callback({});
+      if (selectedDisplaySourceId) {
+        source = sources.find((s) => s.id === selectedDisplaySourceId) || null;
       }
+
+      source = source || sources.find((s) => s.id.startsWith("screen:")) || sources[0] || null;
+
+      selectedDisplaySourceId = null;
+
+      if (!source) {
+        callback({});
+        return;
+      }
+
+      callback({
+        video: source
+      });
+    } catch (err) {
+      console.error("Display capture failed:", err);
+      selectedDisplaySourceId = null;
+      callback({});
     }
-  );
+  });
 }
-
-
 
 function createTray() {
   if (tray) return;
@@ -805,7 +787,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.on("close", event => {
+  mainWindow.on("close", (event) => {
     if (isQuitting) return;
 
     event.preventDefault();
@@ -822,7 +804,6 @@ function createWindow() {
     }
   });
 }
-
 
 function createSplash() {
   try {
@@ -901,4 +882,3 @@ ipcMain.handle("update:install", async () => {
 });
 
 ipcMain.handle("update:get-log-path", async () => updaterLogPath());
-

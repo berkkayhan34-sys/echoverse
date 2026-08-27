@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
+**/node_modules/
+**/dist/
+**/release/
+coverage/
+playwright-report/
+test-results/
+work/
+.tmp/
+DOCS/historic/
+package-lock.json
+*.png
+*.ico
+*.wav
+*.mp3
+*.dmg
+*.exe
+*.zip

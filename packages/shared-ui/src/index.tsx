@@ -5,6 +5,13 @@
 
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 
-export function ActionButton({ children, ...props }: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>) {
-  return <button type="button" {...props}>{children}</button>;
+export function ActionButton({
+  children,
+  ...props
+}: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>) {
+  return (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  );
 }

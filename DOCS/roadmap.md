@@ -39,12 +39,12 @@ deployment are complete. They do not close the incomplete children below.
 ```yaml
 id: DOC-001
 type: documentation_foundation
-status: in_progress
-evidence: null
+status: complete
+evidence: evidence/DOC-001.md
 blocks_roadmap: true
 ```
 
-[-] Establish the stationary child/evidence convention for this roadmap,
+[x] Establish the stationary child/evidence convention for this roadmap,
 create the documented `DOCS/evidence/` and `DOCS/audits/` surfaces, add an
 evidence template and a roadmap/status validator, and make `DOCS/README.md`
 the complete navigation index. Keep the first-active-child rule, checkbox and
@@ -55,11 +55,11 @@ metadata consistency, and historical-audit lifecycle machine-checkable.
 ```yaml
 id: DOC-002
 type: documentation_and_architecture
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/DOC-002.md
 ```
 
-[ ] Reconcile the architecture map with the actual repository: document the
+[x] Reconcile the architecture map with the actual repository: document the
 feature ownership/public entrypoint/test/README map, account for the empty
 legacy `src/` path, repair the old `desktop/` and `server/` paths in
 `GITHUB-BUILD-TR.md`, and resolve the dual Render manifest policy. If the root
@@ -71,11 +71,11 @@ otherwise document and validate one authoritative mirror process.
 ```yaml
 id: DOC-003
 type: documentation_and_tooling_policy
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/DOC-003.md
 ```
 
-[ ] Align development, testing, release, Makefile, and workflow documentation
+[x] Align development, testing, release, Makefile, and workflow documentation
 with the root npm workspace and Node.js 22 LTS policy. Document the required
 lint/format, SPDX/REUSE, secret-scan, coverage, E2E, integration, artifact,
 checksum, installer-launch, and rollback gates. Document that local release
@@ -87,11 +87,11 @@ that release scripts cannot publish accidentally.
 ```yaml
 id: DOC-004
 type: security_and_privacy_policy
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/DOC-004.md
 ```
 
-[ ] Add the missing threat-model and data-lifecycle detail: trust-boundary
+[x] Add the missing threat-model and data-lifecycle detail: trust-boundary
 owners, secret and token handling, session lifecycle, upload/media limits,
 rate-limit and timeout expectations, safe-error rules, log redaction,
 retention/access, user deletion, backup/export deletion, and deletion evidence.
@@ -102,11 +102,11 @@ Link each required control to its owning test and release evidence.
 ```yaml
 id: DOC-005
 type: governance_and_operations
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/DOC-005.md
 ```
 
-[ ] Name the operational owner, incident escalation path, release approvers,
+[x] Name the operational owner, incident escalation path, release approvers,
 and evidence-retention owner. Write the pre-public-release runbook for
 CODEOWNERS, required reviews, branch protection, security reporting, release
 approval, rollback, and incident response. Keep the solo-maintainer exception
@@ -117,11 +117,11 @@ active until this gate is deliberately activated.
 ```yaml
 id: DOC-006
 type: verification_audit
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/DOC-006.md
 ```
 
-[ ] Run the documentation/repository audit over DOC-001 through DOC-005,
+[x] Run the documentation/repository audit over DOC-001 through DOC-005,
 including links, metadata, SPDX/REUSE declarations, ignored paths, stale
 references, ADR completeness, and the complete diff. Record reproducible
 evidence before any product-runtime code is changed.
@@ -133,11 +133,11 @@ evidence before any product-runtime code is changed.
 ```yaml
 id: QUAL-001
 type: tooling_and_ci
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/QUAL-001.md
 ```
 
-[ ] Add deterministic root-workspace install checks, Node 22 enforcement in all
+[x] Add deterministic root-workspace install checks, Node 22 enforcement in all
 local and CI/release jobs, formatting and linting, SPDX/REUSE validation,
 secret scanning, dependency scanning, coverage reporting, and machine-readable
 failure output. Replace app-local installation drift with the documented
@@ -148,11 +148,11 @@ canonical lockfile workflow.
 ```yaml
 id: QUAL-002
 type: automated_testing
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/QUAL-002.md
 ```
 
-[ ] Expand Vitest contracts and boundary fixtures for event compatibility,
+[x] Expand Vitest contracts and boundary fixtures for event compatibility,
 version negotiation, malformed and oversized payloads, pagination, attachment
 metadata, signaling messages, safe error shapes, and cross-client web/desktop
 compatibility. Add deterministic unit coverage for validators, reducers,
@@ -163,11 +163,11 @@ selectors, adapters, and configuration failures.
 ```yaml
 id: QUAL-003
 type: ci_quality_gate
-status: incomplete
+status: in_progress
 evidence: null
 ```
 
-[ ] Add server HTTP/Socket.IO integration, authorization/IDOR, rate-limit,
+[-] Add server HTTP/Socket.IO integration, authorization/IDOR, rate-limit,
 timeout, origin/security-header, secret-negative, and database test jobs. Run
 the Playwright E2E suite in CI, publish concise command/runtime/result/artifact
 evidence, and make every release-blocking failure visible rather than skipped.

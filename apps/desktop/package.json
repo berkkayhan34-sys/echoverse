@@ -12,7 +12,7 @@
     "dist:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish never",
     "dist:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "release:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "release:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish always",
+    "release:mac:x64": "npm run build && electron-builder --mac dmg zip --x64 --publish never",
     "release:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64 --publish never",
     "release:mac:intel": "npm run build && electron-builder --mac dmg zip --x64 --publish never"
   },

@@ -1,6 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import type { Account, ChatMessage, DmMessage, FriendUser, Guild, IncomingCall, PeerInfo, ScreenSource, SpotifyState } from "@echoverse/contracts";
+import type {
+  Account,
+  ChatMessage,
+  DmMessage,
+  FriendUser,
+  Guild,
+  IncomingCall,
+  PeerInfo,
+  ScreenSource,
+  SpotifyState
+} from "@echoverse/contracts";
 import { clearSessionToken, readSessionToken, writeSessionToken } from "@echoverse/client-core";
 
 const ICE_SERVERS: RTCIceServer[] = [
@@ -12,9 +22,7 @@ export default function App() {
   const [serverUrl, setServerUrl] = useState("");
   const [spotifyConfigured, setSpotifyConfigured] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [username, setUsername] = useState(
-    () => localStorage.getItem("echoverse_username") || ""
-  );
+  const [username, setUsername] = useState(() => localStorage.getItem("echoverse_username") || "");
   const [account, setAccount] = useState<Account | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -54,11 +62,11 @@ export default function App() {
   const [selectedCamera, setSelectedCamera] = useState(
     () => localStorage.getItem("echoverse_camera_device") || ""
   );
-  const [screenQuality, setScreenQuality] = useState<"720" | "1080">(
-    () => (localStorage.getItem("echoverse_screen_quality") === "1080" ? "1080" : "720")
+  const [screenQuality, setScreenQuality] = useState<"720" | "1080">(() =>
+    localStorage.getItem("echoverse_screen_quality") === "1080" ? "1080" : "720"
   );
-  const [screenFps, setScreenFps] = useState<30 | 60>(
-    () => (localStorage.getItem("echoverse_screen_fps") === "60" ? 60 : 30)
+  const [screenFps, setScreenFps] = useState<30 | 60>(() =>
+    localStorage.getItem("echoverse_screen_fps") === "60" ? 60 : 30
   );
   const [videoLayout, setVideoLayout] = useState<"grid" | "focus">("grid");
   const [selectedInput, setSelectedInput] = useState(
@@ -71,36 +79,38 @@ export default function App() {
   const [lobbySoundsEnabled, setLobbySoundsEnabled] = useState(
     () => localStorage.getItem("echoverse_lobby_sounds") !== "off"
   );
-  const [effectVolume, setEffectVolume] = useState(
-    () => Number(localStorage.getItem("echoverse_effect_volume") || "70")
+  const [effectVolume, setEffectVolume] = useState(() =>
+    Number(localStorage.getItem("echoverse_effect_volume") || "70")
   );
 
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
-  const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
+  const [, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState<FriendUser[]>([]);
   const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
   const [viewMode, setViewMode] = useState<"server" | "dm">("server");
   const [callState, setCallState] = useState<"idle" | "calling" | "ringing" | "connected">("idle");
-  const [ringbackPlaying, setRingbackPlaying] = useState(false);
+  const [, setRingbackPlaying] = useState(false);
   const [callSeconds, setCallSeconds] = useState(0);
   const [connectionMessage, setConnectionMessage] = useState("");
-  const [dmAttachment, setDmAttachment] = useState<{name:string; mime:string; data:string} | null>(null);
+  const [dmAttachment, setDmAttachment] = useState<{
+    name: string;
+    mime: string;
+    data: string;
+  } | null>(null);
   const [dmDragActive, setDmDragActive] = useState(false);
   const [editingDm, setEditingDm] = useState<DmMessage | null>(null);
   const [deafened, setDeafened] = useState(false);
   const [pushToTalk, setPushToTalk] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
 
-
-
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
   const [dmText, setDmText] = useState("");
   const [unreadDm, setUnreadDm] = useState<Record<string, number>>({});
   const [dmTyping, setDmTyping] = useState<Record<string, boolean>>({});
-  const [myStatus, setMyStatus] = useState<"online"|"idle"|"dnd"|"invisible">("online");
+  const [myStatus, setMyStatus] = useState<"online" | "idle" | "dnd" | "invisible">("online");
   const [dmSearch, setDmSearch] = useState("");
   const [replyTo, setReplyTo] = useState<DmMessage | null>(null);
   const [micTestLevel, setMicTestLevel] = useState(0);
@@ -148,7 +158,6 @@ export default function App() {
   const lobbyStateReadyRef = useRef(false);
   const reconnectingRef = useRef(false);
 
-
   function playLobbyTone(kind: "join" | "leave") {
     if (!lobbySoundsEnabledRef.current) return;
     const now = Date.now();
@@ -184,9 +193,6 @@ export default function App() {
       console.warn("[EchoVerse] lobby sound failed", err);
     }
   }
-
-
-
 
   useEffect(() => {
     activeGuildRef.current = activeGuild;
@@ -226,7 +232,7 @@ export default function App() {
       setCallSeconds(0);
       if (callTimer.current) window.clearInterval(callTimer.current);
       callTimer.current = window.setInterval(() => {
-        setCallSeconds(v => v + 1);
+        setCallSeconds((v) => v + 1);
       }, 1000);
     } else {
       if (callTimer.current) {
@@ -248,7 +254,7 @@ export default function App() {
     if (!pushToTalk) return;
 
     const updateTracks = (enabled: boolean) => {
-      localStream.current?.getAudioTracks().forEach(track => {
+      localStream.current?.getAudioTracks().forEach((track) => {
         track.enabled = enabled && !deafened;
       });
     };
@@ -256,7 +262,7 @@ export default function App() {
     const down = (event: KeyboardEvent) => {
       if (event.code !== "KeyV" || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT","TEXTAREA"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
       setPttPressed(true);
       updateTracks(true);
     };
@@ -290,8 +296,7 @@ export default function App() {
 
       setServerUrl(cfg.serverUrl);
       setSpotifyConfigured(
-        !!cfg.spotifyClientId &&
-        !cfg.spotifyClientId.startsWith("SPOTIFY_CLIENT_ID")
+        !!cfg.spotifyClientId && !cfg.spotifyClientId.startsWith("SPOTIFY_CLIENT_ID")
       );
 
       await refreshSpotifyStatus();
@@ -362,7 +367,7 @@ export default function App() {
       setConnectionMessage("Bağlantı kesildi. Yeniden bağlanılıyor…");
     });
 
-    s.on("connect_error", err => {
+    s.on("connect_error", (err) => {
       setConnected(false);
       setConnectionMessage("EchoVerse sunucusuna yeniden bağlanmaya çalışıyor…");
       setError(`Sunucuya bağlanılamadı: ${err.message}`);
@@ -374,25 +379,34 @@ export default function App() {
       loadFriends(s);
     });
     s.on("presence:changed", ({ accountId, status }: any) => {
-      setFriends(prev => prev.map(f => f.id === accountId ? { ...f, status } : f));
+      setFriends((prev) => prev.map((f) => (f.id === accountId ? { ...f, status } : f)));
     });
     s.on("dm:typing", ({ accountId, typing }: any) => {
-      setDmTyping(prev => ({ ...prev, [accountId]: !!typing }));
+      setDmTyping((prev) => ({ ...prev, [accountId]: !!typing }));
     });
     s.on("dm:reaction", ({ messageId, reactions }: any) => {
-      setDmMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m));
+      setDmMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions } : m)));
     });
 
     s.on("dm:updated", (message: DmMessage) => {
-      setDmMessages(prev => prev.map(m => m.id === message.id ? { ...m, ...message } : m));
+      setDmMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
     });
 
     s.on("dm:deleted", ({ messageId, deletedAt }: any) => {
-      setDmMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, body: "", deletedAt, attachmentName: null, attachmentMime: null, attachmentData: null }
-          : m
-      ));
+      setDmMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                body: "",
+                deletedAt,
+                attachmentName: null,
+                attachmentMime: null,
+                attachmentData: null
+              }
+            : m
+        )
+      );
     });
 
     s.on("call:missed", () => {
@@ -422,19 +436,19 @@ export default function App() {
         (msg.senderId === currentFriend.id || msg.recipientId === currentFriend.id);
 
       if (isOpenConversation) {
-        setDmMessages(prev => {
-          if (prev.some(existing => existing.id === msg.id)) return prev;
+        setDmMessages((prev) => {
+          if (prev.some((existing) => existing.id === msg.id)) return prev;
           return [...prev, msg];
         });
 
         if (currentFriend) {
-          setUnreadDm(prev => ({ ...prev, [currentFriend.id]: 0 }));
+          setUnreadDm((prev) => ({ ...prev, [currentFriend.id]: 0 }));
         }
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
         if (!isOpenConversation) {
-          setUnreadDm(prev => ({
+          setUnreadDm((prev) => ({
             ...prev,
             [msg.senderId]: (prev[msg.senderId] || 0) + 1
           }));
@@ -450,12 +464,11 @@ export default function App() {
     s.on("call:incoming", async (call: IncomingCall) => {
       await prepareForPrivateCall();
 
-      const caller =
-        friends.find(f => f.id === call.fromAccountId) || {
-          id: call.fromAccountId,
-          username: call.fromUsername,
-          avatarData: call.fromAvatarData
-        };
+      const caller = friends.find((f) => f.id === call.fromAccountId) || {
+        id: call.fromAccountId,
+        username: call.fromUsername,
+        avatarData: call.fromAvatarData
+      };
 
       setActiveDmFriend(caller);
       setViewMode("dm");
@@ -492,9 +505,8 @@ export default function App() {
       stopPrivateCall(false);
     });
 
-
     s.on("chat-message", (msg: ChatMessage) => {
-      setMessages(prev => [...prev, msg]);
+      setMessages((prev) => [...prev, msg]);
     });
 
     s.on("presence", (list: PeerInfo[]) => {
@@ -505,16 +517,16 @@ export default function App() {
     s.on("voice:lobby-state", async ({ members }: { members: PeerInfo[] }) => {
       const next = Array.isArray(members) ? members : [];
       const previous = lobbyMembersRef.current;
-      const previousIds = new Set(previous.map(member => member.socketId));
-      const nextIds = new Set(next.map(member => member.socketId));
+      const previousIds = new Set(previous.map((member) => member.socketId));
+      const nextIds = new Set(next.map((member) => member.socketId));
       const selfId = s.id;
 
       if (lobbyStateReadyRef.current && !reconnectingRef.current) {
         const joinedSomeone = next.some(
-          member => member.socketId !== selfId && !previousIds.has(member.socketId)
+          (member) => member.socketId !== selfId && !previousIds.has(member.socketId)
         );
         const leftSomeone = previous.some(
-          member => member.socketId !== selfId && !nextIds.has(member.socketId)
+          (member) => member.socketId !== selfId && !nextIds.has(member.socketId)
         );
 
         if (joinedSomeone) playLobbyTone("join");
@@ -613,10 +625,7 @@ export default function App() {
             : "Spotify senkronize."
         );
       } catch (err: any) {
-        setSpotifyMessage(
-          err?.message ||
-          "Spotify senkronizasyonu başarısız."
-        );
+        setSpotifyMessage(err?.message || "Spotify senkronizasyonu başarısız.");
       }
     });
 
@@ -651,14 +660,13 @@ export default function App() {
       if (event.key === "Escape") {
         document
           .querySelectorAll(".video-maximized")
-          .forEach(el => el.classList.remove("video-maximized"));
+          .forEach((el) => el.classList.remove("video-maximized"));
       }
     };
 
     window.addEventListener("keydown", closeFocused);
     return () => window.removeEventListener("keydown", closeFocused);
   }, []);
-
 
   function getAudioContext() {
     if (!audioContext.current) {
@@ -677,7 +685,7 @@ export default function App() {
     if (peerId === "local") {
       setLocalSpeaking(false);
     } else {
-      setSpeakingPeers(prev => {
+      setSpeakingPeers((prev) => {
         if (!(peerId in prev)) return prev;
         const next = { ...prev };
         delete next[peerId];
@@ -694,9 +702,7 @@ export default function App() {
 
     try {
       const ctx = getAudioContext();
-      const source = ctx.createMediaStreamSource(
-        new MediaStream([audioTrack])
-      );
+      const source = ctx.createMediaStreamSource(new MediaStream([audioTrack]));
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.72;
@@ -728,7 +734,7 @@ export default function App() {
         if (peerId === "local") {
           setLocalSpeaking(speaking);
         } else {
-          setSpeakingPeers(prev => ({
+          setSpeakingPeers((prev) => ({
             ...prev,
             [peerId]: speaking
           }));
@@ -741,13 +747,12 @@ export default function App() {
     }
   }
 
-
   async function refreshAudioDevices() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      setAudioInputs(devices.filter(d => d.kind === "audioinput"));
-      setAudioOutputs(devices.filter(d => d.kind === "audiooutput"));
-      setVideoInputs(devices.filter(d => d.kind === "videoinput"));
+      setAudioInputs(devices.filter((d) => d.kind === "audioinput"));
+      setAudioOutputs(devices.filter((d) => d.kind === "audiooutput"));
+      setVideoInputs(devices.filter((d) => d.kind === "videoinput"));
     } catch {}
   }
 
@@ -771,13 +776,13 @@ export default function App() {
     newTrack.enabled = !muted;
 
     for (const pc of pcs.current.values()) {
-      const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+      const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
       if (sender) {
         await sender.replaceTrack(newTrack);
       }
     }
 
-    old?.getAudioTracks().forEach(t => t.stop());
+    old?.getAudioTracks().forEach((t) => t.stop());
     localStream.current = next;
     startSpeakingMonitor("local", next);
   }
@@ -834,17 +839,13 @@ export default function App() {
   }
 
   function respondFriendRequest(friendshipId: string, accept: boolean) {
-    socket?.emit(
-      "friends:respond",
-      { friendshipId, accept },
-      (result: any) => {
-        if (!result?.ok) {
-          setError(result?.error || "İstek işlenemedi.");
-          return;
-        }
-        loadFriends();
+    socket?.emit("friends:respond", { friendshipId, accept }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || "İstek işlenemedi.");
+        return;
       }
-    );
+      loadFriends();
+    });
   }
 
   function removeFriend(targetId: string) {
@@ -876,7 +877,7 @@ export default function App() {
     setDmMessages([]);
     setDmText("");
     setReplyTo(null);
-    setUnreadDm(prev => ({ ...prev, [friend.id]: 0 }));
+    setUnreadDm((prev) => ({ ...prev, [friend.id]: 0 }));
 
     socket?.emit("dm:history", { friendId: friend.id }, (result: any) => {
       if (result?.ok) setDmMessages(result.messages || []);
@@ -979,13 +980,11 @@ export default function App() {
     setDeafened(next);
 
     remoteAudio.current.forEach((audio, peerId) => {
-      audio.volume = next
-        ? 0
-        : (peerMuted[peerId] ? 0 : (peerVolumes[peerId] ?? 100) / 100);
+      audio.volume = next ? 0 : peerMuted[peerId] ? 0 : (peerVolumes[peerId] ?? 100) / 100;
     });
 
-    localStream.current?.getAudioTracks().forEach(track => {
-      track.enabled = next ? false : (!muted && !pushToTalk);
+    localStream.current?.getAudioTracks().forEach((track) => {
+      track.enabled = next ? false : !muted && !pushToTalk;
     });
   }
 
@@ -997,26 +996,56 @@ export default function App() {
 
   async function testOutput() {
     try {
-      const ctx = new AudioContext(); const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.frequency.value = 523.25; gain.gain.value = 0.06; osc.connect(gain); gain.connect(ctx.destination); osc.start();
-      window.setTimeout(() => { try { osc.stop(); ctx.close(); } catch {} }, 500);
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 523.25;
+      gain.gain.value = 0.06;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      window.setTimeout(() => {
+        try {
+          osc.stop();
+          ctx.close();
+        } catch {}
+      }, 500);
     } catch {}
   }
 
   async function testMicrophone() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio: selectedInput ? {deviceId:{exact:selectedInput}} : true});
-      const ctx = new AudioContext(); const analyser=ctx.createAnalyser(); ctx.createMediaStreamSource(stream).connect(analyser);
-      const data=new Uint8Array(analyser.fftSize); const start=Date.now();
-      const timer=window.setInterval(()=>{ analyser.getByteTimeDomainData(data); let sum=0;
-        for(const v of data){const n=(v-128)/128;sum+=n*n;} setMicTestLevel(Math.min(100,Math.round(Math.sqrt(sum/data.length)*420)));
-        if(Date.now()-start>4000){clearInterval(timer);stream.getTracks().forEach(t=>t.stop());ctx.close();setMicTestLevel(0);}
-      },80);
-    } catch { setError("Mikrofon testi başlatılamadı."); }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: selectedInput ? { deviceId: { exact: selectedInput } } : true
+      });
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+      const start = Date.now();
+      const timer = window.setInterval(() => {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (const v of data) {
+          const n = (v - 128) / 128;
+          sum += n * n;
+        }
+        setMicTestLevel(Math.min(100, Math.round(Math.sqrt(sum / data.length) * 420)));
+        if (Date.now() - start > 4000) {
+          clearInterval(timer);
+          stream.getTracks().forEach((t) => t.stop());
+          ctx.close();
+          setMicTestLevel(0);
+        }
+      }, 80);
+    } catch {
+      setError("Mikrofon testi başlatılamadı.");
+    }
   }
 
-  function setPresenceStatus(status: "online"|"idle"|"dnd"|"invisible") {
-    setMyStatus(status); socket?.emit("presence:set",{status});
+  function setPresenceStatus(status: "online" | "idle" | "dnd" | "invisible") {
+    setMyStatus(status);
+    socket?.emit("presence:set", { status });
   }
   function sendTyping(typing: boolean) {
     const friend = activeDmFriendRef.current;
@@ -1036,7 +1065,9 @@ export default function App() {
       }, 1400);
     }
   }
-  function reactDm(messageId:string, emoji:string) { socket?.emit("dm:react",{messageId,emoji}); }
+  function reactDm(messageId: string, emoji: string) {
+    socket?.emit("dm:react", { messageId, emoji });
+  }
 
   function createToneLoop(frequencies: number[], intervalMs: number, volume = 0.035) {
     try {
@@ -1065,7 +1096,9 @@ export default function App() {
         stop: () => {
           stopped = true;
           window.clearInterval(timer);
-          try { ctx.close(); } catch {}
+          try {
+            ctx.close();
+          } catch {}
         }
       };
     } catch {
@@ -1080,7 +1113,9 @@ export default function App() {
   }
 
   function stopRingtone() {
-    try { ringAudio.current?.pause(); } catch {}
+    try {
+      ringAudio.current?.pause();
+    } catch {}
     ringAudio.current = null;
   }
 
@@ -1092,7 +1127,9 @@ export default function App() {
   }
 
   function stopRingback() {
-    try { ringbackAudio.current?.pause(); } catch {}
+    try {
+      ringbackAudio.current?.pause();
+    } catch {}
     ringbackAudio.current = null;
     setRingbackPlaying(false);
   }
@@ -1111,7 +1148,11 @@ export default function App() {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.4);
-      window.setTimeout(() => { try { ctx.close(); } catch {} }, 600);
+      window.setTimeout(() => {
+        try {
+          ctx.close();
+        } catch {}
+      }, 600);
     } catch {}
   }
 
@@ -1127,11 +1168,11 @@ export default function App() {
       await leaveVoice(true);
     }
 
-    pcs.current.forEach(pc => pc.close());
+    pcs.current.forEach((pc) => pc.close());
     pcs.current.clear();
     videoSenders.current.clear();
 
-    remoteAudio.current.forEach(audio => {
+    remoteAudio.current.forEach((audio) => {
       try {
         audio.pause();
         audio.srcObject = null;
@@ -1343,14 +1384,9 @@ export default function App() {
     if (spotifyParty?.trackUri) {
       try {
         await window.echoverse?.spotifyApplySync?.(spotifyParty);
-        setSpotifyMessage(
-          `Takip ediliyor: ${spotifyParty.trackName || "Spotify"}`
-        );
+        setSpotifyMessage(`Takip ediliyor: ${spotifyParty.trackName || "Spotify"}`);
       } catch (err: any) {
-        setSpotifyMessage(
-          err?.message ||
-          "Spotify uygulamasında önce bir şarkı aç."
-        );
+        setSpotifyMessage(err?.message || "Spotify uygulamasında önce bir şarkı aç.");
       }
     }
   }
@@ -1374,11 +1410,7 @@ export default function App() {
     return stream;
   }
 
-  async function createPeer(
-    s: Socket,
-    peerId: string,
-    initiator: boolean
-  ) {
+  async function createPeer(s: Socket, peerId: string, initiator: boolean) {
     const existing = pcs.current.get(peerId);
     if (existing) return existing;
 
@@ -1390,7 +1422,7 @@ export default function App() {
 
     const stream = await ensureMicrophone();
 
-    stream.getAudioTracks().forEach(track => {
+    stream.getAudioTracks().forEach((track) => {
       pc.addTrack(track, stream);
     });
 
@@ -1398,18 +1430,13 @@ export default function App() {
       direction: "sendrecv"
     });
 
-    videoSenders.current.set(
-      peerId,
-      videoTransceiver.sender
-    );
+    videoSenders.current.set(peerId, videoTransceiver.sender);
 
     if (outgoingVideoTrack.current) {
-      await videoTransceiver.sender.replaceTrack(
-        outgoingVideoTrack.current
-      );
+      await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
     }
 
-    pc.onicecandidate = evt => {
+    pc.onicecandidate = (evt) => {
       if (evt.candidate) {
         s.emit("webrtc-ice", {
           to: peerId,
@@ -1418,10 +1445,8 @@ export default function App() {
       }
     };
 
-    pc.ontrack = evt => {
-      const streamForTrack =
-        evt.streams[0] ||
-        new MediaStream([evt.track]);
+    pc.ontrack = (evt) => {
+      const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
 
       if (evt.track.kind === "audio") {
         let audio = remoteAudio.current.get(peerId);
@@ -1445,9 +1470,7 @@ export default function App() {
         startSpeakingMonitor(peerId, streamForTrack);
 
         const volume = peerVolumes[peerId] ?? 100;
-        audio.volume = peerMuted[peerId]
-          ? 0
-          : volume / 100;
+        audio.volume = peerMuted[peerId] ? 0 : volume / 100;
 
         audio.play().catch(() => {});
       }
@@ -1462,11 +1485,7 @@ export default function App() {
     };
 
     pc.onconnectionstatechange = () => {
-      if (
-        ["failed", "closed"].includes(
-          pc.connectionState
-        )
-      ) {
+      if (["failed", "closed"].includes(pc.connectionState)) {
         removePeer(peerId);
       }
     };
@@ -1498,24 +1517,14 @@ export default function App() {
       remoteAudio.current.delete(peerId);
     }
 
-    remoteVideoHost.current
-      ?.querySelector(
-        `[data-peer="${peerId}"]`
-      )
-      ?.remove();
+    remoteVideoHost.current?.querySelector(`[data-peer="${peerId}"]`)?.remove();
   }
 
-  function attachRemoteVideo(
-    peerId: string,
-    track: MediaStreamTrack
-  ) {
+  function attachRemoteVideo(peerId: string, track: MediaStreamTrack) {
     const host = remoteVideoHost.current;
     if (!host) return;
 
-    let video =
-      host.querySelector<HTMLVideoElement>(
-        `video[data-peer="${peerId}"]`
-      );
+    let video = host.querySelector<HTMLVideoElement>(`video[data-peer="${peerId}"]`);
 
     if (!video) {
       video = document.createElement("video");
@@ -1530,11 +1539,9 @@ export default function App() {
       badge.textContent = "LIVE";
       video.parentElement?.appendChild(badge);
       video.onclick = () => {
-        document
-          .querySelectorAll(".video-maximized")
-          .forEach(el => {
-            if (el !== video) el.classList.remove("video-maximized");
-          });
+        document.querySelectorAll(".video-maximized").forEach((el) => {
+          if (el !== video) el.classList.remove("video-maximized");
+        });
 
         video.classList.toggle("video-maximized");
       };
@@ -1565,20 +1572,19 @@ export default function App() {
     setAuthBusy(true);
     setError("");
 
-    const event = authMode === "register"
-      ? "auth:register"
-      : "auth:login";
+    const event = authMode === "register" ? "auth:register" : "auth:login";
 
-    const payload = authMode === "register"
-      ? {
-          email,
-          username: authUsername.trim(),
-          password
-        }
-      : {
-          email,
-          password
-        };
+    const payload =
+      authMode === "register"
+        ? {
+            email,
+            username: authUsername.trim(),
+            password
+          }
+        : {
+            email,
+            password
+          };
 
     socket.emit(event, payload, async (result: any) => {
       setAuthBusy(false);
@@ -1602,11 +1608,7 @@ export default function App() {
       try {
         await ensureMicrophone();
       } catch (err: any) {
-        setError(
-          `Giriş yapıldı ama mikrofon açılamadı: ${
-            err?.message || "izin verilmedi"
-          }`
-        );
+        setError(`Giriş yapıldı ama mikrofon açılamadı: ${err?.message || "izin verilmedi"}`);
       }
     });
   }
@@ -1650,17 +1652,7 @@ export default function App() {
     const sx = (img.width - crop) / 2;
     const sy = (img.height - crop) / 2;
 
-    ctx.drawImage(
-      img,
-      sx,
-      sy,
-      crop,
-      crop,
-      0,
-      0,
-      size,
-      size
-    );
+    ctx.drawImage(img, sx, sy, crop, crop, 0, 0, size, size);
 
     return canvas.toDataURL("image/jpeg", 0.82);
   }
@@ -1672,25 +1664,21 @@ export default function App() {
       const avatarData = await resizeAvatar(file);
       const token = localStorage.getItem("echoverse_token");
 
-      socket.emit(
-        "profile:set-avatar",
-        { token, avatarData },
-        (result: any) => {
-          if (!result?.ok) {
-            setError(result?.error || "Profil fotoğrafı değiştirilemedi.");
-            return;
-          }
-
-          setAccount(result.account);
-          setError("");
+      socket.emit("profile:set-avatar", { token, avatarData }, (result: any) => {
+        if (!result?.ok) {
+          setError(result?.error || "Profil fotoğrafı değiştirilemedi.");
+          return;
         }
-      );
+
+        setAccount(result.account);
+        setError("");
+      });
     } catch (err: any) {
       setError(err?.message || "Profil fotoğrafı değiştirilemedi.");
     }
   }
 
-  async function identify() {
+  async function _identify() {
     if (!socket || !connected) return;
 
     const token = localStorage.getItem("echoverse_token");
@@ -1746,46 +1734,32 @@ export default function App() {
     const name = newGuildName.trim();
     if (!socket || !name) return;
 
-    socket.emit(
-      "guild:create",
-      { name },
-      (result: any) => {
-        if (!result?.ok) {
-          setError(
-            result?.error ||
-            "Sunucu oluşturulamadı."
-          );
-          return;
-        }
-
-        setNewGuildName("");
-        setShowCreate(false);
-        joinGuild(result.guild);
+    socket.emit("guild:create", { name }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || "Sunucu oluşturulamadı.");
+        return;
       }
-    );
+
+      setNewGuildName("");
+      setShowCreate(false);
+      joinGuild(result.guild);
+    });
   }
 
   function joinGuildByCode() {
     const code = joinCode.trim();
     if (!socket || !code) return;
 
-    socket.emit(
-      "guild:join-code",
-      { code },
-      (result: any) => {
-        if (!result?.ok) {
-          setError(
-            result?.error ||
-            "Sunucu bulunamadı."
-          );
-          return;
-        }
-
-        setJoinCode("");
-        setShowJoin(false);
-        joinGuild(result.guild);
+    socket.emit("guild:join-code", { code }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || "Sunucu bulunamadı.");
+        return;
       }
-    );
+
+      setJoinCode("");
+      setShowJoin(false);
+      joinGuild(result.guild);
+    });
   }
 
   async function leaveVoice(returnHome = true) {
@@ -1794,7 +1768,7 @@ export default function App() {
     reconnectingRef.current = false;
     socket?.emit("leave-room");
 
-    pcs.current.forEach(pc => pc.close());
+    pcs.current.forEach((pc) => pc.close());
     pcs.current.clear();
     videoSenders.current.clear();
 
@@ -1822,7 +1796,7 @@ export default function App() {
 
     outgoingVideoTrack.current = null;
 
-    videoSenders.current.forEach(sender => {
+    videoSenders.current.forEach((sender) => {
       sender.replaceTrack(null).catch(() => {});
     });
 
@@ -1841,22 +1815,16 @@ export default function App() {
 
     stopCameraAndScreen();
 
-    localStream.current
-      ?.getTracks()
-      .forEach(t => t.stop());
+    localStream.current?.getTracks().forEach((t) => t.stop());
 
     localStream.current = null;
 
-    remoteAudio.current.forEach(a => a.pause());
+    remoteAudio.current.forEach((a) => a.pause());
     remoteAudio.current.clear();
   }
 
   function sendMessage() {
-    if (
-      !socket ||
-      !joined ||
-      !activeGuild
-    ) return;
+    if (!socket || !joined || !activeGuild) return;
 
     const value = text.trim();
     if (!value) return;
@@ -1875,24 +1843,20 @@ export default function App() {
 
     const next = !muted;
 
-    stream.getAudioTracks().forEach(track => {
+    stream.getAudioTracks().forEach((track) => {
       track.enabled = !next && !deafened && !pushToTalk;
     });
 
     setMuted(next);
   }
 
-  function setPeerVolume(
-    peerId: string,
-    volume: number
-  ) {
-    setPeerVolumes(prev => ({
+  function setPeerVolume(peerId: string, volume: number) {
+    setPeerVolumes((prev) => ({
       ...prev,
       [peerId]: volume
     }));
 
-    const audio =
-      remoteAudio.current.get(peerId);
+    const audio = remoteAudio.current.get(peerId);
 
     if (audio && !peerMuted[peerId]) {
       audio.volume = volume / 100;
@@ -1902,18 +1866,15 @@ export default function App() {
   function togglePeerMute(peerId: string) {
     const next = !peerMuted[peerId];
 
-    setPeerMuted(prev => ({
+    setPeerMuted((prev) => ({
       ...prev,
       [peerId]: next
     }));
 
-    const audio =
-      remoteAudio.current.get(peerId);
+    const audio = remoteAudio.current.get(peerId);
 
     if (audio) {
-      audio.volume = next
-        ? 0
-        : (peerVolumes[peerId] ?? 100) / 100;
+      audio.volume = next ? 0 : (peerVolumes[peerId] ?? 100) / 100;
     }
   }
 
@@ -1941,25 +1902,15 @@ export default function App() {
     }
   }
 
-  async function setOutboundVideo(
-    track: MediaStreamTrack | null
-  ) {
+  async function setOutboundVideo(track: MediaStreamTrack | null) {
     outgoingVideoTrack.current = track;
 
     await Promise.all(
-      [...videoSenders.current.values()].map(
-        sender =>
-          sender
-            .replaceTrack(track)
-            .catch(() => {})
-      )
+      [...videoSenders.current.values()].map((sender) => sender.replaceTrack(track).catch(() => {}))
     );
 
     if (localVideoRef.current) {
-      localVideoRef.current.srcObject =
-        track
-          ? new MediaStream([track])
-          : null;
+      localVideoRef.current.srcObject = track ? new MediaStream([track]) : null;
     }
 
     // Chromium/macOS interop: renegotiate after replacing a previously
@@ -2006,33 +1957,25 @@ export default function App() {
     }
 
     try {
-      const cam =
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: selectedCamera ? { exact: selectedCamera } : undefined,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30, max: 30 }
-          },
-          audio: false
-        });
+      const cam = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: selectedCamera ? { exact: selectedCamera } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30, max: 30 }
+        },
+        audio: false
+      });
 
-      cameraTrack.current =
-        cam.getVideoTracks()[0];
+      cameraTrack.current = cam.getVideoTracks()[0];
 
       setCameraOn(true);
 
       if (!screenOn) {
-        await setOutboundVideo(
-          cameraTrack.current
-        );
+        await setOutboundVideo(cameraTrack.current);
       }
     } catch (err: any) {
-      setError(
-        `Kamera açılamadı: ${
-          err?.message || "izin verilmedi"
-        }`
-      );
+      setError(`Kamera açılamadı: ${err?.message || "izin verilmedi"}`);
     }
   }
 
@@ -2076,11 +2019,7 @@ export default function App() {
       setScreenSources(sources);
       setShowScreenPicker(true);
     } catch (err: any) {
-      setError(
-        `Ekran kaynakları alınamadı: ${
-          err?.message || "bilinmeyen hata"
-        }`
-      );
+      setError(`Ekran kaynakları alınamadı: ${err?.message || "bilinmeyen hata"}`);
     }
   }
 
@@ -2089,15 +2028,14 @@ export default function App() {
       await window.echoverse?.selectScreenSource?.(source.id);
       setShowScreenPicker(false);
 
-      const display =
-        await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            width: { ideal: screenQuality === "1080" ? 1920 : 1280 },
-            height: { ideal: screenQuality === "1080" ? 1080 : 720 },
-            frameRate: { ideal: screenFps, max: screenFps }
-          },
-          audio: false
-        });
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: screenQuality === "1080" ? 1920 : 1280 },
+          height: { ideal: screenQuality === "1080" ? 1080 : 720 },
+          frameRate: { ideal: screenFps, max: screenFps }
+        },
+        audio: false
+      });
 
       const track = display.getVideoTracks()[0];
 
@@ -2122,20 +2060,13 @@ export default function App() {
       const permission = await window.echoverse?.screenPermission?.();
       setScreenPermission(permission || "");
 
-      if (
-        permission === "denied" ||
-        permission === "restricted"
-      ) {
+      if (permission === "denied" || permission === "restricted") {
         setError(
           "macOS EchoVerse'e ekran kaydı izni vermemiş. Sistem Ayarları → Gizlilik ve Güvenlik → Ekran ve Sistem Ses Kaydı → EchoVerse'i aç ve uygulamayı yeniden başlat."
         );
         await window.echoverse?.openScreenSettings?.();
       } else {
-        setError(
-          `Ekran paylaşımı açılamadı: ${
-            err?.message || "iptal edildi"
-          }`
-        );
+        setError(`Ekran paylaşımı açılamadı: ${err?.message || "iptal edildi"}`);
       }
     }
   }
@@ -2181,7 +2112,7 @@ export default function App() {
               <input
                 value={authUsername}
                 maxLength={28}
-                onChange={e => setAuthUsername(e.target.value)}
+                onChange={(e) => setAuthUsername(e.target.value)}
                 placeholder="Kullanıcı adın"
               />
             </>
@@ -2191,7 +2122,7 @@ export default function App() {
           <input
             type="email"
             value={authEmail}
-            onChange={e => setAuthEmail(e.target.value)}
+            onChange={(e) => setAuthEmail(e.target.value)}
             placeholder="mail@example.com"
           />
 
@@ -2199,35 +2130,33 @@ export default function App() {
           <input
             type="password"
             value={authPassword}
-            onChange={e => setAuthPassword(e.target.value)}
-            onKeyDown={e => {
+            onChange={(e) => setAuthPassword(e.target.value)}
+            onKeyDown={(e) => {
               if (e.key === "Enter") authSubmit();
             }}
             placeholder="En az 6 karakter"
           />
 
-          <button
-            className="primary"
-            onClick={authSubmit}
-            disabled={!connected || authBusy}
-          >
-            {authBusy
-              ? "Bekle…"
-              : authMode === "register"
-                ? "Hesap Oluştur"
-                : "Giriş Yap"}
+          <button className="primary" onClick={authSubmit} disabled={!connected || authBusy}>
+            {authBusy ? "Bekle…" : authMode === "register" ? "Hesap Oluştur" : "Giriş Yap"}
           </button>
 
           <div className="v16-qol">
-          <button onClick={checkForUpdates}>Güncelleme kontrolü</button>
-          {updateProgress > 0 && updateProgress < 100 && <progress max="100" value={updateProgress} />}
-          <button onClick={testMicrophone}>Mikrofon testi</button><span>Mic {micTestLevel}%</span>
-          <button onClick={testOutput}>Output test sesi</button>
-          <select value={myStatus} onChange={e=>setPresenceStatus(e.target.value as any)}>
-            <option value="online">Online</option><option value="idle">Idle</option><option value="dnd">DND</option><option value="invisible">Invisible</option>
-          </select>
-        </div>
-        {updateStatus && <div className="update-box">{updateStatus}</div>}
+            <button onClick={checkForUpdates}>Güncelleme kontrolü</button>
+            {updateProgress > 0 && updateProgress < 100 && (
+              <progress max="100" value={updateProgress} />
+            )}
+            <button onClick={testMicrophone}>Mikrofon testi</button>
+            <span>Mic {micTestLevel}%</span>
+            <button onClick={testOutput}>Output test sesi</button>
+            <select value={myStatus} onChange={(e) => setPresenceStatus(e.target.value as any)}>
+              <option value="online">Online</option>
+              <option value="idle">Idle</option>
+              <option value="dnd">DND</option>
+              <option value="invisible">Invisible</option>
+            </select>
+          </div>
+          {updateStatus && <div className="update-box">{updateStatus}</div>}
           {error && <div className="error-box">{error}</div>}
 
           <small className="auth-version">EchoVerse v{appVersion}</small>
@@ -2243,34 +2172,18 @@ export default function App() {
           <div className="picker-head">
             <div>
               <h1>Sunucular</h1>
-              <p>
-                Bir sunucu seç veya yenisini
-                oluştur.
-              </p>
+              <p>Bir sunucu seç veya yenisini oluştur.</p>
             </div>
 
-            <button
-              className="icon-btn"
-              onClick={() =>
-                setShowCreate(true)
-              }
-            >
+            <button className="icon-btn" onClick={() => setShowCreate(true)}>
               ＋
             </button>
           </div>
 
           <div className="guild-list">
-            {guilds.map(g => (
-              <button
-                className="guild-row"
-                key={g.id}
-                onClick={() => joinGuild(g)}
-              >
-                <span className="guild-badge">
-                  {g.name
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </span>
+            {guilds.map((g) => (
+              <button className="guild-row" key={g.id} onClick={() => joinGuild(g)}>
+                <span className="guild-badge">{g.name.slice(0, 2).toUpperCase()}</span>
 
                 <span>
                   <b>{g.name}</b>
@@ -2280,12 +2193,7 @@ export default function App() {
             ))}
           </div>
 
-          <button
-            className="secondary-wide"
-            onClick={() =>
-              setShowJoin(true)
-            }
-          >
+          <button className="secondary-wide" onClick={() => setShowJoin(true)}>
             Sunucu koduyla katıl
           </button>
 
@@ -2298,30 +2206,14 @@ export default function App() {
                   autoFocus
                   placeholder="Sunucu adı"
                   value={newGuildName}
-                  onChange={e =>
-                    setNewGuildName(
-                      e.target.value
-                    )
-                  }
-                  onKeyDown={e =>
-                    e.key === "Enter" &&
-                    createGuild()
-                  }
+                  onChange={(e) => setNewGuildName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createGuild()}
                 />
 
                 <div className="modal-actions">
-                  <button
-                    onClick={() =>
-                      setShowCreate(false)
-                    }
-                  >
-                    Vazgeç
-                  </button>
+                  <button onClick={() => setShowCreate(false)}>Vazgeç</button>
 
-                  <button
-                    className="primary-small"
-                    onClick={createGuild}
-                  >
+                  <button className="primary-small" onClick={createGuild}>
                     Oluştur
                   </button>
                 </div>
@@ -2338,30 +2230,14 @@ export default function App() {
                   autoFocus
                   placeholder="Sunucu kodu"
                   value={joinCode}
-                  onChange={e =>
-                    setJoinCode(
-                      e.target.value
-                    )
-                  }
-                  onKeyDown={e =>
-                    e.key === "Enter" &&
-                    joinGuildByCode()
-                  }
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && joinGuildByCode()}
                 />
 
                 <div className="modal-actions">
-                  <button
-                    onClick={() =>
-                      setShowJoin(false)
-                    }
-                  >
-                    Vazgeç
-                  </button>
+                  <button onClick={() => setShowJoin(false)}>Vazgeç</button>
 
-                  <button
-                    className="primary-small"
-                    onClick={joinGuildByCode}
-                  >
+                  <button className="primary-small" onClick={joinGuildByCode}>
                     Katıl
                   </button>
                 </div>
@@ -2369,11 +2245,7 @@ export default function App() {
             </div>
           )}
 
-          {error && (
-            <div className="error-box">
-              {error}
-            </div>
-          )}
+          {error && <div className="error-box">{error}</div>}
         </div>
       </div>
     );
@@ -2388,24 +2260,16 @@ export default function App() {
         </div>
       )}
       <aside className="servers">
-        <div className="server-logo">
-          E
-        </div>
+        <div className="server-logo">E</div>
 
-        {guilds.map(g => (
+        {guilds.map((g) => (
           <button
             key={g.id}
             title={`${g.name} • ${g.id}`}
-            className={`server-circle ${
-              activeGuild?.id === g.id
-                ? "active"
-                : ""
-            }`}
+            className={`server-circle ${activeGuild?.id === g.id ? "active" : ""}`}
             onClick={() => joinGuild(g)}
           >
-            {g.name
-              .slice(0, 2)
-              .toUpperCase()}
+            {g.name.slice(0, 2).toUpperCase()}
           </button>
         ))}
 
@@ -2423,44 +2287,29 @@ export default function App() {
       <aside className="channels">
         <div className="guild-title">
           <span>{activeGuild?.name}</span>
-          <small className="guild-code">
-            #{activeGuild?.id}
-          </small>
+          <small className="guild-code">#{activeGuild?.id}</small>
         </div>
 
         <div className="channel-group">
-          <div className="channel-title">
-            TEXT CHANNELS
-          </div>
-          <button className="channel active">
-            # general
-          </button>
-          <button className="channel">
-            # music
-          </button>
+          <div className="channel-title">TEXT CHANNELS</div>
+          <button className="channel active"># general</button>
+          <button className="channel"># music</button>
         </div>
 
         <div className="channel-group">
-          <div className="channel-title">
-            VOICE CHANNELS
-          </div>
+          <div className="channel-title">VOICE CHANNELS</div>
 
-          <button className="channel voice active">
-            🔊 Lobby
-          </button>
+          <button className="channel voice active">🔊 Lobby</button>
 
           <div className="voice-users">
-            {presence.map(p => {
+            {presence.map((p) => {
               const isSelf = p.socketId === socket?.id;
               const speaking = isSelf
                 ? localSpeaking && !muted
                 : !!speakingPeers[p.socketId] && !peerMuted[p.socketId];
 
               return (
-                <div
-                  className={`voice-user-row ${speaking ? "speaking" : ""}`}
-                  key={p.socketId}
-                >
+                <div className={`voice-user-row ${speaking ? "speaking" : ""}`} key={p.socketId}>
                   <div className="voice-user">
                     {p.avatarData ? (
                       <img className="voice-avatar" src={p.avatarData} alt="" />
@@ -2486,18 +2335,11 @@ export default function App() {
                         min="0"
                         max="200"
                         value={peerVolumes[p.socketId] ?? 100}
-                        onChange={e =>
-                          setPeerVolume(
-                            p.socketId,
-                            Number(e.target.value)
-                          )
-                        }
+                        onChange={(e) => setPeerVolume(p.socketId, Number(e.target.value))}
                       />
 
                       <span>
-                        {peerMuted[p.socketId]
-                          ? "M"
-                          : `${peerVolumes[p.socketId] ?? 100}%`}
+                        {peerMuted[p.socketId] ? "M" : `${peerVolumes[p.socketId] ?? 100}%`}
                       </span>
                     </div>
                   )}
@@ -2514,95 +2356,54 @@ export default function App() {
           </div>
 
           {!spotifyConfigured ? (
-            <small>
-              Spotify Client ID gerekli.
-            </small>
+            <small>Spotify Client ID gerekli.</small>
           ) : !spotifyConnected ? (
-            <button
-              className="spotify-connect"
-              onClick={spotifyLogin}
-            >
+            <button className="spotify-connect" onClick={spotifyLogin}>
               Spotify Bağla
             </button>
           ) : (
             <>
-              <small>
-                {spotifyName || "Spotify bağlı"}
-              </small>
+              <small>{spotifyName || "Spotify bağlı"}</small>
 
               {spotifyParty?.active && (
                 <div className="spotify-now">
-                  {spotifyParty.albumImage && (
-                    <img
-                      src={
-                        spotifyParty.albumImage
-                      }
-                    />
-                  )}
+                  {spotifyParty.albumImage && <img src={spotifyParty.albumImage} />}
 
                   <div>
-                    <b>
-                      {spotifyParty.trackName ||
-                        "Spotify Together"}
-                    </b>
-                    <small>
-                      {spotifyParty.artistName ||
-                        spotifyParty.leaderUsername}
-                    </small>
+                    <b>{spotifyParty.trackName || "Spotify Together"}</b>
+                    <small>{spotifyParty.artistName || spotifyParty.leaderUsername}</small>
                   </div>
                 </div>
               )}
 
               {!spotifyParty?.active ? (
-                <button
-                  className="spotify-action"
-                  onClick={startSpotifyParty}
-                >
+                <button className="spotify-action" onClick={startSpotifyParty}>
                   ▶ Party Başlat
                 </button>
               ) : spotifyLeader ? (
-                <button
-                  className="spotify-stop"
-                  onClick={stopSpotifyParty}
-                >
+                <button className="spotify-stop" onClick={stopSpotifyParty}>
                   ■ Party Durdur
                 </button>
               ) : (
                 <button
-                  className={
-                    spotifyFollowing
-                      ? "spotify-following"
-                      : "spotify-action"
-                  }
+                  className={spotifyFollowing ? "spotify-following" : "spotify-action"}
                   onClick={followSpotifyParty}
                 >
-                  {spotifyFollowing
-                    ? "✓ Senkron dinleniyor"
-                    : "🎧 Birlikte Dinle"}
+                  {spotifyFollowing ? "✓ Senkron dinleniyor" : "🎧 Birlikte Dinle"}
                 </button>
               )}
 
-              <button
-                className="spotify-logout"
-                onClick={spotifyLogout}
-              >
+              <button className="spotify-logout" onClick={spotifyLogout}>
                 Spotify çıkış
               </button>
             </>
           )}
 
-          {spotifyMessage && (
-            <div className="spotify-message">
-              {spotifyMessage}
-            </div>
-          )}
+          {spotifyMessage && <div className="spotify-message">{spotifyMessage}</div>}
         </div>
 
         <div className="user-panel">
-          <label
-            className="user-avatar avatar-upload-label"
-            title="Profil fotoğrafını değiştir"
-          >
+          <label className="user-avatar avatar-upload-label" title="Profil fotoğrafını değiştir">
             {account?.avatarData ? (
               <img src={account.avatarData} alt="" />
             ) : (
@@ -2613,7 +2414,7 @@ export default function App() {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               hidden
-              onChange={e => {
+              onChange={(e) => {
                 const file = e.target.files?.[0];
                 changeAvatar(file);
                 e.currentTarget.value = "";
@@ -2636,19 +2437,23 @@ export default function App() {
         </div>
       </aside>
 
-
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
         {viewMode === "dm" && activeDmFriend ? (
           <div className="dm-fullpage">
             <header className="dm-page-header">
               <div className="dm-page-user">
-                <button className="dm-back" onClick={() => {
-                  sendTyping(false);
-                  setViewMode("server");
-                  setActiveDmFriend(null);
-                  setDmText("");
-                  setReplyTo(null);
-                }}>←</button>
+                <button
+                  className="dm-back"
+                  onClick={() => {
+                    sendTyping(false);
+                    setViewMode("server");
+                    setActiveDmFriend(null);
+                    setDmText("");
+                    setReplyTo(null);
+                  }}
+                >
+                  ←
+                </button>
 
                 <div className="avatar">
                   {activeDmFriend.avatarData ? (
@@ -2678,7 +2483,7 @@ export default function App() {
                 <input
                   className="dm-header-search"
                   value={dmSearch}
-                  onChange={e => setDmSearch(e.target.value)}
+                  onChange={(e) => setDmSearch(e.target.value)}
                   placeholder="Mesaj ara"
                 />
                 <button
@@ -2687,14 +2492,16 @@ export default function App() {
                   onClick={() => {
                     if (!socket || !activeDmFriend) return;
                     if (!window.confirm(`${activeDmFriend.username} engellensin mi?`)) return;
-                    socket.emit("friends:block", { targetId: activeDmFriend.id }, (result:any) => {
+                    socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
                       if (!result?.ok) return setError(result?.error || "Engellenemedi.");
                       setViewMode("server");
                       setActiveDmFriend(null);
                       loadFriends();
                     });
                   }}
-                >🚫</button>
+                >
+                  🚫
+                </button>
                 <button
                   className={callState === "connected" ? "call-connected" : ""}
                   onClick={() => {
@@ -2738,15 +2545,17 @@ export default function App() {
                     <button onClick={toggleMute}>
                       {muted ? "🔇 Mikrofonu Aç" : "🎙️ Mikrofon"}
                     </button>
-                    <button onClick={toggleDeafen}>
-                      {deafened ? "🔊 Sesi Aç" : "🎧 Deafen"}
-                    </button>
+                    <button onClick={toggleDeafen}>{deafened ? "🔊 Sesi Aç" : "🎧 Deafen"}</button>
                     <button
                       className={pushToTalk ? "active" : ""}
-                      onClick={() => setPushToTalk(v => !v)}
+                      onClick={() => setPushToTalk((v) => !v)}
                       title="Push-to-talk açıkken konuşmak için V tuşunu basılı tut"
                     >
-                      {pushToTalk ? (pttPressed ? "🟢 Konuşuyorsun" : "⌨ V ile Konuş") : "🎙 Voice Activity"}
+                      {pushToTalk
+                        ? pttPressed
+                          ? "🟢 Konuşuyorsun"
+                          : "⌨ V ile Konuş"
+                        : "🎙 Voice Activity"}
                     </button>
                     <button className="hangup" onClick={() => stopPrivateCall(true)}>
                       ☎ Kapat
@@ -2772,7 +2581,7 @@ export default function App() {
               )}
 
               {dmMessages
-                .filter(m => {
+                .filter((m) => {
                   const query = dmSearch.trim().toLowerCase();
                   if (!query) return true;
                   return (
@@ -2786,11 +2595,10 @@ export default function App() {
                   const currentDate = new Date(m.createdAt);
                   const previousDate = previous ? new Date(previous.createdAt) : null;
                   const showDate =
-                    !previousDate ||
-                    previousDate.toDateString() !== currentDate.toDateString();
+                    !previousDate || previousDate.toDateString() !== currentDate.toDateString();
 
                   const replied = m.replyToId
-                    ? dmMessages.find(candidate => candidate.id === m.replyToId)
+                    ? dmMessages.find((candidate) => candidate.id === m.replyToId)
                     : null;
 
                   return (
@@ -2805,27 +2613,37 @@ export default function App() {
                         </div>
                       )}
 
-                      <div className={`dm-discord-message ${mine ? "mine" : ""} ${m.deletedAt ? "deleted" : ""}`}>
+                      <div
+                        className={`dm-discord-message ${mine ? "mine" : ""} ${m.deletedAt ? "deleted" : ""}`}
+                      >
                         <div className="avatar">
                           {mine && account?.avatarData ? (
                             <img src={account.avatarData} alt="" />
                           ) : !mine && activeDmFriend.avatarData ? (
                             <img src={activeDmFriend.avatarData} alt="" />
                           ) : (
-                            (mine ? username : activeDmFriend.username).slice(0,2).toUpperCase()
+                            (mine ? username : activeDmFriend.username).slice(0, 2).toUpperCase()
                           )}
                         </div>
 
                         <div className="dm-discord-body">
                           <div className="dm-discord-meta">
                             <b>{mine ? username : activeDmFriend.username}</b>
-                            <small>{currentDate.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small>
+                            <small>
+                              {currentDate.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </small>
                             {m.editedAt && !m.deletedAt && <small>(düzenlendi)</small>}
                           </div>
 
                           {replied && (
                             <div className="dm-reply-preview">
-                              ↪ {replied.deletedAt ? "Silinmiş mesaj" : replied.body || replied.attachmentName || "Mesaj"}
+                              ↪{" "}
+                              {replied.deletedAt
+                                ? "Silinmiş mesaj"
+                                : replied.body || replied.attachmentName || "Mesaj"}
                             </div>
                           )}
 
@@ -2870,11 +2688,17 @@ export default function App() {
                           {!m.deletedAt && (
                             <div className="dm-message-actions">
                               <button onClick={() => setReplyTo(m)}>↩ Yanıtla</button>
-                              {["👍","❤️","😂","🔥"].map(emoji => (
-                                <button key={emoji} onClick={() => reactDm(m.id, emoji)}>{emoji}</button>
+                              {["👍", "❤️", "😂", "🔥"].map((emoji) => (
+                                <button key={emoji} onClick={() => reactDm(m.id, emoji)}>
+                                  {emoji}
+                                </button>
                               ))}
                               {mine && <button onClick={() => editDm(m)}>✏ Düzenle</button>}
-                              {mine && <button className="danger" onClick={() => deleteDm(m)}>🗑 Sil</button>}
+                              {mine && (
+                                <button className="danger" onClick={() => deleteDm(m)}>
+                                  🗑 Sil
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2887,30 +2711,42 @@ export default function App() {
             <div className="dm-composer-zone">
               {(replyTo || editingDm || dmAttachment) && (
                 <div className="dm-compose-context">
-                  {editingDm && (
-                    <span>✏ Mesaj düzenleniyor</span>
-                  )}
+                  {editingDm && <span>✏ Mesaj düzenleniyor</span>}
                   {replyTo && !editingDm && (
-                    <span>↩ {replyTo.senderId === account?.id ? "Kendine" : activeDmFriend.username} yanıtlanıyor</span>
+                    <span>
+                      ↩ {replyTo.senderId === account?.id ? "Kendine" : activeDmFriend.username}{" "}
+                      yanıtlanıyor
+                    </span>
                   )}
-                  {dmAttachment && (
-                    <span>📎 {dmAttachment.name} · gönderime hazır</span>
-                  )}
-                  <button onClick={() => {
-                    setReplyTo(null);
-                    setEditingDm(null);
-                    setDmAttachment(null);
-                    if (editingDm) setDmText("");
-                  }}>✕</button>
+                  {dmAttachment && <span>📎 {dmAttachment.name} · gönderime hazır</span>}
+                  <button
+                    onClick={() => {
+                      setReplyTo(null);
+                      setEditingDm(null);
+                      setDmAttachment(null);
+                      if (editingDm) setDmText("");
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
 
               <div
                 className={`dm-page-composer ${dmDragActive ? "drag-active" : ""}`}
-                onDragEnter={e => { e.preventDefault(); setDmDragActive(true); }}
-                onDragOver={e => { e.preventDefault(); setDmDragActive(true); }}
-                onDragLeave={e => { e.preventDefault(); setDmDragActive(false); }}
-                onDrop={e => {
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDmDragActive(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDmDragActive(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setDmDragActive(false);
+                }}
+                onDrop={(e) => {
                   e.preventDefault();
                   setDmDragActive(false);
                   chooseDmFile(e.dataTransfer.files?.[0] || null);
@@ -2921,7 +2757,7 @@ export default function App() {
                   ref={dmFileInputRef}
                   type="file"
                   className="hidden-file-input"
-                  onChange={e => {
+                  onChange={(e) => {
                     chooseDmFile(e.target.files?.[0] || null);
                     e.currentTarget.value = "";
                   }}
@@ -2939,11 +2775,11 @@ export default function App() {
                   value={dmText}
                   onFocus={() => sendTyping(true)}
                   onBlur={() => sendTyping(false)}
-                  onChange={e => {
+                  onChange={(e) => {
                     setDmText(e.target.value);
                     sendTyping(true);
                   }}
-                  onKeyDown={e => {
+                  onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       sendDm();
@@ -2955,256 +2791,193 @@ export default function App() {
                       : `${activeDmFriend.username} kişisine mesaj gönder`
                   }
                 />
-                <button onClick={sendDm}>
-                  {editingDm ? "Kaydet" : "Gönder"}
-                </button>
+                <button onClick={sendDm}>{editingDm ? "Kaydet" : "Gönder"}</button>
               </div>
             </div>
           </div>
         ) : (
           <>
+            <header className="topbar">
+              <div>
+                <b># general</b>
+                <span>{activeGuild?.name}</span>
+              </div>
 
-        <header className="topbar">
-          <div>
-            <b># general</b>
-            <span>
-              {activeGuild?.name}
-            </span>
-          </div>
+              <div className="top-actions">
+                <button
+                  onClick={() => {
+                    refreshAudioDevices();
+                    setShowAudioSettings(true);
+                  }}
+                >
+                  ⚙ Ses & Video
+                </button>
 
-          <div className="top-actions">
-            <button onClick={() => {
-              refreshAudioDevices();
-              setShowAudioSettings(true);
-            }}>
-              ⚙ Ses & Video
-            </button>
+                <button
+                  onClick={() => {
+                    loadFriends();
+                    setShowFriends(true);
+                  }}
+                >
+                  👥 Arkadaşlar
+                  {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
+                </button>
 
-            <button onClick={() => {
-              loadFriends();
-              setShowFriends(true);
-            }}>
-              👥 Arkadaşlar
-              {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
-            </button>
+                <select
+                  className="presence-select"
+                  value={myStatus}
+                  onChange={(e) => setPresenceStatus(e.target.value as any)}
+                  title="Durum"
+                >
+                  <option value="online">🟢 Çevrimiçi</option>
+                  <option value="idle">🌙 Boşta</option>
+                  <option value="dnd">⛔ Rahatsız Etmeyin</option>
+                  <option value="invisible">⚫ Görünmez</option>
+                </select>
 
-            <select
-              className="presence-select"
-              value={myStatus}
-              onChange={e => setPresenceStatus(e.target.value as any)}
-              title="Durum"
-            >
-              <option value="online">🟢 Çevrimiçi</option>
-              <option value="idle">🌙 Boşta</option>
-              <option value="dnd">⛔ Rahatsız Etmeyin</option>
-              <option value="invisible">⚫ Görünmez</option>
-            </select>
+                <div className="top-state">✨ Noise suppression</div>
+              </div>
+            </header>
 
-            <div className="top-state">
-              ✨ Noise suppression
-            </div>
-          </div>
-        </header>
-
-        <div className="video-toolbar">
-          <div>
-            <b>Video & Paylaşım</b>
-            <span>{screenOn ? `Ekran paylaşımı · ${screenQuality}p ${screenFps} FPS` : cameraOn ? "Kamera açık · 720p" : "Video kapalı"}</span>
-          </div>
-          <div className="video-layout-actions">
-            <button className={videoLayout === "grid" ? "active" : ""} onClick={() => setVideoLayout("grid")}>▦ Grid</button>
-            <button className={videoLayout === "focus" ? "active" : ""} onClick={() => setVideoLayout("focus")}>▣ Focus</button>
-          </div>
-        </div>
-
-        <div className={`video-zone ${videoLayout === "focus" ? "focus-layout" : "grid-layout"}`}>
-          <video
-            ref={localVideoRef}
-            muted
-            autoPlay
-            playsInline
-            className={
-              cameraOn || screenOn
-                ? `local-video ${localSpeaking && !muted ? "speaking-video" : ""}`
-                : "hidden"
-            }
-          />
-
-          <div
-            ref={remoteVideoHost}
-            className="remote-video-host"
-          />
-        </div>
-
-        <section className="message-list">
-          <div className="channel-intro">
-            <div className="big-hash">
-              #
+            <div className="video-toolbar">
+              <div>
+                <b>Video & Paylaşım</b>
+                <span>
+                  {screenOn
+                    ? `Ekran paylaşımı · ${screenQuality}p ${screenFps} FPS`
+                    : cameraOn
+                      ? "Kamera açık · 720p"
+                      : "Video kapalı"}
+                </span>
+              </div>
+              <div className="video-layout-actions">
+                <button
+                  className={videoLayout === "grid" ? "active" : ""}
+                  onClick={() => setVideoLayout("grid")}
+                >
+                  ▦ Grid
+                </button>
+                <button
+                  className={videoLayout === "focus" ? "active" : ""}
+                  onClick={() => setVideoLayout("focus")}
+                >
+                  ▣ Focus
+                </button>
+              </div>
             </div>
 
-            <h2>
-              # general'a hoş geldin
-            </h2>
-
-            <p>
-              {activeGuild?.name} sohbetinin
-              başlangıcı.
-            </p>
-          </div>
-
-          {messages.map(m => (
             <div
-              className="message"
-              key={m.id}
+              className={`video-zone ${videoLayout === "focus" ? "focus-layout" : "grid-layout"}`}
             >
-              <div className={`avatar ${m.bot ? "bot" : ""}`}>
-                {!m.bot && m.avatarData ? (
-                  <img src={m.avatarData} alt="" />
-                ) : (
-                  m.bot
-                    ? "EB"
-                    : m.username.slice(0, 2).toUpperCase()
-                )}
-              </div>
+              <video
+                ref={localVideoRef}
+                muted
+                autoPlay
+                playsInline
+                className={
+                  cameraOn || screenOn
+                    ? `local-video ${localSpeaking && !muted ? "speaking-video" : ""}`
+                    : "hidden"
+                }
+              />
 
-              <div className="message-body">
-                <div className="message-meta">
-                  <b>{m.username}</b>
-
-                  <small>
-                    {new Date(
-                      m.createdAt
-                    ).toLocaleTimeString()}
-                  </small>
-                </div>
-
-                <div className="message-text">
-                  {m.text}
-                </div>
-              </div>
+              <div ref={remoteVideoHost} className="remote-video-host" />
             </div>
-          ))}
-        </section>
 
-        <div className="composer">
-          <button className="plus">
-            +
-          </button>
+            <section className="message-list">
+              <div className="channel-intro">
+                <div className="big-hash">#</div>
 
-          <input
-            value={text}
-            onChange={e =>
-              setText(e.target.value)
-            }
-            onKeyDown={e =>
-              e.key === "Enter" &&
-              sendMessage()
-            }
-            placeholder="#general kanalına mesaj gönder"
-          />
+                <h2># general'a hoş geldin</h2>
 
-          <button
-            onClick={() =>
-              setText(v => v + " 😂")
-            }
-          >
-            😂
-          </button>
+                <p>{activeGuild?.name} sohbetinin başlangıcı.</p>
+              </div>
 
-          <button
-            className="send"
-            onClick={sendMessage}
-          >
-            Gönder
-          </button>
-        </div>
+              {messages.map((m) => (
+                <div className="message" key={m.id}>
+                  <div className={`avatar ${m.bot ? "bot" : ""}`}>
+                    {!m.bot && m.avatarData ? (
+                      <img src={m.avatarData} alt="" />
+                    ) : m.bot ? (
+                      "EB"
+                    ) : (
+                      m.username.slice(0, 2).toUpperCase()
+                    )}
+                  </div>
 
-        <div className="call-controls">
-          <button
-            className={
-              muted ? "danger" : ""
-            }
-            onClick={toggleMute}
-          >
-            {muted
-              ? "🔇 Mikrofon kapalı"
-              : "🎙️ Mikrofon"}
-          </button>
+                  <div className="message-body">
+                    <div className="message-meta">
+                      <b>{m.username}</b>
 
-          <button
-            className={
-              cameraOn
-                ? "active-control"
-                : ""
-            }
-            onClick={toggleCamera}
-          >
-            📹{" "}
-            {cameraOn
-              ? "Kamerayı kapat"
-              : "Kamera"}
-          </button>
+                      <small>{new Date(m.createdAt).toLocaleTimeString()}</small>
+                    </div>
 
-          <button
-            className={
-              screenOn
-                ? "active-control"
-                : ""
-            }
-            onClick={toggleScreen}
-          >
-            🖥️{" "}
-            {screenOn
-              ? "Paylaşımı durdur"
-              : "Ekran paylaş"}
-          </button>
+                    <div className="message-text">{m.text}</div>
+                  </div>
+                </div>
+              ))}
+            </section>
 
-          <button
-            className="disconnect-btn"
-            onClick={() =>
-              leaveVoice(true)
-            }
-          >
-            ☎ Disconnect
-          </button>
+            <div className="composer">
+              <button className="plus">+</button>
 
-          <span className="connection">
-            ●{" "}
-            {connected
-              ? "Online"
-              : "Offline"}
-          </span>
-        </div>
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                placeholder="#general kanalına mesaj gönder"
+              />
 
-        {error && (
-          <div
-            className="floating-error"
-            onClick={() =>
-              setError("")
-            }
-          >
-            {error}
-          </div>
-        )}
+              <button onClick={() => setText((v) => v + " 😂")}>😂</button>
+
+              <button className="send" onClick={sendMessage}>
+                Gönder
+              </button>
+            </div>
+
+            <div className="call-controls">
+              <button className={muted ? "danger" : ""} onClick={toggleMute}>
+                {muted ? "🔇 Mikrofon kapalı" : "🎙️ Mikrofon"}
+              </button>
+
+              <button className={cameraOn ? "active-control" : ""} onClick={toggleCamera}>
+                📹 {cameraOn ? "Kamerayı kapat" : "Kamera"}
+              </button>
+
+              <button className={screenOn ? "active-control" : ""} onClick={toggleScreen}>
+                🖥️ {screenOn ? "Paylaşımı durdur" : "Ekran paylaş"}
+              </button>
+
+              <button className="disconnect-btn" onClick={() => leaveVoice(true)}>
+                ☎ Disconnect
+              </button>
+
+              <span className="connection">● {connected ? "Online" : "Offline"}</span>
+            </div>
+
+            {error && (
+              <div className="floating-error" onClick={() => setError("")}>
+                {error}
+              </div>
+            )}
           </>
         )}
       </main>
 
-
-
       <aside className="members">
-        <div className="members-title">
-          ONLINE — {presence.length}
-        </div>
+        <div className="members-title">ONLINE — {presence.length}</div>
 
-        {presence.map(p => {
-          const isSelf =
-            p.socketId === socket?.id;
+        {presence.map((p) => {
+          const isSelf = p.socketId === socket?.id;
 
           return (
             <div
               className={`member-card ${
-                (isSelf ? localSpeaking && !muted : speakingPeers[p.socketId] && !peerMuted[p.socketId])
+                (
+                  isSelf
+                    ? localSpeaking && !muted
+                    : speakingPeers[p.socketId] && !peerMuted[p.socketId]
+                )
                   ? "speaking"
                   : ""
               }`}
@@ -3228,50 +3001,23 @@ export default function App() {
               {!isSelf && (
                 <div className="peer-audio-controls">
                   <button
-                    className={
-                      peerMuted[p.socketId]
-                        ? "peer-muted"
-                        : ""
-                    }
-                    onClick={() =>
-                      togglePeerMute(
-                        p.socketId
-                      )
-                    }
+                    className={peerMuted[p.socketId] ? "peer-muted" : ""}
+                    onClick={() => togglePeerMute(p.socketId)}
                     title="Sadece sende sustur"
                   >
-                    {peerMuted[p.socketId]
-                      ? "🔇"
-                      : "🔊"}
+                    {peerMuted[p.socketId] ? "🔇" : "🔊"}
                   </button>
 
                   <input
                     type="range"
                     min="0"
                     max="200"
-                    value={
-                      peerVolumes[
-                        p.socketId
-                      ] ?? 100
-                    }
-                    onChange={e =>
-                      setPeerVolume(
-                        p.socketId,
-                        Number(
-                          e.target.value
-                        )
-                      )
-                    }
+                    value={peerVolumes[p.socketId] ?? 100}
+                    onChange={(e) => setPeerVolume(p.socketId, Number(e.target.value))}
                   />
 
                   <span>
-                    {peerMuted[p.socketId]
-                      ? "MUTE"
-                      : `${
-                          peerVolumes[
-                            p.socketId
-                          ] ?? 100
-                        }%`}
+                    {peerMuted[p.socketId] ? "MUTE" : `${peerVolumes[p.socketId] ?? 100}%`}
                   </span>
                 </div>
               )}
@@ -3279,39 +3025,30 @@ export default function App() {
           );
         })}
 
-        <div className="members-title bots">
-          BOTS — 1
-        </div>
+        <div className="members-title bots">BOTS — 1</div>
 
         <div className="member">
-          <div className="avatar bot">
-            EB
-          </div>
+          <div className="avatar bot">EB</div>
 
           <div>
             <span>EchoBot</span>
-            <small className="bot-help">
-              !help
-            </small>
+            <small className="bot-help">!help</small>
           </div>
         </div>
       </aside>
-
-
 
       {showAudioSettings && (
         <div className="modal-backdrop">
           <div className="modal audio-settings-modal">
             <h2>Ses & Video</h2>
-            <p className="settings-subtitle">Mikrofon, hoparlör, kamera ve ekran paylaşımı ayarları.</p>
+            <p className="settings-subtitle">
+              Mikrofon, hoparlör, kamera ve ekran paylaşımı ayarları.
+            </p>
 
             <label>Mikrofon / Input</label>
-            <select
-              value={selectedInput}
-              onChange={e => switchInput(e.target.value)}
-            >
+            <select value={selectedInput} onChange={(e) => switchInput(e.target.value)}>
               <option value="">Sistem varsayılanı</option>
-              {audioInputs.map(d => (
+              {audioInputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
                 </option>
@@ -3319,12 +3056,9 @@ export default function App() {
             </select>
 
             <label>Hoparlör / Output</label>
-            <select
-              value={selectedOutput}
-              onChange={e => switchOutput(e.target.value)}
-            >
+            <select value={selectedOutput} onChange={(e) => switchOutput(e.target.value)}>
               <option value="">Sistem varsayılanı</option>
-              {audioOutputs.map(d => (
+              {audioOutputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Hoparlör ${d.deviceId.slice(0, 6)}`}
                 </option>
@@ -3334,12 +3068,9 @@ export default function App() {
             <div className="settings-divider">VIDEO</div>
 
             <label>Kamera</label>
-            <select
-              value={selectedCamera}
-              onChange={e => switchCamera(e.target.value)}
-            >
+            <select value={selectedCamera} onChange={(e) => switchCamera(e.target.value)}>
               <option value="">Sistem varsayılanı</option>
-              {videoInputs.map(d => (
+              {videoInputs.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || `Kamera ${d.deviceId.slice(0, 6)}`}
                 </option>
@@ -3351,7 +3082,7 @@ export default function App() {
                 <label>Ekran paylaşım kalitesi</label>
                 <select
                   value={screenQuality}
-                  onChange={e => {
+                  onChange={(e) => {
                     const value = e.target.value as "720" | "1080";
                     setScreenQuality(value);
                     localStorage.setItem("echoverse_screen_quality", value);
@@ -3365,7 +3096,7 @@ export default function App() {
                 <label>FPS</label>
                 <select
                   value={screenFps}
-                  onChange={e => {
+                  onChange={(e) => {
                     const value = Number(e.target.value) as 30 | 60;
                     setScreenFps(value);
                     localStorage.setItem("echoverse_screen_fps", String(value));
@@ -3391,7 +3122,7 @@ export default function App() {
                 <input
                   type="checkbox"
                   checked={lobbySoundsEnabled}
-                  onChange={e => {
+                  onChange={(e) => {
                     const enabled = e.target.checked;
                     setLobbySoundsEnabled(enabled);
                     localStorage.setItem("echoverse_lobby_sounds", enabled ? "on" : "off");
@@ -3405,7 +3136,7 @@ export default function App() {
                 min="0"
                 max="100"
                 value={effectVolume}
-                onChange={e => {
+                onChange={(e) => {
                   const value = Number(e.target.value);
                   setEffectVolume(value);
                   localStorage.setItem("echoverse_effect_volume", String(value));
@@ -3431,8 +3162,8 @@ export default function App() {
             <div className="friend-search-row">
               <input
                 value={friendSearch}
-                onChange={e => setFriendSearch(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && searchFriends()}
+                onChange={(e) => setFriendSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && searchFriends()}
                 placeholder="Kullanıcı adı ara"
               />
               <button onClick={searchFriends}>Ara</button>
@@ -3441,11 +3172,15 @@ export default function App() {
             {friendSearchResults.length > 0 && (
               <div className="friend-section">
                 <h3>Arama sonucu</h3>
-                {friendSearchResults.map(f => (
+                {friendSearchResults.map((f) => (
                   <div className="friend-row" key={f.id}>
                     <div className="friend-user">
                       <div className="avatar">
-                        {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                        {f.avatarData ? (
+                          <img src={f.avatarData} alt="" />
+                        ) : (
+                          f.username.slice(0, 2).toUpperCase()
+                        )}
                       </div>
                       <b>{f.username}</b>
                     </div>
@@ -3458,17 +3193,23 @@ export default function App() {
             {incomingRequests.length > 0 && (
               <div className="friend-section">
                 <h3>Gelen istekler</h3>
-                {incomingRequests.map(f => (
+                {incomingRequests.map((f) => (
                   <div className="friend-row" key={f.id}>
                     <div className="friend-user">
                       <div className="avatar">
-                        {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                        {f.avatarData ? (
+                          <img src={f.avatarData} alt="" />
+                        ) : (
+                          f.username.slice(0, 2).toUpperCase()
+                        )}
                       </div>
                       <b>{f.username}</b>
                     </div>
                     <div className="friend-actions">
                       <button onClick={() => respondFriendRequest(f.friendshipId!, true)}>✓</button>
-                      <button onClick={() => respondFriendRequest(f.friendshipId!, false)}>✕</button>
+                      <button onClick={() => respondFriendRequest(f.friendshipId!, false)}>
+                        ✕
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -3479,11 +3220,15 @@ export default function App() {
               <h3>Arkadaşlarım</h3>
               {friends.length === 0 && <small>Henüz arkadaşın yok.</small>}
 
-              {friends.map(f => (
+              {friends.map((f) => (
                 <div className="friend-row" key={f.id}>
                   <div className="friend-user">
                     <div className="avatar">
-                      {f.avatarData ? <img src={f.avatarData} alt="" /> : f.username.slice(0,2).toUpperCase()}
+                      {f.avatarData ? (
+                        <img src={f.avatarData} alt="" />
+                      ) : (
+                        f.username.slice(0, 2).toUpperCase()
+                      )}
                     </div>
                     <b>{f.username}</b>
                   </div>
@@ -3511,15 +3256,19 @@ export default function App() {
             {incomingCall.fromAvatarData ? (
               <img src={incomingCall.fromAvatarData} alt="" />
             ) : (
-              incomingCall.fromUsername.slice(0,2).toUpperCase()
+              incomingCall.fromUsername.slice(0, 2).toUpperCase()
             )}
           </div>
           <div className="call-info">
             <b>{incomingCall.fromUsername}</b>
             <span>Özel arama geliyor…</span>
           </div>
-          <button className="answer-call" onClick={() => answerIncomingCall(true)}>📞</button>
-          <button className="reject-call" onClick={() => answerIncomingCall(false)}>✕</button>
+          <button className="answer-call" onClick={() => answerIncomingCall(true)}>
+            📞
+          </button>
+          <button className="reject-call" onClick={() => answerIncomingCall(false)}>
+            ✕
+          </button>
         </div>
       )}
 
@@ -3527,9 +3276,7 @@ export default function App() {
         <div className="private-call-bar">
           <span>
             📞 {privateCallPeer.username}
-            {ringing
-              ? " aranıyor…"
-              : ` ile özel konuşma • ${formatCallTime(callSeconds)}`}
+            {ringing ? " aranıyor…" : ` ile özel konuşma • ${formatCallTime(callSeconds)}`}
           </span>
           <button onClick={() => stopPrivateCall(true)}>Aramayı Bitir</button>
         </div>
@@ -3549,27 +3296,21 @@ export default function App() {
             {screenPermission === "denied" && (
               <div className="screen-permission-warning">
                 macOS ekran kaydı izni kapalı.
-                <button
-                  onClick={() => window.echoverse?.openScreenSettings?.()}
-                >
+                <button onClick={() => window.echoverse?.openScreenSettings?.()}>
                   Sistem Ayarlarını Aç
                 </button>
               </div>
             )}
 
             <div className="screen-source-grid">
-              {screenSources.map(source => (
+              {screenSources.map((source) => (
                 <button
                   className="screen-source-card"
                   key={source.id}
                   onClick={() => beginScreenShare(source)}
                 >
                   <div className="screen-source-preview">
-                    {source.thumbnail ? (
-                      <img src={source.thumbnail} alt="" />
-                    ) : (
-                      <span>🖥️</span>
-                    )}
+                    {source.thumbnail ? <img src={source.thumbnail} alt="" /> : <span>🖥️</span>}
                   </div>
                   <span>{source.name}</span>
                 </button>
@@ -3588,30 +3329,14 @@ export default function App() {
               autoFocus
               placeholder="Sunucu adı"
               value={newGuildName}
-              onChange={e =>
-                setNewGuildName(
-                  e.target.value
-                )
-              }
-              onKeyDown={e =>
-                e.key === "Enter" &&
-                createGuild()
-              }
+              onChange={(e) => setNewGuildName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createGuild()}
             />
 
             <div className="modal-actions">
-              <button
-                onClick={() =>
-                  setShowCreate(false)
-                }
-              >
-                Vazgeç
-              </button>
+              <button onClick={() => setShowCreate(false)}>Vazgeç</button>
 
-              <button
-                className="primary-small"
-                onClick={createGuild}
-              >
+              <button className="primary-small" onClick={createGuild}>
                 Oluştur
               </button>
             </div>

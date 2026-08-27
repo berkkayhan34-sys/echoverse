@@ -5,9 +5,13 @@
 
 export function utilityBotResponse(command: string): string | null {
   switch (command.trim().toLowerCase()) {
-    case "!ping": return "Pong 🏓";
-    case "!roll": return `🎲 ${Math.floor(Math.random() * 100) + 1}`;
-    case "!help": return "Komutlar: !ping, !roll, !help";
-    default: return null;
+    case "!ping":
+      return "Pong 🏓";
+    case "!roll":
+      return `🎲 ${Math.floor(Math.random() * 100) + 1}`;
+    case "!help":
+      return "Komutlar: !ping, !roll, !help";
+    default:
+      return null;
   }
 }

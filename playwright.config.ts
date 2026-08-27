@@ -8,10 +8,13 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
+  reporter: [["list"], ["json", { outputFile: "test-results/playwright.json" }]],
   use: { baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173" },
-  webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {
-    command: "npm --workspace=@echoverse/web run dev -- --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
-    reuseExistingServer: true
-  }
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: "npm --workspace=@echoverse/web run dev -- --host 127.0.0.1",
+        url: "http://127.0.0.1:5173",
+        reuseExistingServer: true
+      }
 });

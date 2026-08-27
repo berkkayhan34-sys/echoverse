@@ -40,6 +40,21 @@ targets are `make release-win`, `make release-mac-intel`, and
 target. These targets create local artifacts only and do not publish a GitHub
 release.
 
+## No accidental publication
+
+Every local desktop `dist:*` and `release:*` script must invoke
+`electron-builder` with `--publish never`. Publication belongs only to the
+explicit GitHub Release workflow after its version, test, artifact, checksum,
+and approval gates pass. A local build must never require a GitHub token or
+create a release as a side effect. The macOS Intel release script is included
+in this rule even though it also has a publishing-capable electron-builder
+profile.
+
+All CI and release workflows use Node.js 22 LTS and install the canonical root
+workspace with `npm ci`; workspace-specific build commands run only after that
+installation. A workflow or script that uses a different Node version, an
+app-local lockfile, or an implicit publish action is a release-blocking drift.
+
 ## Approval and rollback
 
 Tagging and publishing are external side effects and require owner approval.

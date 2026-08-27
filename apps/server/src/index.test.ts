@@ -12,11 +12,11 @@ describe("server health boundary", () => {
   });
 
   it("reports product and protocol versions without starting a daemon on import", async () => {
-    await new Promise<void>(resolve => httpServer.listen(0, "127.0.0.1", () => resolve()));
+    await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", () => resolve()));
     const address = httpServer.address();
     if (!address || typeof address === "string") throw new Error("server did not bind");
     const response = await fetch(`http://127.0.0.1:${address.port}/health`);
-    const body = await response.json() as { ok: boolean; protocolVersion: number };
+    const body = (await response.json()) as { ok: boolean; protocolVersion: number };
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ ok: true, protocolVersion: 2 });
   });

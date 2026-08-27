@@ -8,7 +8,10 @@ import crypto from "node:crypto";
 const localOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 function csv(value: string | undefined, fallback: string[]) {
-  const values = (value || "").split(",").map(item => item.trim()).filter(Boolean);
+  const values = (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
   return values.length ? values : fallback;
 }
 
@@ -22,10 +25,12 @@ export type ServerConfig = {
 };
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
-  const nodeEnv = env.NODE_ENV === "production" ? "production" : env.NODE_ENV === "test" ? "test" : "development";
+  const nodeEnv =
+    env.NODE_ENV === "production" ? "production" : env.NODE_ENV === "test" ? "test" : "development";
   const jwtSecret = env.JWT_SECRET?.trim();
   const port = Number(env.PORT || 3001);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("PORT must be a valid TCP port");
+  if (!Number.isInteger(port) || port < 1 || port > 65_535)
+    throw new Error("PORT must be a valid TCP port");
   if (nodeEnv === "production" && (!jwtSecret || jwtSecret.length < 32)) {
     throw new Error("JWT_SECRET must be set to at least 32 characters in production");
   }

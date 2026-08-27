@@ -12,7 +12,10 @@ describe("server configuration", () => {
   });
 
   it("uses explicit origins and an ephemeral development secret", () => {
-    const config = loadServerConfig({ NODE_ENV: "development", CORS_ORIGINS: "https://example.test" });
+    const config = loadServerConfig({
+      NODE_ENV: "development",
+      CORS_ORIGINS: "https://example.test"
+    });
     expect(config.corsOrigins).toEqual(["https://example.test"]);
     expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
     expect(config.databaseSslRejectUnauthorized).toBe(true);
@@ -29,5 +32,15 @@ describe("server configuration", () => {
 
   it("rejects invalid ports", () => {
     expect(() => loadServerConfig({ PORT: "70000" })).toThrow(/PORT/);
+    expect(() => loadServerConfig({ PORT: "0" })).toThrow(/PORT/);
+  });
+
+  it("trims database URLs and ignores blank origin entries", () => {
+    const config = loadServerConfig({
+      DATABASE_URL: " postgres://example.test/db ",
+      CORS_ORIGINS: " https://one.example, ,https://two.example "
+    });
+    expect(config.databaseUrl).toBe("postgres://example.test/db");
+    expect(config.corsOrigins).toEqual(["https://one.example", "https://two.example"]);
   });
 });

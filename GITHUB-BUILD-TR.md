@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # GitHub ile Windows + macOS otomatik build
 
-Bu sürüm GitHub Actions ile üç çıktı üretir:
+Bu depo yapısında GitHub Actions ile üç çıktı üretilir:
 
 - EchoVerse Windows Setup `.exe`
 - EchoVerse macOS Intel `.dmg`
@@ -13,13 +13,15 @@ Bu sürüm GitHub Actions ile üç çıktı üretir:
 
 ## Önemli
 
-`desktop/config.json` içindeki `serverUrl` gerçek Render adresiniz olmalıdır.
+`apps/desktop/config.json` içindeki `serverUrl`, onaylanmış Render adresiniz
+olmalıdır. Dokümana gerçek token, cookie veya gizli environment değeri
+eklemeyin.
 
 Örnek:
 
 ```json
 {
-  "serverUrl": "https://echoverse-c3d5.onrender.com"
+  "serverUrl": "https://<approved-render-host>"
 }
 ```
 
@@ -30,17 +32,35 @@ echoverse/
 ├── .github/
 │   └── workflows/
 │       └── build-desktop.yml
-├── desktop/
-├── server/
+├── apps/
+│   ├── desktop/
+│   ├── server/
+│   └── web/
+├── packages/
+├── DOCS/
 └── README-TR.md
 ```
+
+`apps/server/render.yaml` Render için yetkili deployment manifestidir. Root
+`render.yaml` yalnızca uyumluluk/discovery mirror'ıdır; iki ayrı deployment
+kaynağı olarak yönetilmez.
 
 ## Actions'tan indirme
 
 Kodları `main` branch'e gönderdiğinizde GitHub Actions otomatik başlar.
 
 GitHub:
-`Actions` → `Build EchoVerse Desktop` → en son başarılı run
+`Actions` → `Build EchoVerse Desktop` → en son başarılı run.
+
+Workflow'lar güncel `apps/desktop/` yolunu kullanır. Windows testi için
+`Test Windows Build`, yayın akışı için `Release EchoVerse` workflow'u
+kullanılır. Workflow'lar Node.js 22 LTS ile root dizinde tek canonical
+`npm ci` kurulumu yapar; build komutları daha sonra ilgili workspace içinden
+çalışır.
+
+Yerel `dist:*` ve `release:*` script'leri yayınlamaz (`--publish never`). GitHub
+Release yalnızca açıkça onaylanmış tag ve başarılı doğrulama kapılarından sonra
+yayınlar.
 
 Sayfanın altındaki Artifacts bölümünde:
 

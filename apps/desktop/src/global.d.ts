@@ -8,8 +8,22 @@ declare global {
         spotifyClientId?: string;
       }>;
       onUpdateStatus?: (callback: (status: string) => void) => (() => void) | void;
-      onUpdateState?: (callback: (state: { phase: string; status: string; version?: string | null; percent?: number; error?: string | null }) => void) => (() => void) | void;
-      getUpdateState?: () => Promise<{ phase: string; status: string; version?: string | null; percent?: number; error?: string | null }>;
+      onUpdateState?: (
+        callback: (state: {
+          phase: string;
+          status: string;
+          version?: string | null;
+          percent?: number;
+          error?: string | null;
+        }) => void
+      ) => (() => void) | void;
+      getUpdateState?: () => Promise<{
+        phase: string;
+        status: string;
+        version?: string | null;
+        percent?: number;
+        error?: string | null;
+      }>;
       installUpdate?: () => Promise<{ ok: boolean; error?: string }>;
       getUpdaterLogPath?: () => Promise<string | null>;
 
@@ -25,12 +39,14 @@ declare global {
       spotifyApplySync?: (state: any) => Promise<{ ok: boolean }>;
 
       screenPermission?: () => Promise<string>;
-      listScreenSources?: () => Promise<Array<{
-        id: string;
-        name: string;
-        thumbnail?: string;
-        appIcon?: string;
-      }>>;
+      listScreenSources?: () => Promise<
+        Array<{
+          id: string;
+          name: string;
+          thumbnail?: string;
+          appIcon?: string;
+        }>
+      >;
       selectScreenSource?: (sourceId: string) => Promise<{ ok: boolean }>;
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       getVersion?: () => Promise<string>;

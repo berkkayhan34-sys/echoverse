@@ -11,8 +11,8 @@ This is the local workflow for the v2 modular-monolith workspace.
 
 Use Node.js 22 LTS and the repository-supported package manager. Install
 dependencies through the root npm workspace. App-specific commands remain
-available in `apps/server/`, `apps/web/`, and `apps/desktop/`. Run `npm install`
-once at the repository root; the root workspace lockfile is canonical. Do not
+available in `apps/server/`, `apps/web/`, and `apps/desktop/`. Run `npm ci` at
+the repository root; the root workspace lockfile is canonical. Do not
 commit generated `node_modules`, `dist`, `release`, logs, or local databases.
 
 GNU Make 4.4.1 is used for the repository targets. On Windows, install it with
@@ -34,8 +34,12 @@ PATH is loaded.
 Desktop runtime settings are read from `apps/desktop/config.json`. Keep a local
 server URL and placeholder integration identifiers there; do not put secrets in
 that file or in examples. `apps/server/render.yaml` is the authoritative Render
-manifest; the root `render.yaml` mirrors its service location for Render
-discovery.
+manifest; the root `render.yaml` is a compatibility mirror for service
+discovery only. Keep shared service identity and command fields synchronized,
+but keep environment configuration authoritative in `apps/server/render.yaml`;
+do not maintain two independent deployment definitions. Changes to either
+manifest must run `make roadmap-check`. Retiring the root mirror or changing
+this policy requires an ADR with a rollback path.
 
 For a local server, use `http://localhost:3001` (or the port configured by the
 server) and start the server before starting web/desktop. For hosted use, use

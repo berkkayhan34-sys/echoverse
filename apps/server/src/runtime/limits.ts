@@ -5,7 +5,12 @@
 
 const buckets = new Map<string, { startedAt: number; count: number }>();
 
-export function allowSocketEvent(socketId: string, event: string, limit: number, windowMs = 60_000) {
+export function allowSocketEvent(
+  socketId: string,
+  event: string,
+  limit: number,
+  windowMs = 60_000
+) {
   const now = Date.now();
   const key = `${socketId}:${event}`;
   const bucket = buckets.get(key);

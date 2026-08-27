@@ -3,19 +3,36 @@
   "version": "1.7.5",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
+    "test:db": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && vitest run apps/server/src/persistence/database.dbtest.ts --reporter=json --outputFile=test-results/database.json",
+    "coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "build": "npm run build --workspaces --if-present",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "lint": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && eslint . --format json --output-file test-results/eslint.json",
+    "dependency:check": "npm audit --audit-level=high",
+    "reuse:check": "reuse lint",
+    "secret-scan": "gitleaks detect --source . --no-banner --redact --exit-code 1",
     "version:check": "node -e \"const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) throw new Error('Invalid VERSION'); console.log(v)\""
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "3.2.7",
+    "eslint": "10.9.1",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "typescript-eslint": "8.68.0",
+    "vitest": "3.2.7"
   }
 }

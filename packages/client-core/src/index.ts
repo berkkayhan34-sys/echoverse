@@ -3,22 +3,39 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-export type SessionAccount = { id: string; email: string; username: string; avatarData: string | null };
+export type SessionAccount = {
+  id: string;
+  email: string;
+  username: string;
+  avatarData: string | null;
+};
 export type Session = { token: string; account: SessionAccount };
 
-export function readStoredSession(storage: Pick<Storage, "getItem">, key = "echoverse-session"): Session | null {
+export function readStoredSession(
+  storage: Pick<Storage, "getItem">,
+  key = "echoverse-session"
+): Session | null {
   try {
     const raw = storage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Session>;
-    if (typeof parsed.token !== "string" || !parsed.account || typeof parsed.account.id !== "string") return null;
+    if (
+      typeof parsed.token !== "string" ||
+      !parsed.account ||
+      typeof parsed.account.id !== "string"
+    )
+      return null;
     return parsed as Session;
   } catch {
     return null;
   }
 }
 
-export function persistSession(storage: Pick<Storage, "setItem" | "removeItem">, session: Session | null, key = "echoverse-session") {
+export function persistSession(
+  storage: Pick<Storage, "setItem" | "removeItem">,
+  session: Session | null,
+  key = "echoverse-session"
+) {
   if (!session) storage.removeItem(key);
   else storage.setItem(key, JSON.stringify(session));
 }

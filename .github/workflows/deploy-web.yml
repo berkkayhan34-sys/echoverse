@@ -1,8 +1,11 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
 name: Deploy EchoVerse Web
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
       - "apps/web/**"
       - ".github/workflows/deploy-web.yml"
@@ -29,9 +32,9 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install web dependencies
-        working-directory: apps/web
-        run: npm install
+      - name: Install workspace dependencies
+        working-directory: .
+        run: npm ci
 
       - name: Build web app
         working-directory: apps/web

@@ -31,4 +31,5 @@ ayrıca onaylanmadıkça agent oturumunda yapılmaz.
 EchoVerse public release hazırlığına kadar tek-maintainer reposudur; ikinci
 reviewer zorunluluğu yoktur. Public release öncesinde CODEOWNERS ve zorunlu
 reviewer politikası [ADR-0007](../DOCS/decisions/0007-governance-activation.md)
-uyarınca etkinleştirilmelidir.
+uyarınca etkinleştirilmelidir. Public-release süreci için
+[governance runbook](../DOCS/governance.md) uygulanır.
