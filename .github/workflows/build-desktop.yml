@@ -74,6 +74,7 @@ jobs:
         run: npm run verify:artifacts -- --target mac --arch x64
       - name: Launch packaged macOS Intel smoke test
         shell: bash
+        working-directory: .
         run: |
           set -euo pipefail
           mount_point="$RUNNER_TEMP/echoverse-intel-dmg"
@@ -117,6 +118,7 @@ jobs:
         run: npm run verify:artifacts -- --target mac --arch arm64
       - name: Launch packaged macOS Apple Silicon smoke test
         shell: bash
+        working-directory: .
         run: |
           set -euo pipefail
           mount_point="$RUNNER_TEMP/echoverse-arm64-dmg"
