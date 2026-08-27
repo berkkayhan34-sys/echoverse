@@ -48,7 +48,7 @@ jobs:
           path: |
             tmp/coverage/
             tmp/test-results/
-          if-no-files-found: warn
+          if-no-files-found: error
 
   database:
     name: PostgreSQL migration and relationship tests
@@ -58,7 +58,8 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_DB: echoverse_test
-          POSTGRES_HOST_AUTH_METHOD: trust
+          # A run-scoped value avoids trust authentication without storing a credential.
+          POSTGRES_PASSWORD: ${{ github.run_id }}
           POSTGRES_USER: postgres
         ports:
           - 5432:5432
@@ -68,7 +69,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://postgres@127.0.0.1:5432/echoverse_test
+      DATABASE_URL: postgresql://postgres:${{ github.run_id }}@127.0.0.1:5432/echoverse_test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -83,4 +84,4 @@ jobs:
         with:
           name: database-evidence
           path: tmp/test-results/database.json
-          if-no-files-found: warn
+          if-no-files-found: error
