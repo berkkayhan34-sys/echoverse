@@ -60,6 +60,7 @@ jobs:
           POSTGRES_DB: echoverse_test
           # A run-scoped value avoids trust authentication without storing a credential.
           POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256
           POSTGRES_USER: postgres
         ports:
           - 5432:5432
