@@ -6,8 +6,8 @@ SPDX-License-Identifier: GPL-3.0-only
 # EchoVerse architecture
 
 This document describes the implemented v2 architecture and the constraints for
-future changes. Runtime entrypoints live under `apps/`; shared boundaries live
-under `packages/`.
+future changes. Runtime entrypoints live under `project/apps/`; shared boundaries live
+under `project/packages/`; technical authority lives under `DOCS/`.
 
 ## Architectural decision
 
@@ -18,8 +18,9 @@ stays at the desktop boundary. Microservices and separate repositories are out
 of scope for the current horizon.
 
 The owner-selected refactor strategy is **B: controlled big-bang cutover**.
-The v2 cutover moves the runtime to `apps/` and shared packages in one bounded
-change with a rollback point and compatibility review.
+The v2 cutover moves the runtime to `project/apps/` and shared packages in one bounded
+change with a recovery point and compatibility review. The repository-root layout
+decision is recorded in [ADR-0010](decisions/0010-project-root-structure.md).
 
 ## Target repository shape
 
@@ -27,19 +28,21 @@ The structure is documented in [repository structure](architecture/repository-st
 At a high level:
 
 ```text
-apps/
-  server/       # transport composition and process entrypoint
-  web/          # browser entrypoint
-  desktop/      # Electron shell and native bridge
-packages/
-  contracts/    # versioned events, DTOs, and runtime validators
-  client-core/  # shared auth, session, socket, and feature state
-  shared-ui/    # browser-safe shared components and styles
-  config/       # validated environment and endpoint configuration
+project/
+  apps/
+    server/     # transport composition and process entrypoint
+    web/        # browser entrypoint
+    desktop/    # Electron shell and native bridge
+  packages/
+    contracts/  # versioned events, DTOs, and runtime validators
+    client-core/ # shared auth, session, socket, and feature state
+    shared-ui/  # browser-safe shared components and styles
+    config/     # validated environment and endpoint configuration
 DOCS/           # canonical decisions, policies, and procedures
+tmp/            # ignored generated output and local runtime state
 ```
 
-The final names may be adjusted only through an ADR. The important invariant is
+The names and root ownership are governed by ADR-0010. The important invariant is
 that transport, domain logic, client state, and platform integrations have
 explicit boundaries and directional dependencies.
 
@@ -105,7 +108,7 @@ security, and end-to-end tests remain mandatory. See
 
 The v2 structure is now the implementation surface. Remaining extraction work
 is tracked by feature module and must not reintroduce a second runtime beside
-`apps/`.
+`project/apps/`.
 
 ## Architectural change process
 

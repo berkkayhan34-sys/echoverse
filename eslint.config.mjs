@@ -13,11 +13,8 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/release/**",
-      "coverage/**",
-      "playwright-report/**",
-      "test-results/**",
-      "work/**",
-      ".tmp/**",
+      "tmp/**",
+      "**/tmp/**",
       "DOCS/historic/**",
       "package-lock.json"
     ]

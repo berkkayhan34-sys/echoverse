@@ -4,23 +4,24 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "project/apps/*",
+    "project/packages/*"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "test:db": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && vitest run --config vitest.db.config.ts apps/server/src/persistence/database.dbtest.ts --reporter=json --outputFile=test-results/database.json",
+    "test:db": "node -e \"require('fs').mkdirSync('tmp/test-results',{recursive:true})\" && vitest run --config vitest.db.config.ts project/apps/server/src/persistence/database.dbtest.ts --reporter=json --outputFile=tmp/test-results/database.json",
     "coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "build": "npm run build --workspaces --if-present",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "lint": "node -e \"require('fs').mkdirSync('test-results',{recursive:true})\" && eslint . --format json --output-file test-results/eslint.json",
+    "lint": "node -e \"require('fs').mkdirSync('tmp/test-results',{recursive:true})\" && eslint . --format json --output-file tmp/test-results/eslint.json",
     "dependency:check": "npm audit --audit-level=high",
-    "reuse:check": "reuse lint",
+    "reuse:check": "node DOCS/tools/reuse-check.mjs",
     "secret-scan": "gitleaks detect --source . --no-banner --redact --exit-code 1",
+    "localization:check": "node DOCS/tools/check-localization.mjs",
     "version:check": "node -e \"const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) throw new Error('Invalid VERSION'); console.log(v)\""
   },
   "devDependencies": {

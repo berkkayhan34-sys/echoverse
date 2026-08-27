@@ -8,8 +8,8 @@ SPDX-License-Identifier: GPL-3.0-only
 ## Canonical version
 
 The only authoritative product version is the trimmed contents of the root
-[`VERSION`](../VERSION) file. `package.json`, `apps/server/package.json`,
-`apps/web/package.json`, and `apps/desktop/package.json` are mirrors for tooling. A
+[`VERSION`](../VERSION) file. `package.json`, `project/apps/server/package.json`,
+`project/apps/web/package.json`, and `project/apps/desktop/package.json` are mirrors for tooling. A
 release is blocked if a mirror differs, if the Git tag is not `v<version>`, or
 if a workflow uses a hardcoded product version.
 

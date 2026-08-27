@@ -15,7 +15,7 @@ SPDX-License-Identifier: GPL-3.0-only
 - Node.js **22 LTS** is the supported version for local development, CI,
   testing, and release tooling.
 - Workspace migration and lockfile consolidation are implemented. App and
-  package manifests live under `apps/` and `packages/`; the root
+  package manifests live under `project/apps/` and `project/packages/`; the root
   `package-lock.json` is canonical.
 
 ## Consequences

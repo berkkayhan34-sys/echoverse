@@ -7,7 +7,7 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "apps/web/**"
+      - "project/apps/web/**"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Build web app
-        working-directory: apps/web
+        working-directory: project/apps/web
         run: npm run build
 
       - name: Setup Pages
@@ -46,7 +46,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: tmp/generated/web
 
   deploy:
     environment:

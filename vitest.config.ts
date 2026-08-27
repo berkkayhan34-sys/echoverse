@@ -7,12 +7,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["packages/**/*.test.ts", "apps/**/*.test.ts"],
+    include: ["project/packages/**/*.test.ts", "project/apps/**/*.test.ts"],
     environment: "node",
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],
-      reportsDirectory: "./coverage"
+      reportsDirectory: "./tmp/coverage"
     }
   }
 });

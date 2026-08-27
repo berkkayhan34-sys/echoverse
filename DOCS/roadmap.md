@@ -62,8 +62,8 @@ evidence: evidence/DOC-002.md
 [x] Reconcile the architecture map with the actual repository: document the
 feature ownership/public entrypoint/test/README map, account for the empty
 legacy `src/` path, repair the old `desktop/` and `server/` paths in
-`GITHUB-BUILD-TR.md`, and resolve the dual Render manifest policy. If the root
-`render.yaml` is retired, record the decision and rollback path in an ADR;
+`DOCS/release-build-tr.md`, and resolve the dual Render manifest policy. If
+`project/render.yaml` is retired, record the decision and recovery path in an ADR;
 otherwise document and validate one authoritative mirror process.
 
 ### development-testing-and-release-docs
@@ -223,7 +223,7 @@ the local adapter behavior explicitly aligned.
 id: CODE-004A-LOCALIZATION
 type: localization_foundation
 status: in_progress
-evidence: null
+evidence: evidence/CODE-004A-LOCALIZATION.md
 ```
 
 [-] Inventory every application-owned string, including visible UI text,
@@ -255,20 +255,36 @@ emoji, and CJK fixtures through the complete client/server/database/search
 path, plus locale-aware formatting and future-direction-safe layout behavior.
 Record static string-inventory and browser acceptance evidence.
 
-Current blockers recorded on 2026-08-27:
+Current status and blockers recorded on 2026-08-27:
 
-- Server-owned response, notification, and user-facing diagnostic strings in
-  `apps/server/src/index.ts` still need to be moved behind the shared catalog
-  or a catalog-backed error-code envelope.
-- The complete web/desktop English and Turkish browser-flow acceptance matrix
-  and static string-inventory evidence have not yet been recorded; the current
-  Playwright smoke test covers only the web shell.
-- End-to-end Unicode coverage is present for catalog and SQLite persistence
-  fixtures, but still needs coverage through client/server search, export or
-  import, and updater metadata flows before this child can close.
-- Local REUSE, gitleaks, and PostgreSQL integration validation remain
-  environment-blocked because the required executables or PostgreSQL service
-  are unavailable on the current host; CI must provide that evidence.
+- Server-owned response and user-facing diagnostic strings in
+  `project/apps/server/src/index.ts` are now catalog-backed in the working tree;
+  commit-level evidence and complete acceptance remain pending.
+- The static source inventory and catalog guard now pass for the application
+  source tree, including JSX text, user-facing attributes, DOM text assignment,
+  CSS generated text, catalog key parity, and interpolation parity.
+- The current Playwright and integrated-browser acceptance covers the web shell
+  in English and Turkish, and the static string-inventory guard passes; the
+  complete desktop Electron browser-flow matrix has not yet been recorded. The documented
+  Electron runner downloaded its declared runtime but macOS refused to launch
+  the helper with `sandbox_extension_issue_file ... (Operation not permitted)`.
+- Catalog, client, server, and SQLite Unicode fixtures pass locally, including
+  combining marks, emoji, CJK text, grapheme-safe username validation and
+  client/server username search. Export/import coverage is not an existing
+  runtime boundary and remains later roadmap work, as approved by the owner.
+- The experimental Node SQLite adapter was replaced with the approved native
+  `better-sqlite3` adapter; the prior Node experimental warning is no longer
+  emitted by the SQLite tests. Native dependency installation and Node.js 22
+  LTS remain documented prerequisites.
+- Complete desktop Electron browser-flow acceptance and release signing remain
+  later roadmap work, as approved by the owner. The local Electron runner still
+  cannot launch its helper because macOS reports
+  `sandbox_extension_issue_file ... (Operation not permitted)`.
+- `.DS_Store` files are intentionally ignored and out of scope; no cleanup or
+  validation action is required for them.
+- Local REUSE and Gitleaks gates are installed and pass. PostgreSQL integration
+  remains intentionally CI-only by owner decision; SQLite is the local database
+  validation target and PostgreSQL is not a local blocker.
 
 ### server-feature-extraction
 
@@ -309,8 +325,8 @@ status: incomplete
 evidence: null
 ```
 
-[ ] Extract shared auth/session/socket/feature state into `packages/client-core`
-and browser-safe UI primitives into `packages/shared-ui`. Split the large web
+[ ] Extract shared auth/session/socket/feature state into `project/packages/client-core`
+and browser-safe UI primitives into `project/packages/shared-ui`. Split the large web
 and desktop renderer files by feature, keep Electron-only behavior behind the
 narrow preload bridge, and add tests for permissions, reconnect, media controls,
 and renderer/preload isolation.

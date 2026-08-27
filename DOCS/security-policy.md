@@ -31,15 +31,15 @@ The repository owner identified in [CODEOWNERS](../.github/CODEOWNERS) owns the
 current code boundaries. Operational ownership, incident escalation, and
 evidence retention must be named before public release under `DOC-005`.
 
-| Boundary                             | Owner surface                                          | Primary threats                                                            | Required evidence owner                        |
-| ------------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------- |
-| Browser and Electron renderer        | `apps/web/`, `apps/desktop/src/`                       | forged UI input, token exposure, unsafe DOM or Node access                 | `QUAL-002`, `CODE-006`                         |
-| Electron main/preload                | `apps/desktop/electron/`                               | arbitrary IPC, filesystem/native capability escape, updater abuse          | `CODE-006`, `CODE-008`                         |
-| HTTP and Socket.IO transport         | `apps/server/src/index.ts`                             | origin abuse, malformed payloads, replay, denial of service                | `QUAL-003`, `CODE-001`, `CODE-002`             |
-| Feature and authorization boundaries | `apps/server/src/features/`, `apps/server/src/domain/` | IDOR, cross-guild/DM access, confused deputy behavior                      | `QUAL-002`, `QUAL-003`, `CODE-004`, `CODE-005` |
-| Persistence and migrations           | `apps/server/db/`, `apps/server/src/persistence/`      | injection, unauthorized reads, retention/deletion residue, migration drift | `QUAL-003`, `CODE-003`                         |
-| OAuth and third-party integrations   | Spotify bridge and server integration code             | token leakage, callback forgery, excessive scopes, provider failure        | `CODE-002`, `QUAL-003`                         |
-| Release and update distribution      | `.github/workflows/`, desktop packaging                | artifact tampering, version confusion, unsigned publisher trust            | `CODE-008`, `OPS-003`                          |
+| Boundary                             | Owner surface                                                          | Primary threats                                                            | Required evidence owner                        |
+| ------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- |
+| Browser and Electron renderer        | `project/apps/web/`, `project/apps/desktop/src/`                       | forged UI input, token exposure, unsafe DOM or Node access                 | `QUAL-002`, `CODE-006`                         |
+| Electron main/preload                | `project/apps/desktop/electron/`                                       | arbitrary IPC, filesystem/native capability escape, updater abuse          | `CODE-006`, `CODE-008`                         |
+| HTTP and Socket.IO transport         | `project/apps/server/src/index.ts`                                     | origin abuse, malformed payloads, replay, denial of service                | `QUAL-003`, `CODE-001`, `CODE-002`             |
+| Feature and authorization boundaries | `project/apps/server/src/features/`, `project/apps/server/src/domain/` | IDOR, cross-guild/DM access, confused deputy behavior                      | `QUAL-002`, `QUAL-003`, `CODE-004`, `CODE-005` |
+| Persistence and migrations           | `project/apps/server/db/`, `project/apps/server/src/persistence/`      | injection, unauthorized reads, retention/deletion residue, migration drift | `QUAL-003`, `CODE-003`                         |
+| OAuth and third-party integrations   | Spotify bridge and server integration code                             | token leakage, callback forgery, excessive scopes, provider failure        | `CODE-002`, `QUAL-003`                         |
+| Release and update distribution      | `.github/workflows/`, desktop packaging                                | artifact tampering, version confusion, unsigned publisher trust            | `CODE-008`, `OPS-003`                          |
 
 The threat model covers credential/session theft, cross-user access, malformed
 or oversized input, resource exhaustion, upload and media exfiltration, OAuth

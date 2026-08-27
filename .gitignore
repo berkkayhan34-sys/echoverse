@@ -17,6 +17,8 @@ Thumbs.db
 **/node_modules/
 **/dist/
 **/release/
+tmp/
+**/tmp/
 coverage/
 test-results/
 playwright-report/
@@ -46,16 +48,8 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 *.pid
-apps/server/uploads/
-apps/server/data/
-tmp/
-temp/
-**/tmp/
-**/temp/
-work/
-**/work/
-.tmp/
-**/.tmp/
+project/apps/server/uploads/
+project/apps/server/data/
 
 # Temporary archives and installer output
 *.zip

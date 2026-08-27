@@ -212,8 +212,8 @@ function extractManifestField(content, field) {
 }
 
 function validateRenderManifestPolicy() {
-  const authoritativePath = "apps/server/render.yaml";
-  const mirrorPath = "render.yaml";
+  const authoritativePath = "project/apps/server/render.yaml";
+  const mirrorPath = "project/render.yaml";
   const authoritative = read(authoritativePath);
   const mirror = read(mirrorPath);
   const sharedFields = ["name", "runtime", "rootDir", "buildCommand", "startCommand", "autoDeploy"];
@@ -276,24 +276,26 @@ function validateToolingPolicy() {
     errors.push("requirements-dev.txt: charset-normalizer must be pinned to 3.4.3");
   }
 
-  const desktopPackage = JSON.parse(read("apps/desktop/package.json"));
+  const desktopPackage = JSON.parse(read("project/apps/desktop/package.json"));
   for (const [name, command] of Object.entries(desktopPackage.scripts ?? {})) {
     if (/^(dist|release):/.test(name) && !command.includes("--publish never")) {
       errors.push(
-        `apps/desktop/package.json: ${name} must disable publication with --publish never`
+        `project/apps/desktop/package.json: ${name} must disable publication with --publish never`
       );
     }
   }
 
-  const windowsBuildScript = read("apps/desktop/BUILD-WINDOWS.ps1");
+  const windowsBuildScript = read("project/apps/desktop/BUILD-WINDOWS.ps1");
   if (/\bnpm install\b/.test(windowsBuildScript)) {
-    errors.push("apps/desktop/BUILD-WINDOWS.ps1: use root-workspace npm ci instead of npm install");
+    errors.push(
+      "project/apps/desktop/BUILD-WINDOWS.ps1: use root-workspace npm ci instead of npm install"
+    );
   }
   if (!/\bnpm ci\b/.test(windowsBuildScript)) {
-    errors.push("apps/desktop/BUILD-WINDOWS.ps1: canonical npm ci install is missing");
+    errors.push("project/apps/desktop/BUILD-WINDOWS.ps1: canonical npm ci install is missing");
   }
   if (!/nodeMajor\s*-ne\s*22/.test(windowsBuildScript)) {
-    errors.push("apps/desktop/BUILD-WINDOWS.ps1: Node.js 22 enforcement is missing");
+    errors.push("project/apps/desktop/BUILD-WINDOWS.ps1: Node.js 22 enforcement is missing");
   }
 
   const workflowsDirectory = path.join(repositoryRoot, ".github", "workflows");

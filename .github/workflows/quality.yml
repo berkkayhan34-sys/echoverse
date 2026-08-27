@@ -20,16 +20,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm ci
       - run: make tooling-check
       - run: make version-check
       - run: make ai-check
       - run: npm run format:check
       - run: npm run lint
-      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run dependency:check
       - run: npm run typecheck
       - run: npm test
@@ -46,8 +46,8 @@ jobs:
         with:
           name: quality-evidence
           path: |
-            coverage/
-            test-results/
+            tmp/coverage/
+            tmp/test-results/
           if-no-files-found: warn
 
   database:
@@ -82,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: database-evidence
-          path: test-results/database.json
+          path: tmp/test-results/database.json
           if-no-files-found: warn

@@ -10,8 +10,8 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Decision
 
-The runtime is cut over to an npm-workspaces modular monolith under `apps/`
-and `packages/`. The Socket.IO handshake identifies protocol version 2. Web
+The runtime is cut over to an npm-workspaces modular monolith under `project/apps/`
+and `project/packages/`. The Socket.IO handshake identifies protocol version 2. Web
 and desktop are updated together; clients that do not advertise v2 are
 rejected by the server.
 
@@ -36,7 +36,7 @@ paths; database migrations are additive and can remain applied.
   and SQLite. SQLite backup/restore is the local rollback mechanism; hosted
   PostgreSQL rollback remains an operational restore procedure.
 - Full feature-by-feature extraction of the large renderer files remains a
-  bounded follow-up, but no new runtime may be added outside `apps/`.
+  bounded follow-up, but no new runtime may be added outside `project/apps/`.
 
 ## Evidence
 

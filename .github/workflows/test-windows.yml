@@ -26,9 +26,9 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content "VERSION" -Raw).Trim()
-          $desktopVersion = (Get-Content "apps/desktop/package.json" -Raw | ConvertFrom-Json).version
-          if ($desktopVersion -ne $version) { throw "apps/desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
-          if (-not $version) { throw "apps/desktop/package.json version missing" }
+          $desktopVersion = (Get-Content "project/apps/desktop/package.json" -Raw | ConvertFrom-Json).version
+          if ($desktopVersion -ne $version) { throw "project/apps/desktop/package.json version mismatch: canonical=$version package=$desktopVersion" }
+          if (-not $version) { throw "project/apps/desktop/package.json version missing" }
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Testing EchoVerse $version"
 
@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Build Windows
-        working-directory: apps/desktop
+        working-directory: project/apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:win
@@ -46,49 +46,49 @@ jobs:
         shell: pwsh
         run: |
           $required = @(
-            "apps/desktop/assets/echoverse.ico",
-            "apps/desktop/assets/echoverse-icon.png",
-            "apps/desktop/assets/echoverse-splash.png",
-            "apps/desktop/public/echoverse-icon.png",
-            "apps/desktop/public/echoverse-wordmark.png",
-            "apps/desktop/public/sounds/voice-join.wav",
-            "apps/desktop/public/sounds/voice-leave.wav",
-            "apps/desktop/public/sounds/message.wav",
-            "apps/desktop/public/sounds/mic-toggle.wav",
-            "apps/desktop/public/sounds/incoming-call.wav",
-            "apps/desktop/dist/echoverse-icon.png",
-            "apps/desktop/dist/echoverse-wordmark.png",
-            "apps/desktop/dist/sounds/voice-join.wav",
-            "apps/desktop/dist/sounds/voice-leave.wav",
-            "apps/desktop/dist/sounds/message.wav",
-            "apps/desktop/dist/sounds/mic-toggle.wav",
-            "apps/desktop/dist/sounds/incoming-call.wav"
+            "project/apps/desktop/assets/echoverse.ico",
+            "project/apps/desktop/assets/echoverse-icon.png",
+            "project/apps/desktop/assets/echoverse-splash.png",
+            "project/apps/desktop/public/echoverse-icon.png",
+            "project/apps/desktop/public/echoverse-wordmark.png",
+            "project/apps/desktop/public/sounds/voice-join.wav",
+            "project/apps/desktop/public/sounds/voice-leave.wav",
+            "project/apps/desktop/public/sounds/message.wav",
+            "project/apps/desktop/public/sounds/mic-toggle.wav",
+            "project/apps/desktop/public/sounds/incoming-call.wav",
+            "tmp/generated/desktop/echoverse-icon.png",
+            "tmp/generated/desktop/echoverse-wordmark.png",
+            "tmp/generated/desktop/sounds/voice-join.wav",
+            "tmp/generated/desktop/sounds/voice-leave.wav",
+            "tmp/generated/desktop/sounds/message.wav",
+            "tmp/generated/desktop/sounds/mic-toggle.wav",
+            "tmp/generated/desktop/sounds/incoming-call.wav"
           )
 
           foreach ($file in $required) {
             if (!(Test-Path $file)) { throw "Required branding/sound asset missing: $file" }
           }
 
-          $pkg = Get-Content "apps/desktop/package.json" -Raw
+          $pkg = Get-Content "project/apps/desktop/package.json" -Raw
           if ($pkg -notmatch '"to":\s*"branding"') { throw "Packaged branding resources are not configured" }
 
-          $app = Get-Content "apps/desktop/src/App.tsx" -Raw
+          $app = Get-Content "project/apps/desktop/src/App.tsx" -Raw
           if ($app -match 'src="/echoverse-wordmark.png"') { throw "Absolute wordmark URL would break under file:// packaging" }
           if ($app -match '"/sounds/') { throw "Absolute sound URL would break under file:// packaging" }
 
-          $main = Get-Content "apps/desktop/electron/main.cjs" -Raw
+          $main = Get-Content "project/apps/desktop/electron/main.cjs" -Raw
           if ($main -notmatch 'process\.resourcesPath') { throw "Packaged Electron branding path missing" }
 
       - name: Verify v1.7.4 voice assets
         shell: pwsh
         run: |
           $files = @(
-            "apps/desktop/public/sounds/outgoing-call.wav",
-            "apps/desktop/public/sounds/call-connected.wav",
-            "apps/desktop/public/sounds/call-ended.wav",
-            "apps/desktop/public/sounds/deafen-toggle.wav",
-            "apps/desktop/public/sounds/screen-share-toggle.wav",
-            "apps/desktop/public/sounds/mention.wav"
+            "project/apps/desktop/public/sounds/outgoing-call.wav",
+            "project/apps/desktop/public/sounds/call-connected.wav",
+            "project/apps/desktop/public/sounds/call-ended.wav",
+            "project/apps/desktop/public/sounds/deafen-toggle.wav",
+            "project/apps/desktop/public/sounds/screen-share-toggle.wav",
+            "project/apps/desktop/public/sounds/mention.wav"
           )
           foreach ($f in $files) {
             if (!(Test-Path $f)) { throw "Missing v1.7.4 sound asset: $f" }
@@ -98,9 +98,9 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $installer = "apps/desktop/release/EchoVerse-Setup-$version.exe"
+          $installer = "tmp/release/desktop/EchoVerse-Setup-$version.exe"
           $blockmap = "$installer.blockmap"
-          $latest = "apps/desktop/release/latest.yml"
+          $latest = "tmp/release/desktop/latest.yml"
 
           if (!(Test-Path $installer)) { throw "Installer missing: $installer" }
           if (!(Test-Path $blockmap)) { throw "Blockmap missing: $blockmap" }
@@ -117,7 +117,7 @@ jobs:
         with:
           name: EchoVerse-Windows-Test
           path: |
-            apps/desktop/release/EchoVerse-Setup-*.exe
-            apps/desktop/release/EchoVerse-Setup-*.exe.blockmap
-            apps/desktop/release/latest.yml
+            tmp/release/desktop/EchoVerse-Setup-*.exe
+            tmp/release/desktop/EchoVerse-Setup-*.exe.blockmap
+            tmp/release/desktop/latest.yml
           if-no-files-found: error

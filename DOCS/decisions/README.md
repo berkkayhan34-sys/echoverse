@@ -18,4 +18,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0007: governance activation timing](0007-governance-activation.md)
 - [ADR-0008: workspace lockfile and Node.js policy](0008-workspace-and-node-policy.md)
 - [ADR-0009: v2 runtime cutover](0009-v2-runtime-cutover.md)
+- [ADR-0010: project-root structure and generated state](0010-project-root-structure.md)
 - [Unresolved decisions](unresolved.md)

@@ -11,9 +11,9 @@ This is the local workflow for the v2 modular-monolith workspace.
 
 Use Node.js 22 LTS and the repository-supported package manager. Install
 dependencies through the root npm workspace. App-specific commands remain
-available in `apps/server/`, `apps/web/`, and `apps/desktop/`. Run `npm ci` at
+available in `project/apps/server/`, `project/apps/web/`, and `project/apps/desktop/`. Run `npm ci` at
 the repository root; the root workspace lockfile is canonical. Do not
-commit generated `node_modules`, `dist`, `release`, logs, or local databases.
+commit generated `node_modules`, `tmp/`, logs, or local databases.
 
 GNU Make 4.4.1 is used for the repository targets. On Windows, install it with
 the WinGet package `ezwinports.make` and restart the terminal so the updated
@@ -21,22 +21,22 @@ PATH is loaded.
 
 ## Current workspaces
 
-- `apps/server/` — backend development and start scripts;
-- `apps/web/` — browser client development/build;
-- `apps/desktop/` — Electron development/build/package scripts;
-- `packages/contracts/` — protocol v2 DTOs and boundary schemas;
-- `packages/client-core/` — browser-safe session helpers;
-- `packages/shared-ui/` — browser-safe shared UI primitives;
-- `packages/config/` — validated server configuration;
+- `project/apps/server/` — backend development and start scripts;
+- `project/apps/web/` — browser client development/build;
+- `project/apps/desktop/` — Electron development/build/package scripts;
+- `project/packages/contracts/` — protocol v2 DTOs and boundary schemas;
+- `project/packages/client-core/` — browser-safe session helpers;
+- `project/packages/shared-ui/` — browser-safe shared UI primitives;
+- `project/packages/config/` — validated server configuration;
 
 ## Local configuration
 
-Desktop runtime settings are read from `apps/desktop/config.json`. Keep a local
+Desktop runtime settings are read from `project/apps/desktop/config.json`. Keep a local
 server URL and placeholder integration identifiers there; do not put secrets in
-that file or in examples. `apps/server/render.yaml` is the authoritative Render
-manifest; the root `render.yaml` is a compatibility mirror for service
+that file or in examples. `project/apps/server/render.yaml` is the authoritative Render
+manifest; `project/render.yaml` is a compatibility mirror for service
 discovery only. Keep shared service identity and command fields synchronized,
-but keep environment configuration authoritative in `apps/server/render.yaml`;
+but keep environment configuration authoritative in `project/apps/server/render.yaml`;
 do not maintain two independent deployment definitions. Changes to either
 manifest must run `make roadmap-check`. Retiring the root mirror or changing
 this policy requires an ADR with a rollback path.
@@ -51,33 +51,58 @@ deployments must set `WEB_COOKIE_SECURE=true` and use
 `TRUST_PROXY=true` only when the service is behind a trusted TLS-terminating
 proxy.
 
-Persistence is selected explicitly: set `SQLITE_PATH=./work/echoverse.sqlite`
+Persistence is selected explicitly: set `SQLITE_PATH=./tmp/runtime/echoverse.sqlite`
 for a local file-backed database, or set `DATABASE_URL` for PostgreSQL. Do not
 set both. SQLite and PostgreSQL use the same migration IDs and table/column
 contract; `npm test` covers SQLite migration, cascade, Unicode, backup, and
-restore behavior, while `npm run test:db` covers the PostgreSQL service.
+restore behavior through the approved native `better-sqlite3` adapter, while
+`npm run test:db` covers the PostgreSQL service. The local runtime requires
+Node.js 22 LTS, as required by the approved `better-sqlite3` version.
 
 ## Localization workflow
 
-Application-owned text is cataloged in `packages/contracts/src/i18n.ts` and
-consumed through the shared translator in both renderers. Add English and
-Turkish values together, preserve interpolation placeholders exactly, and
-use `resolveLocale` rather than comparing language strings directly. Keep
-protocol names, SQL/CSS identifiers, URLs, and third-party literals out of
-the catalog. Run `npm test`, `npm run typecheck`, and `npm run build` after
-catalog changes; the contract tests cover key parity, fallback, Unicode, and
-locale-aware date/number formatting.
+Application-owned text is cataloged in
+`project/packages/contracts/src/localizations/en.json` and
+`project/packages/contracts/src/localizations/tr.json`, and consumed through the shared
+translator in both renderers. Add English and Turkish values together, preserve
+interpolation placeholders exactly, and use `resolveLocale` rather than
+comparing language strings directly. Keep protocol names, SQL/CSS identifiers,
+URLs, and third-party literals out of the catalog. Run `npm test`,
+`npm run typecheck`, and `npm run build` after catalog changes; the contract
+tests cover key parity, fallback, Unicode, and locale-aware date/number
+formatting.
+
+### Localization inventory classification
+
+Application-owned natural-language text belongs in both JSON catalogs. The
+following repository strings are intentionally non-localizable identifiers:
+
+- protocol and Socket.IO event names, SQL statements, CSS class names, URLs,
+  MIME types, storage keys, and machine-readable status values;
+- stable structured log event IDs such as `echoverse.auth.login_failed`, which
+  keep diagnostics searchable and language-independent;
+- product and third-party literals such as `EchoVerse`, `Spotify`, `Spotify
+Together`, `LIVE`, and protocol version values.
+
+User-visible errors and notifications are not covered by these exclusions and
+must use the shared translator or the server response catalog.
+
+Native permission prompts are package metadata, but their prose is still
+catalog-owned: the Electron packaging configuration reads the English catalog
+for the locale-neutral macOS permission strings while the renderer remains
+locale-aware at runtime. Do not add permission prose directly to
+`package.json` or the packaging configuration.
 
 ## Hosted backend and installer
 
 The current Render setup installs from the repository root and starts
 `@echoverse/server` through the workspace script.
 Required environment variables must be declared and reviewed through the
-authoritative `apps/server/render.yaml`; never replace a secret with a value copied
+authoritative `project/apps/server/render.yaml`; never replace a secret with a value copied
 into a YAML file.
 
 To build a Windows installer locally, run the existing desktop build script
-from `apps/desktop/` and inspect `apps/desktop/release/`. Treat the output as an
+from `project/apps/desktop/` and inspect `tmp/release/desktop/`. Treat the output as an
 unverified local artifact until the release checks, integrity metadata, and
 signing/publisher decision in [release.md](release.md) pass.
 
@@ -94,11 +119,11 @@ local build output and are not a publication action.
 
 ## Disposable work paths
 
-`work/` is for generated evidence, local design notes, and intermediate
-artifacts. `.tmp/` is for short-lived scratch data. Both are ignored by Git and
-must be treated as disposable: never store secrets, credentials, production
+`tmp/` is the single ignored location for generated evidence, build output,
+local design notes, environments, runtime databases, and intermediate artifacts.
+Its subdirectories are disposable: never store secrets, credentials, production
 data, or the only copy of an important result there. `make work-init` creates
-the directories when needed.
+the standard directories when needed.
 
 Read the package README and scripts before running a workspace command. Keep
 environment files local and use placeholders in examples; never paste real

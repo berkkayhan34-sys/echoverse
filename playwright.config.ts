@@ -6,9 +6,10 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: "./project/tests/e2e",
   timeout: 30_000,
-  reporter: [["list"], ["json", { outputFile: "test-results/playwright.json" }]],
+  outputDir: "tmp/test-results/e2e",
+  reporter: [["list"], ["json", { outputFile: "tmp/test-results/playwright.json" }]],
   use: { baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173" },
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined

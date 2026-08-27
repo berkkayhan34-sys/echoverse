@@ -19,7 +19,7 @@ Deeper feature-level authorization/IDOR coverage, WebRTC, and installer
 coverage remain release-blocking work tracked on the roadmap.
 
 The workspace now exposes deterministic `format:check`, `lint`,
-`dependency:check`, `reuse:check`, `secret-scan`, and `coverage` scripts in
+`dependency:check`, `reuse:check`, `secret-scan`, `localization:check`, and `coverage` scripts in
 addition to `make ai-check`, `make tooling-check`, `npm run typecheck`,
 `npm test`, `npm run test:e2e`, and `npm run build`. Prettier, ESLint, Vitest,
 and the V8 coverage provider are exact-pinned in the root package manifest;
@@ -97,9 +97,12 @@ npm run test:db
 ```
 
 The local REUSE and Gitleaks commands fail closed when their external tools are
-not installed. Install REUSE from the pinned `requirements-dev.txt`; install
-Gitleaks through an approved platform package or use the CI action. Coverage
-reports are written under the ignored `coverage/` directory. The linter emits
+not installed. Install both through the approved platform package path
+documented by the development workflow, or use the CI action. The local REUSE
+wrapper stages Git-tracked and non-ignored working-tree files under `tmp/` so
+workspace dependencies and generated files cannot enter the license scope.
+Coverage reports
+are written under the ignored `tmp/coverage/` directory. The linter emits
 JSON so CI can retain machine-readable diagnostics when a runner collects
 step output. `npm run test:db` requires the ephemeral PostgreSQL service used
 by the CI database job and is intentionally not part of the ordinary local
