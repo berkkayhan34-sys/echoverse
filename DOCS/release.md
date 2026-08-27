@@ -21,7 +21,9 @@ if a workflow uses a hardcoded product version.
    notes in one reviewed change.
 3. Run documentation/metadata checks, package checks, tests, security scans,
    and production builds required by [testing policy](testing-policy.md).
-4. Verify artifact names, embedded version, checksums, and installer launch.
+4. Verify artifact names, updater metadata, embedded version, blockmaps,
+   checksums, and installer launch. The desktop package exposes the explicit
+   `ECHO_VERSE_SMOKE_TEST=1` startup check used by the platform workflows.
 5. Confirm artifact checksums, publisher trust, and rollback evidence. The
    current decision uses GitHub Releases plus checksums; because platform
    signing is not yet selected, unsigned artifacts must not be called

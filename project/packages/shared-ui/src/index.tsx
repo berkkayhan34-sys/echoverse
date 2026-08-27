@@ -3,146 +3,41 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
+export { AuthForm } from "./auth.js";
+export type { AuthFormLabels } from "./auth.js";
+export { ChannelMessageList, ChatComposer } from "./chat.js";
+export { DirectMessageComposer, DirectMessageThread } from "./direct.js";
+export { DirectMessageView } from "./direct-view.js";
+export type { DirectMessageViewLabels } from "./direct-view.js";
+export { ServerView } from "./server-view.js";
+export type { ServerViewLabels } from "./server-view.js";
+export { WorkspaceOverlays } from "./workspace-overlays.js";
+export type { WorkspaceOverlayLabels } from "./workspace-overlays.js";
+export { ActionButton, LocaleSelect } from "./primitives.js";
+export type { LocaleOption } from "./primitives.js";
 
-export type LocaleOption = {
-  value: string;
-  label: string;
-};
-
-export function ActionButton({
-  children,
-  ...props
-}: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>) {
-  return (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  );
-}
-
-/**
- * Shared language selector. Labels are supplied by the active catalog so this
- * primitive contains no user-facing language text or renderer assumptions.
- */
-export function LocaleSelect({
-  label,
-  value,
-  options,
-  onChange
-}: {
-  label: string;
-  value: string;
-  options: LocaleOption[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label>
-      {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-export type AuthFormLabels = {
-  login: string;
-  register: string;
-  username: string;
-  usernamePlaceholder: string;
-  email: string;
-  emailPlaceholder: string;
-  password: string;
-  passwordPlaceholder: string;
-  wait: string;
-  submitLogin: string;
-  submitRegister: string;
-};
-
-/**
- * Shared credential form. The owning renderer supplies catalog values and
- * authentication behavior; this component owns only the common form shape.
- */
-export function AuthForm({
-  mode,
-  labels,
-  connected,
-  busy,
-  username,
-  email,
-  password,
-  onModeChange,
-  onUsernameChange,
-  onEmailChange,
-  onPasswordChange,
-  onSubmit
-}: {
-  mode: "login" | "register";
-  labels: AuthFormLabels;
-  connected: boolean;
-  busy: boolean;
-  username: string;
-  email: string;
-  password: string;
-  onModeChange: (mode: "login" | "register") => void;
-  onUsernameChange: (value: string) => void;
-  onEmailChange: (value: string) => void;
-  onPasswordChange: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <>
-      <div className="auth-tabs">
-        <button onClick={() => onModeChange("login")} className={mode === "login" ? "active" : ""}>
-          {labels.login}
-        </button>
-        <button
-          onClick={() => onModeChange("register")}
-          className={mode === "register" ? "active" : ""}
-        >
-          {labels.register}
-        </button>
-      </div>
-
-      {mode === "register" && (
-        <>
-          <label>{labels.username}</label>
-          <input
-            value={username}
-            maxLength={28}
-            onChange={(event) => onUsernameChange(event.target.value)}
-            placeholder={labels.usernamePlaceholder}
-          />
-        </>
-      )}
-
-      <label>{labels.email}</label>
-      <input
-        type="email"
-        value={email}
-        onChange={(event) => onEmailChange(event.target.value)}
-        placeholder={labels.emailPlaceholder}
-      />
-
-      <label>{labels.password}</label>
-      <input
-        type="password"
-        value={password}
-        onChange={(event) => onPasswordChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") onSubmit();
-        }}
-        placeholder={labels.passwordPlaceholder}
-      />
-
-      <ActionButton className="primary" onClick={onSubmit} disabled={!connected || busy}>
-        {busy ? labels.wait : mode === "register" ? labels.submitRegister : labels.submitLogin}
-      </ActionButton>
-    </>
-  );
-}
+export { GuildPicker } from "./guilds.js";
+export type { GuildPickerLabels } from "./guilds.js";
+export { FriendsModal } from "./friends.js";
+export type { FriendsModalLabels } from "./friends.js";
+export { ScreenPicker } from "./screen.js";
+export type { ScreenPickerLabels } from "./screen.js";
+export { CallAlerts } from "./calls.js";
+export type { CallAlertLabels } from "./calls.js";
+export { WorkspaceSidebar } from "./workspace.js";
+export type { WorkspaceSidebarLabels } from "./workspace.js";
+export { MediaSettingsModal } from "./media-settings.js";
+export type { MediaSettingsLabels } from "./media-settings.js";
+export { MembersPanel } from "./members.js";
+export type { MembersPanelLabels } from "./members.js";
+export { VideoStage, VoiceControls } from "./video.js";
+export type { VideoStageLabels, VoiceControlsLabels } from "./video.js";
+export { PrivateCallStage } from "./private-call.js";
+export type { PrivateCallStageLabels } from "./private-call.js";
+export { DirectMessageHeader } from "./direct-header.js";
+export type { DirectMessageHeaderLabels } from "./direct-header.js";
+export { CreateGuildDialog } from "./guild-dialog.js";
+export type { CreateGuildDialogLabels } from "./guild-dialog.js";
+export { ServerTopbar } from "./topbar.js";
+export type { PresenceStatus, ServerTopbarLabels } from "./topbar.js";
+export { displayInitials } from "./text.js";

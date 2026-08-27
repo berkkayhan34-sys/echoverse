@@ -6,6 +6,13 @@
 export type ScreenQuality = "720" | "1080";
 export type ScreenFps = 30 | 60;
 
+/** Formats elapsed call time without depending on a renderer or locale. */
+export function formatCallTime(total: number) {
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 /**
  * Computes the one audio-track invariant shared by mute, deafen, and
  * push-to-talk controls. A disabled control must never re-enable the track.

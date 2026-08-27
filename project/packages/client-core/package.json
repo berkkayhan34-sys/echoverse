@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --root ../../../"
   },
   "dependencies": {
     "@echoverse/contracts": "2.0.0"

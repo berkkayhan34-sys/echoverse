@@ -372,6 +372,17 @@ describe("server HTTP and Socket.IO boundaries", () => {
     });
 
     expect(response).toEqual({ ok: false, error: tr("server.invalidRequest") });
+
+    const invalidMime = await emitWithAck(sender.socket, "dm:send", {
+      friendId: recipient.accountId,
+      body: "",
+      attachment: {
+        name: "payload.txt",
+        mime: "image/png",
+        data: "data:text/plain;base64,SGVsbG8="
+      }
+    });
+    expect(invalidMime).toEqual({ ok: false, error: tr("server.invalidRequest") });
   });
 
   it("expires unanswered calls and notifies both participants", async () => {
@@ -475,6 +486,46 @@ describe("server HTTP and Socket.IO boundaries", () => {
     const ended = waitForEvent<AckResponse>(owner.socket, "call:ended");
     member.socket.emit("call:end", { callId, toSocketId: owner.socket.id });
     await expect(ended).resolves.toMatchObject({ callId });
+  });
+
+  it("rejects malformed and stale WebRTC signals and cleans calls on disconnect", async () => {
+    const caller = await registerClient(await connectClient(), "ccaller");
+    const target = await registerClient(await connectClient(), "ctarget");
+    await establishFriendship(caller, target);
+
+    const incoming = waitForEvent<{ callId: string }>(target.socket, "call:incoming");
+    const started = await emitWithAck(caller.socket, "call:start", {
+      friendId: target.accountId
+    });
+    expect(started.ok).toBe(true);
+    const call = await incoming;
+    expect(call?.callId).toBe(started.callId);
+
+    const answered = waitForEvent(caller.socket, "call:answered");
+    target.socket.emit("call:answer", {
+      callId: started.callId,
+      toSocketId: caller.socket.id,
+      accept: true
+    });
+    await expect(answered).resolves.toMatchObject({ accept: true });
+
+    const malformed = waitForEvent(target.socket, "webrtc-offer");
+    caller.socket.emit("webrtc-offer", {
+      to: target.socket.id,
+      sdp: { type: "offer", sdp: "" }
+    });
+    await expect(malformed).resolves.toBeNull();
+
+    const ended = waitForEvent(target.socket, "call:ended");
+    caller.socket.disconnect();
+    await expect(ended).resolves.toMatchObject({ callId: started.callId });
+
+    const stale = waitForEvent(target.socket, "webrtc-offer");
+    target.socket.emit("webrtc-offer", {
+      to: target.socket.id,
+      sdp: { type: "offer", sdp: "v=0 stale" }
+    });
+    await expect(stale).resolves.toBeNull();
   });
 
   it("enforces the per-socket authentication rate limit", async () => {

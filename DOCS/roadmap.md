@@ -324,39 +324,59 @@ alternate transport or identifier.
 ```yaml
 id: CODE-006
 type: client_architecture
-status: in_progress
-evidence: null
+status: complete
+evidence: evidence/CODE-006.md
 ```
 
-[-] Extract shared auth/session/socket/feature state into `project/packages/client-core`
+[x] Extract shared auth/session/socket/feature state into `project/packages/client-core`
 and browser-safe UI primitives into `project/packages/shared-ui`. Split the large web
 and desktop renderer files by feature, keep Electron-only behavior behind the
 narrow preload bridge, and add tests for permissions, reconnect, media controls,
 and renderer/preload isolation.
 
-Current implementation slice recorded on 2026-08-27: `client-core` now owns
+Current implementation slice recorded on 2026-08-28: `client-core` now owns
 contracts-backed locale and username persistence, auth request construction,
 versioned Socket.IO handshake construction, session/token adapters, and pure
-DM/presence/typing state transitions plus fail-closed audio and bounded
-screen-capture helpers. Both renderers consume these boundaries, and the
-shared `ActionButton` and catalog-driven `LocaleSelect` are used by both
-renderers. Reconnect lobby transitions are calculated by a shared pure helper
-and covered by client-core tests. The Electron
+guild-chat/DM/presence/typing/unread state transitions plus fail-closed audio
+and bounded screen-capture helpers. Both renderers consume these boundaries,
+and the shared `ActionButton`, catalog-driven `LocaleSelect`, `GuildPicker`,
+`FriendsModal`, `ScreenPicker`, `CallAlerts`, `WorkspaceSidebar`,
+`ServerTopbar`, `CreateGuildDialog`, `MediaSettingsModal`, `MembersPanel`,
+`VideoStage`, `VoiceControls`, `PrivateCallStage`, `ChannelMessageList`,
+`ChatComposer`, `DirectMessageThread`, `DirectMessageHeader`,
+`DirectMessageComposer`, and the composed `DirectMessageView` are used by both
+renderers. The composed `ServerView` now similarly owns the shared server
+topbar, video, guild chat, composer, and voice-control composition. Shared UI
+implementation is split by responsibility behind the public barrel, including
+primitives, auth, guild chat, direct messages, and server/direct screen
+composition. `WorkspaceOverlays` now similarly owns the shared members, media
+settings, friends, call, screen-picker, and guild-creation overlay composition.
+Reconnect lobby transitions
+are calculated by a shared pure
+helper and covered by client-core tests. The Electron
 preload API is now built by a separately tested fixed-channel bridge factory;
 the renderer cannot receive the raw IPC object. The remaining renderer feature
-splits, reconnect/media behavior coverage, and broader shared UI extraction are
-still incomplete.
+orchestration is the remaining incomplete slice: web and desktop still keep
+large, platform-divergent socket/auth/WebRTC/media workflows in their renderer
+entrypoints. The shared screen composition and overlay extraction is complete,
+and 86 automated tests plus web E2E cover the current boundary. The runtime
+ownership decision is resolved as per-renderer feature modules with shared
+pure helpers in [ADR-0012](decisions/0012-renderer-feature-module-ownership.md).
+Renderer friends/DM and audio-device feature modules are now explicit in both
+renderers, with focused tests and web visual evidence in
+[`DOCS/evidence/CODE-006.md`](evidence/CODE-006.md). Desktop runtime launch
+verification remains deferred by owner decision.
 
 ### webrtc-and-media-regressions
 
 ```yaml
 id: CODE-007
 type: realtime_media_testing
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-007.md
 ```
 
-[ ] Add repeatable WebRTC and signaling regression coverage for join/leave,
+[x] Add repeatable WebRTC and signaling regression coverage for join/leave,
 call connect/end, reconnect, microphone/deafen, screen share, timeout,
 malformed messages, and cleanup after failure. Include attachment/media type,
 size, timeout, and authorization cases.
@@ -366,11 +386,12 @@ size, timeout, and authorization cases.
 ```yaml
 id: CODE-008
 type: release_validation
-status: incomplete
+status: in_progress
 evidence: null
+blocker: Windows installer and macOS Intel launch smoke require their respective CI runner environments; this Apple Silicon host lacks Intel translation support.
 ```
 
-[ ] Add Windows and macOS Intel/Apple Silicon installer launch smoke tests,
+[-] Add Windows and macOS Intel/Apple Silicon installer launch smoke tests,
 version identity checks, updater manifest and checksum verification, startup
 failure recovery, and update rollback checks. Record platform-specific
 limitations and do not mark unsigned artifacts production-ready.

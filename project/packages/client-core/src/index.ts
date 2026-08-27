@@ -97,15 +97,18 @@ export function createSocketAuth(locale: Locale, client: "web" | "desktop") {
 }
 
 export {
+  appendChatMessage,
   appendDmMessage,
   applyDmReaction,
   deleteDmMessage,
+  incrementDmUnread,
+  markDmRead,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState
 } from "./state.js";
 
-export { createScreenVideoConstraints, isLocalAudioEnabled } from "./media.js";
+export { createScreenVideoConstraints, formatCallTime, isLocalAudioEnabled } from "./media.js";
 export type { ScreenFps, ScreenQuality } from "./media.js";
 
 export { getLobbyMemberTransition } from "./realtime.js";

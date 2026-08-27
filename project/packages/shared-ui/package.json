@@ -9,10 +9,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --root ../../../"
   },
   "peerDependencies": {
     "react": "^18.3.1"
+  },
+  "dependencies": {
+    "@echoverse/contracts": "2.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

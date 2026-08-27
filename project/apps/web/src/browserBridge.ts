@@ -4,6 +4,15 @@ type UpdateCallback = (status: string) => void;
 
 const updateCallbacks = new Set<UpdateCallback>();
 
+function defaultServerUrl() {
+  if (location.hostname === "localhost") return "http://localhost:3001";
+  if (location.hostname === "127.0.0.1") return "http://127.0.0.1:3001";
+  if (location.hostname === "[::1]" || location.hostname === "::1") {
+    return "http://[::1]:3001";
+  }
+  return "https://echoverse-c3d5.onrender.com";
+}
+
 function translator() {
   return createTranslator(resolveLocale(localStorage.getItem("echoverse_locale")));
 }
@@ -19,11 +28,12 @@ async function requestNotifications() {
 
 const bridge = {
   getConfig: async () => ({
-    serverUrl: "https://echoverse-c3d5.onrender.com",
+    // Local web development must use the local backend described by DOCS/development.md.
+    serverUrl: defaultServerUrl(),
     spotifyClientId: ""
   }),
 
-  getVersion: async () => "1.6.7-web",
+  getVersion: async () => "1.7.5-web",
 
   onUpdateStatus: (callback: UpdateCallback) => {
     updateCallbacks.add(callback);

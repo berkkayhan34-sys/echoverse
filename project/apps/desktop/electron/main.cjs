@@ -1064,7 +1064,31 @@ function createSplash() {
   }
 }
 
+function runPackagedSmokeTest() {
+  const requiredFiles = [
+    path.join(__dirname, "..", "dist", "index.html"),
+    path.join(localizationRoot(), "en.json"),
+    path.join(localizationRoot(), "tr.json"),
+    path.join(brandingRoot, "echoverse-icon.png")
+  ];
+  const missing = requiredFiles.filter((file) => !fs.existsSync(file));
+  if (missing.length > 0) {
+    console.error(`[echoverse.smoke_missing_assets:${missing.length}]`);
+    app.exit(1);
+    return;
+  }
+  app.exit(0);
+}
+
 app.whenReady().then(() => {
+  if (
+    process.env.ECHO_VERSE_SMOKE_TEST === "1" ||
+    process.argv.includes("--echoverse-smoke-test")
+  ) {
+    runPackagedSmokeTest();
+    return;
+  }
+
   // The tray keeps its own context menu; remove Electron's native File/Edit
   // application menu from the main window on every supported platform.
   Menu.setApplicationMenu(null);

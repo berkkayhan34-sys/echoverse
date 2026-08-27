@@ -6,15 +6,19 @@
 import { describe, expect, it } from "vitest";
 import {
   SESSION_TOKEN_KEY,
+  appendChatMessage,
   appendDmMessage,
   applyDmReaction,
   clearSessionToken,
   clearStoredUsername,
   createScreenVideoConstraints,
+  formatCallTime,
   createAuthRequest,
   getLobbyMemberTransition,
   createSocketAuth,
   deleteDmMessage,
+  incrementDmUnread,
+  markDmRead,
   persistSession,
   readClientLocale,
   readSessionToken,
@@ -93,6 +97,14 @@ describe("browser-safe session adapter", () => {
   });
 
   it("applies deterministic shared DM and presence state transitions", () => {
+    const chatMessage = {
+      id: "chat-1",
+      username: "Ada",
+      text: "hello",
+      createdAt: "2026-08-27T00:00:00.000Z"
+    };
+    expect(appendChatMessage([chatMessage], chatMessage)).toEqual([chatMessage]);
+
     const message = {
       id: "message-1",
       senderId: "account-1",
@@ -124,9 +136,16 @@ describe("browser-safe session adapter", () => {
     const friends = [{ id: "account-2", username: "Ada", status: "offline" as const }];
     expect(updateFriendPresence(friends, "account-2", "online")[0]?.status).toBe("online");
     expect(updateTypingState({}, "account-2", true)).toEqual({ "account-2": true });
+    expect(markDmRead({ "account-2": 3, "account-3": 1 }, "account-2")).toEqual({
+      "account-2": 0,
+      "account-3": 1
+    });
+    expect(incrementDmUnread({ "account-2": 3 }, "account-2")).toEqual({ "account-2": 4 });
   });
 
   it("keeps shared media controls fail-closed and bounded", () => {
+    expect(formatCallTime(0)).toBe("00:00");
+    expect(formatCallTime(125)).toBe("02:05");
     expect(isLocalAudioEnabled(false, false, false, false)).toBe(true);
     expect(isLocalAudioEnabled(true, false, false, true)).toBe(false);
     expect(isLocalAudioEnabled(false, true, false, true)).toBe(false);

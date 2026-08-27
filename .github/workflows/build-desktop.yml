@@ -38,6 +38,8 @@ jobs:
       - run: npm ci
         working-directory: .
       - run: npm run dist:win
+      - name: Verify Windows updater artifacts
+        run: npm run verify:artifacts -- --target win --arch x64
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-Windows
@@ -68,6 +70,17 @@ jobs:
       - env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:mac:x64
+      - name: Verify macOS Intel artifacts
+        run: npm run verify:artifacts -- --target mac --arch x64
+      - name: Launch packaged macOS Intel smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_point="$RUNNER_TEMP/echoverse-intel-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "tmp/release/desktop/EchoVerse-$(tr -d '[:space:]' < VERSION)-x64.dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
+          ECHO_VERSE_SMOKE_TEST=1 "$mount_point/EchoVerse.app/Contents/MacOS/EchoVerse"
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Intel
@@ -100,6 +113,17 @@ jobs:
       - env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist:mac:arm64
+      - name: Verify macOS Apple Silicon artifacts
+        run: npm run verify:artifacts -- --target mac --arch arm64
+      - name: Launch packaged macOS Apple Silicon smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_point="$RUNNER_TEMP/echoverse-arm64-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "tmp/release/desktop/EchoVerse-$(tr -d '[:space:]' < VERSION)-arm64.dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
+          ECHO_VERSE_SMOKE_TEST=1 "$mount_point/EchoVerse.app/Contents/MacOS/EchoVerse"
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-macOS-Apple-Silicon

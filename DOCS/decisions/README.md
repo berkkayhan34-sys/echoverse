@@ -20,4 +20,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0009: v2 runtime cutover](0009-v2-runtime-cutover.md)
 - [ADR-0010: project-root structure and generated state](0010-project-root-structure.md)
 - [ADR-0011: server-side authorization boundaries](0011-authorization-boundaries.md)
+- [ADR-0012: renderer feature-module ownership](0012-renderer-feature-module-ownership.md)
 - [Unresolved decisions](unresolved.md)

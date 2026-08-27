@@ -3,7 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { DmMessage, FriendUser } from "@echoverse/contracts";
+import type { ChatMessage, DmMessage, FriendUser } from "@echoverse/contracts";
+
+/**
+ * Applies a guild-chat delivery event without rendering a replay twice after
+ * reconnect or transport recovery.
+ */
+export function appendChatMessage(messages: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  if (messages.some((current) => current.id === message.id)) return messages;
+  return [...messages, message];
+}
 
 /**
  * Applies a DM delivery event without allowing Socket.IO replay or reconnect
@@ -71,4 +80,21 @@ export function updateTypingState(
   typing: boolean
 ): Record<string, boolean> {
   return { ...state, [accountId]: typing };
+}
+
+/** Marks one direct-message conversation read without changing other counts. */
+export function markDmRead(
+  state: Record<string, number>,
+  accountId: string
+): Record<string, number> {
+  if (state[accountId] === 0) return state;
+  return { ...state, [accountId]: 0 };
+}
+
+/** Increments background unread messages while leaving the caller's state immutable. */
+export function incrementDmUnread(
+  state: Record<string, number>,
+  accountId: string
+): Record<string, number> {
+  return { ...state, [accountId]: (state[accountId] || 0) + 1 };
 }

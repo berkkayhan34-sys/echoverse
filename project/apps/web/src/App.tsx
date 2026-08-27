@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { createTranslator, formatLocaleDate } from "@echoverse/contracts";
 import {
+  appendChatMessage,
   appendDmMessage,
   applyDmReaction,
   clearStoredUsername,
@@ -10,17 +11,31 @@ import {
   createSocketAuth,
   deleteDmMessage,
   getLobbyMemberTransition,
+  incrementDmUnread,
+  markDmRead,
   readClientLocale,
   readStoredUsername,
   resolveClientLocale,
   isLocalAudioEnabled,
+  formatCallTime,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
   writeClientLocale,
   writeStoredUsername
 } from "@echoverse/client-core";
-import { AuthForm, LocaleSelect } from "@echoverse/shared-ui";
+import {
+  AuthForm,
+  DirectMessageView,
+  GuildPicker,
+  LocaleSelect,
+  ServerView,
+  WorkspaceOverlays,
+  WorkspaceSidebar
+} from "@echoverse/shared-ui";
+import { createAudioDevicesFeature } from "./features/audio-devices";
+import { createDirectMessagesFeature } from "./features/direct-messages";
+import { createFriendsFeature } from "./features/friends";
 import type {
   Account,
   ChatMessage,
@@ -205,6 +220,75 @@ export default function App() {
   const lobbyStateReadyRef = useRef(false);
   const reconnectingRef = useRef(false);
 
+  const friendsFeature = createFriendsFeature({
+    getSocket: () => socket,
+    getSearch: () => friendSearch,
+    getActiveFriend: () => activeDmFriendRef.current,
+    getTypingTimer: () => typingStopTimer.current,
+    setTypingTimer: (timer) => {
+      typingStopTimer.current = timer;
+    },
+    setError,
+    setFriends,
+    setIncomingRequests,
+    setOutgoingRequests,
+    setFriendSearch,
+    setFriendSearchResults,
+    setActiveFriend: setActiveDmFriend,
+    setViewMode,
+    setShowFriends,
+    setDmMessages,
+    setDmText,
+    setReplyTo,
+    setUnreadDm,
+    translate: (key) => t(key as Parameters<typeof t>[0]),
+    markDmRead
+  });
+  const {
+    loadFriends,
+    searchFriends,
+    sendFriendRequest,
+    respondFriendRequest,
+    removeFriend,
+    openDm
+  } = friendsFeature;
+
+  const directMessagesFeature = createDirectMessagesFeature({
+    getSocket: () => socket,
+    getFriend: () => activeDmFriendRef.current,
+    getAccount: () => accountRef.current,
+    getText: () => dmText,
+    getEditing: () => editingDm,
+    getAttachment: () => dmAttachment,
+    getReply: () => replyTo,
+    getTypingTimer: () => typingStopTimer.current,
+    setTypingTimer: (timer) => {
+      typingStopTimer.current = timer;
+    },
+    setText: setDmText,
+    setAttachment: setDmAttachment,
+    setReply: setReplyTo,
+    setEditing: setEditingDm,
+    setError,
+    translate: (key) => t(key as Parameters<typeof t>[0]),
+    confirmDelete: (message) => window.confirm(message)
+  });
+  const { sendDm, editDm, deleteDm, sendTyping, reactDm } = directMessagesFeature;
+
+  const audioDevicesFeature = createAudioDevicesFeature({
+    localStream,
+    peerConnections: pcs,
+    remoteAudio,
+    getMuted: () => muted,
+    setSelectedInput,
+    setSelectedOutput,
+    setAudioInputs,
+    setAudioOutputs,
+    setVideoInputs,
+    startSpeakingMonitor
+  });
+  const { refreshAudioDevices, switchInput, switchOutput } = audioDevicesFeature;
+
   function playLobbyTone(kind: "join" | "leave") {
     if (!lobbySoundsEnabledRef.current) return;
     const now = Date.now();
@@ -337,7 +421,10 @@ export default function App() {
       const cfg = window.echoverse
         ? await window.echoverse.getConfig()
         : {
-            serverUrl: "http://localhost:3001",
+            serverUrl:
+              window.location.hostname === "127.0.0.1"
+                ? "http://127.0.0.1:3001"
+                : "http://localhost:3001",
             spotifyClientId: ""
           };
 
@@ -493,16 +580,13 @@ export default function App() {
         setDmMessages((prev) => appendDmMessage(prev, msg));
 
         if (currentFriend) {
-          setUnreadDm((prev) => ({ ...prev, [currentFriend.id]: 0 }));
+          setUnreadDm((prev) => markDmRead(prev, currentFriend.id));
         }
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
         if (!isOpenConversation) {
-          setUnreadDm((prev) => ({
-            ...prev,
-            [msg.senderId]: (prev[msg.senderId] || 0) + 1
-          }));
+          setUnreadDm((prev) => incrementDmUnread(prev, msg.senderId));
 
           window.echoverse?.notify?.({
             title: msg.senderUsername || translatorRef.current("notification.newMessageTitle"),
@@ -561,7 +645,7 @@ export default function App() {
     });
 
     s.on("chat-message", (msg: ChatMessage) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => appendChatMessage(prev, msg));
     });
 
     s.on("presence", (list: PeerInfo[]) => {
@@ -795,199 +879,6 @@ export default function App() {
     }
   }
 
-  async function refreshAudioDevices() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      setAudioInputs(devices.filter((d) => d.kind === "audioinput"));
-      setAudioOutputs(devices.filter((d) => d.kind === "audiooutput"));
-      setVideoInputs(devices.filter((d) => d.kind === "videoinput"));
-    } catch {}
-  }
-
-  async function switchInput(deviceId: string) {
-    setSelectedInput(deviceId);
-    localStorage.setItem("echoverse_input_device", deviceId);
-
-    const old = localStream.current;
-    const next = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1
-      },
-      video: false
-    });
-
-    const newTrack = next.getAudioTracks()[0];
-    newTrack.enabled = !muted;
-
-    for (const pc of pcs.current.values()) {
-      const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
-      if (sender) {
-        await sender.replaceTrack(newTrack);
-      }
-    }
-
-    old?.getAudioTracks().forEach((t) => t.stop());
-    localStream.current = next;
-    startSpeakingMonitor("local", next);
-  }
-
-  async function switchOutput(deviceId: string) {
-    setSelectedOutput(deviceId);
-    localStorage.setItem("echoverse_output_device", deviceId);
-
-    for (const audio of remoteAudio.current.values()) {
-      const sinkable = audio as HTMLAudioElement & {
-        setSinkId?: (id: string) => Promise<void>;
-      };
-
-      if (sinkable.setSinkId) {
-        try {
-          await sinkable.setSinkId(deviceId);
-        } catch {}
-      }
-    }
-  }
-
-  async function loadFriends(s = socket) {
-    if (!s) return;
-
-    s.emit("friends:list", {}, (result: any) => {
-      if (!result?.ok) return;
-      setFriends(result.accepted || []);
-      setIncomingRequests(result.incoming || []);
-      setOutgoingRequests(result.outgoing || []);
-    });
-  }
-
-  function searchFriends() {
-    if (!socket || !friendSearch.trim()) {
-      setFriendSearchResults([]);
-      return;
-    }
-
-    socket.emit("friends:search", { query: friendSearch }, (result: any) => {
-      if (result?.ok) setFriendSearchResults(result.results || []);
-    });
-  }
-
-  function sendFriendRequest(targetId: string) {
-    socket?.emit("friends:request", { targetId }, (result: any) => {
-      if (!result?.ok) {
-        setError(result?.error || t("error.requestFailed"));
-        return;
-      }
-      setFriendSearchResults([]);
-      setFriendSearch("");
-      loadFriends();
-    });
-  }
-
-  function respondFriendRequest(friendshipId: string, accept: boolean) {
-    socket?.emit("friends:respond", { friendshipId, accept }, (result: any) => {
-      if (!result?.ok) {
-        setError(result?.error || t("error.requestFailed"));
-        return;
-      }
-      loadFriends();
-    });
-  }
-
-  function removeFriend(targetId: string) {
-    socket?.emit("friends:remove", { targetId }, () => {
-      loadFriends();
-      if (activeDmFriend?.id === targetId) {
-        setActiveDmFriend(null);
-        setDmMessages([]);
-      }
-    });
-  }
-
-  function openDm(friend: FriendUser) {
-    if (typingStopTimer.current) {
-      window.clearTimeout(typingStopTimer.current);
-      typingStopTimer.current = null;
-    }
-
-    if (activeDmFriendRef.current) {
-      socket?.emit("dm:typing", {
-        friendId: activeDmFriendRef.current.id,
-        typing: false
-      });
-    }
-
-    setActiveDmFriend(friend);
-    setViewMode("dm");
-    setShowFriends(false);
-    setDmMessages([]);
-    setDmText("");
-    setReplyTo(null);
-    setUnreadDm((prev) => ({ ...prev, [friend.id]: 0 }));
-
-    socket?.emit("dm:history", { friendId: friend.id }, (result: any) => {
-      if (result?.ok) setDmMessages(result.messages || []);
-    });
-  }
-
-  function sendDm() {
-    if (!socket || !activeDmFriend) return;
-
-    const body = dmText.trim();
-
-    if (editingDm) {
-      if (!body) return;
-      socket.emit("dm:edit", { messageId: editingDm.id, body }, (result: any) => {
-        if (!result?.ok) setError(result?.error || t("chat.editFailed"));
-      });
-      setEditingDm(null);
-      setDmText("");
-      return;
-    }
-
-    if (!body && !dmAttachment) return;
-
-    const outgoingAttachment = dmAttachment;
-    setDmText("");
-    setDmAttachment(null);
-    setReplyTo(null);
-    socket.emit("dm:typing", { friendId: activeDmFriend.id, typing: false });
-
-    socket.emit(
-      "dm:send",
-      {
-        friendId: activeDmFriend.id,
-        body,
-        replyToId: replyTo?.id || null,
-        attachment: outgoingAttachment
-      },
-      (result: any) => {
-        if (!result?.ok) {
-          setError(result?.error || t("chat.sendFailed"));
-        }
-      }
-    );
-  }
-
-  function editDm(message: DmMessage) {
-    if (message.senderId !== account?.id || message.deletedAt) return;
-    setEditingDm(message);
-    setReplyTo(null);
-    setDmAttachment(null);
-    setDmText(message.body);
-  }
-
-  function deleteDm(message: DmMessage) {
-    if (!socket || message.senderId !== account?.id || message.deletedAt) return;
-    if (!window.confirm(t("chat.deleteConfirm"))) return;
-
-    socket.emit("dm:delete", { messageId: message.id }, (result: any) => {
-      if (!result?.ok) setError(result?.error || t("chat.deleteFailed"));
-    });
-  }
-
   async function chooseDmFile(file: File | null) {
     if (!file) return;
 
@@ -1095,28 +986,6 @@ export default function App() {
     setMyStatus(status);
     socket?.emit("presence:set", { status });
   }
-  function sendTyping(typing: boolean) {
-    const friend = activeDmFriendRef.current;
-    if (!friend || !socket) return;
-
-    socket.emit("dm:typing", { friendId: friend.id, typing });
-
-    if (typingStopTimer.current) {
-      window.clearTimeout(typingStopTimer.current);
-      typingStopTimer.current = null;
-    }
-
-    if (typing) {
-      typingStopTimer.current = window.setTimeout(() => {
-        socket.emit("dm:typing", { friendId: friend.id, typing: false });
-        typingStopTimer.current = null;
-      }, 1400);
-    }
-  }
-  function reactDm(messageId: string, emoji: string) {
-    socket?.emit("dm:react", { messageId, emoji });
-  }
-
   function createToneLoop(frequencies: number[], intervalMs: number, volume = 0.035) {
     try {
       const ctx = new AudioContext();
@@ -1202,12 +1071,6 @@ export default function App() {
         } catch {}
       }, 600);
     } catch {}
-  }
-
-  function formatCallTime(total: number) {
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
   async function prepareForPrivateCall() {
@@ -2208,88 +2071,37 @@ export default function App() {
 
   if (!joined) {
     return (
-      <div className="welcome-page">
-        <div className="platform-badge">{t("platform.web")}</div>
-        <div className="welcome-card guild-picker">
-          <div className="picker-head">
-            <div>
-              <h1>{t("guild.list")}</h1>
-              <p>{t("guild.choose")}</p>
-            </div>
-
-            <button className="icon-btn" onClick={() => setShowCreate(true)}>
-              ＋
-            </button>
-          </div>
-
-          <div className="guild-list">
-            {guilds.map((g) => (
-              <button className="guild-row" key={g.id} onClick={() => joinGuild(g)}>
-                <span className="guild-badge">{g.name.slice(0, 2).toUpperCase()}</span>
-
-                <span>
-                  <b>{g.name}</b>
-                  <small>{t("guild.code", { id: g.id })}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <button className="secondary-wide" onClick={() => setShowJoin(true)}>
-            {t("guild.joinByCode")}
-          </button>
-
-          {showCreate && (
-            <div className="modal-backdrop">
-              <div className="modal">
-                <h2>{t("guild.new")}</h2>
-
-                <input
-                  autoFocus
-                  placeholder={t("guild.namePlaceholder")}
-                  value={newGuildName}
-                  onChange={(e) => setNewGuildName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && createGuild()}
-                />
-
-                <div className="modal-actions">
-                  <button onClick={() => setShowCreate(false)}>{t("guild.cancel")}</button>
-
-                  <button className="primary-small" onClick={createGuild}>
-                    {t("guild.create")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showJoin && (
-            <div className="modal-backdrop">
-              <div className="modal">
-                <h2>{t("guild.join")}</h2>
-
-                <input
-                  autoFocus
-                  placeholder={t("guild.codePlaceholder")}
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && joinGuildByCode()}
-                />
-
-                <div className="modal-actions">
-                  <button onClick={() => setShowJoin(false)}>{t("guild.cancel")}</button>
-
-                  <button className="primary-small" onClick={joinGuildByCode}>
-                    {t("guild.joinAction")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {error && <div className="error-box">{error}</div>}
-        </div>
-      </div>
+      <GuildPicker
+        guilds={guilds}
+        platformLabel={t("platform.web")}
+        labels={{
+          title: t("guild.list"),
+          choose: t("guild.choose"),
+          joinByCode: t("guild.joinByCode"),
+          newGuild: t("guild.new"),
+          joinGuild: t("guild.join"),
+          namePlaceholder: t("guild.namePlaceholder"),
+          codePlaceholder: t("guild.codePlaceholder"),
+          cancel: t("guild.cancel"),
+          createAction: t("guild.create"),
+          joinAction: t("guild.joinAction"),
+          guildCode: (id) => t("guild.code", { id })
+        }}
+        showCreate={showCreate}
+        showJoin={showJoin}
+        newGuildName={newGuildName}
+        joinCode={joinCode}
+        error={error}
+        onCreateOpen={() => setShowCreate(true)}
+        onJoinOpen={() => setShowJoin(true)}
+        onCreateClose={() => setShowCreate(false)}
+        onJoinClose={() => setShowJoin(false)}
+        onNewGuildNameChange={setNewGuildName}
+        onJoinCodeChange={setJoinCode}
+        onCreateGuild={createGuild}
+        onJoinGuildByCode={joinGuildByCode}
+        onSelectGuild={joinGuild}
+      />
     );
   }
 
@@ -2302,1108 +2114,443 @@ export default function App() {
           {connectionMessage}
         </div>
       )}
-      <aside className="servers">
-        <div className="server-logo">{t("app.name").slice(0, 1)}</div>
-
-        {guilds.map((g) => (
-          <button
-            key={g.id}
-            title={`${g.name} • ${g.id}`}
-            className={`server-circle ${activeGuild?.id === g.id ? "active" : ""}`}
-            onClick={() => joinGuild(g)}
-          >
-            {g.name.slice(0, 2).toUpperCase()}
-          </button>
-        ))}
-
-        <button
-          className="server-circle add"
-          onClick={() => {
-            setJoined(false);
-            setShowCreate(true);
-          }}
-        >
-          +
-        </button>
-      </aside>
-
-      <aside className="channels">
-        <div className="guild-title">
-          <span>{activeGuild?.name}</span>
-          <small className="guild-code">#{activeGuild?.id}</small>
-        </div>
-
-        <div className="channel-group">
-          <div className="channel-title">{t("guild.textChannels")}</div>
-          <button className="channel active"># {t("guild.general")}</button>
-          <button className="channel"># {t("guild.music")}</button>
-        </div>
-
-        <div className="channel-group">
-          <div className="channel-title">{t("guild.voiceChannels")}</div>
-
-          <button className="channel voice active">🔊 {t("guild.lobby")}</button>
-
-          <div className="voice-users">
-            {presence.map((p) => {
-              const isSelf = p.socketId === socket?.id;
-              const speaking = isSelf
-                ? localSpeaking && !muted
-                : !!speakingPeers[p.socketId] && !peerMuted[p.socketId];
-
-              return (
-                <div className={`voice-user-row ${speaking ? "speaking" : ""}`} key={p.socketId}>
-                  <div className="voice-user">
-                    {p.avatarData ? (
-                      <img className="voice-avatar" src={p.avatarData} alt="" />
-                    ) : (
-                      <span className="mini-dot" />
-                    )}
-                    {p.username}
-                    {isSelf ? t("guild.self") : ""}
-                  </div>
-
-                  {!isSelf && (
-                    <div className="voice-peer-controls">
-                      <button
-                        className={peerMuted[p.socketId] ? "peer-muted" : ""}
-                        onClick={() => togglePeerMute(p.socketId)}
-                        title={t("media.muteOnlyYou")}
-                      >
-                        {peerMuted[p.socketId] ? "🔇" : "🔊"}
-                      </button>
-
-                      <input
-                        type="range"
-                        min="0"
-                        max="200"
-                        value={peerVolumes[p.socketId] ?? 100}
-                        onChange={(e) => setPeerVolume(p.socketId, Number(e.target.value))}
-                      />
-
-                      <span>
-                        {peerMuted[p.socketId] ? "M" : `${peerVolumes[p.socketId] ?? 100}%`}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="spotify-panel">
-          <div className="spotify-head">
-            <b>{t("spotify.together")}</b>
-            <span className="spotify-dot" />
-          </div>
-
-          {!spotifyConfigured ? (
-            <small>{t("spotify.clientRequired")}</small>
-          ) : !spotifyConnected ? (
-            <button className="spotify-connect" onClick={spotifyLogin}>
-              {t("spotify.connect")}
-            </button>
-          ) : (
-            <>
-              <small>{spotifyName || t("spotify.connectedLabel")}</small>
-
-              {spotifyParty?.active && (
-                <div className="spotify-now">
-                  {spotifyParty.albumImage && <img src={spotifyParty.albumImage} />}
-
-                  <div>
-                    <b>{spotifyParty.trackName || t("spotify.together")}</b>
-                    <small>{spotifyParty.artistName || spotifyParty.leaderUsername}</small>
-                  </div>
-                </div>
-              )}
-
-              {!spotifyParty?.active ? (
-                <button className="spotify-action" onClick={startSpotifyParty}>
-                  ▶ {t("spotify.startParty")}
-                </button>
-              ) : spotifyLeader ? (
-                <button className="spotify-stop" onClick={stopSpotifyParty}>
-                  ■ {t("spotify.stopParty")}
-                </button>
-              ) : (
-                <button
-                  className={spotifyFollowing ? "spotify-following" : "spotify-action"}
-                  onClick={followSpotifyParty}
-                >
-                  {spotifyFollowing
-                    ? `✓ ${t("spotify.followingLabel")}`
-                    : `🎧 ${t("spotify.listenTogether")}`}
-                </button>
-              )}
-
-              <button className="spotify-logout" onClick={spotifyLogout}>
-                {t("spotify.logout")}
-              </button>
-            </>
-          )}
-
-          {spotifyMessage && <div className="spotify-message">{spotifyMessage}</div>}
-        </div>
-
-        <div className="user-panel">
-          <label className="user-avatar avatar-upload-label" title={t("profile.changeAvatar")}>
-            {account?.avatarData ? (
-              <img src={account.avatarData} alt="" />
-            ) : (
-              username.slice(0, 2).toUpperCase()
-            )}
-
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                changeAvatar(file);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
-
-          <div className="user-info">
-            <b>{username}</b>
-            <small>{t("profile.voiceConnected", { version: appVersion })}</small>
-          </div>
-
-          <button onClick={toggleMute} title={t("media.microphone")}>
-            {muted ? "🔇" : "🎙️"}
-          </button>
-
-          <button onClick={logout} title={t("auth.logout")}>
-            ↪
-          </button>
-        </div>
-      </aside>
+      <WorkspaceSidebar
+        guilds={guilds}
+        activeGuild={activeGuild}
+        presence={presence}
+        socketId={socket?.id}
+        localSpeaking={localSpeaking}
+        muted={muted}
+        speakingPeers={speakingPeers}
+        peerMuted={peerMuted}
+        peerVolumes={peerVolumes}
+        spotifyConfigured={spotifyConfigured}
+        spotifyConnected={spotifyConnected}
+        spotifyName={spotifyName}
+        spotifyParty={spotifyParty}
+        spotifyLeader={spotifyLeader}
+        spotifyFollowing={spotifyFollowing}
+        spotifyMessage={spotifyMessage}
+        account={account}
+        username={username}
+        appVersion={appVersion}
+        labels={{
+          appName: t("app.name"),
+          textChannels: t("guild.textChannels"),
+          general: t("guild.general"),
+          music: t("guild.music"),
+          voiceChannels: t("guild.voiceChannels"),
+          lobby: t("guild.lobby"),
+          self: t("guild.self"),
+          muteOnlyYou: t("media.muteOnlyYou"),
+          spotifyTogether: t("spotify.together"),
+          spotifyClientRequired: t("spotify.clientRequired"),
+          spotifyConnect: t("spotify.connect"),
+          spotifyConnected: t("spotify.connectedLabel"),
+          spotifyStartParty: t("spotify.startParty"),
+          spotifyStopParty: t("spotify.stopParty"),
+          spotifyFollowing: t("spotify.followingLabel"),
+          spotifyListenTogether: t("spotify.listenTogether"),
+          spotifyLogout: t("spotify.logout"),
+          changeAvatar: t("profile.changeAvatar"),
+          voiceConnected: (version) => t("profile.voiceConnected", { version }),
+          microphone: t("media.microphone"),
+          logout: t("auth.logout"),
+          createGuild: t("guild.new")
+        }}
+        onSelectGuild={joinGuild}
+        onCreateGuild={() => {
+          setJoined(false);
+          setShowCreate(true);
+        }}
+        onTogglePeerMute={togglePeerMute}
+        onPeerVolumeChange={setPeerVolume}
+        onSpotifyLogin={spotifyLogin}
+        onStartSpotifyParty={startSpotifyParty}
+        onStopSpotifyParty={stopSpotifyParty}
+        onFollowSpotifyParty={followSpotifyParty}
+        onSpotifyLogout={spotifyLogout}
+        onChangeAvatar={changeAvatar}
+        onToggleMute={toggleMute}
+        onLogout={logout}
+      />
 
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
         {viewMode === "dm" && activeDmFriend ? (
-          <div className="dm-fullpage">
-            <header className="dm-page-header">
-              <div className="dm-page-user">
-                <button
-                  className="dm-back"
-                  onClick={() => {
-                    sendTyping(false);
-                    setViewMode("server");
-                    setActiveDmFriend(null);
-                    setDmText("");
-                    setReplyTo(null);
-                  }}
-                >
-                  ←
-                </button>
-
-                <div className="avatar">
-                  {activeDmFriend.avatarData ? (
-                    <img src={activeDmFriend.avatarData} alt="" />
-                  ) : (
-                    activeDmFriend.username.slice(0, 2).toUpperCase()
-                  )}
-                </div>
-
-                <div>
-                  <b>{activeDmFriend.username}</b>
-                  <small>
-                    {dmTyping[activeDmFriend.id]
-                      ? t("chat.typing")
-                      : activeDmFriend.status === "online"
-                        ? t("presence.online")
-                        : activeDmFriend.status === "idle"
-                          ? t("presence.idle")
-                          : activeDmFriend.status === "dnd"
-                            ? t("presence.dnd")
-                            : t("presence.offline")}
-                  </small>
-                </div>
-              </div>
-
-              <div className="dm-page-actions">
-                <input
-                  className="dm-header-search"
-                  value={dmSearch}
-                  onChange={(e) => setDmSearch(e.target.value)}
-                  placeholder={t("chat.searchPlaceholder")}
-                />
-                <button
-                  className="dm-block-button"
-                  title={t("friends.block")}
-                  onClick={() => {
-                    if (!socket || !activeDmFriend) return;
-                    if (
-                      !window.confirm(
-                        t("friends.blockConfirm", { username: activeDmFriend.username })
-                      )
-                    )
-                      return;
-                    socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
-                      if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
-                      setViewMode("server");
-                      setActiveDmFriend(null);
-                      loadFriends();
-                    });
-                  }}
-                >
-                  🚫
-                </button>
-                <button
-                  className={callState === "connected" ? "call-connected" : ""}
-                  onClick={() => {
-                    if (callState === "connected" || callState === "calling") {
-                      stopPrivateCall(true);
-                    } else {
-                      callFriend(activeDmFriend);
-                    }
-                  }}
-                >
-                  {callState === "calling"
-                    ? `📞 ${t("call.ringing")}`
-                    : callState === "connected"
-                      ? `☎ ${t("call.end")}`
-                      : `📞 ${t("friends.call")}`}
-                </button>
-              </div>
-            </header>
-
-            {callState !== "idle" && (
-              <div className={`private-call-stage ${callState}`}>
-                <div className="call-stage-avatar">
-                  {activeDmFriend.avatarData ? (
-                    <img src={activeDmFriend.avatarData} alt="" />
-                  ) : (
-                    activeDmFriend.username.slice(0, 2).toUpperCase()
-                  )}
-                </div>
-
-                <h2>{activeDmFriend.username}</h2>
-                <p>
-                  {callState === "calling"
-                    ? t("call.ringing")
-                    : callState === "connected"
-                      ? t("call.privateConversation", { time: formatCallTime(callSeconds) })
-                      : t("call.incoming")}
-                </p>
-
-                {callState === "connected" && (
-                  <div className="private-call-controls">
-                    <button onClick={toggleMute}>
-                      {muted ? `🔇 ${t("common.unmute")}` : `🎙️ ${t("media.microphone")}`}
-                    </button>
-                    <button onClick={toggleDeafen}>
-                      {deafened ? `🔊 ${t("common.undeafen")}` : `🎧 ${t("common.deafen")}`}
-                    </button>
-                    <button
-                      className={pushToTalk ? "active" : ""}
-                      onClick={() => setPushToTalk((v) => !v)}
-                      title={t("call.pushToTalkTitle")}
-                    >
-                      {pushToTalk
-                        ? pttPressed
-                          ? `🟢 ${t("call.speaking")}`
-                          : `⌨ ${t("call.pressToTalk")}`
-                        : `🎙 ${t("call.voiceActivity")}`}
-                    </button>
-                    <button className="hangup" onClick={() => stopPrivateCall(true)}>
-                      ☎ {t("common.close")}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="dm-thread" ref={dmThreadRef}>
-              {dmMessages.length === 0 && (
-                <div className="dm-empty">
-                  <div className="avatar large">
-                    {activeDmFriend.avatarData ? (
-                      <img src={activeDmFriend.avatarData} alt="" />
-                    ) : (
-                      activeDmFriend.username.slice(0, 2).toUpperCase()
-                    )}
-                  </div>
-                  <h2>{activeDmFriend.username}</h2>
-                  <p>{t("chat.startOfConversation", { username: activeDmFriend.username })}</p>
-                </div>
-              )}
-
-              {dmMessages
-                .filter((m) => {
-                  const query = dmSearch.trim().toLowerCase();
-                  if (!query) return true;
-                  return (
-                    m.body?.toLowerCase().includes(query) ||
-                    m.attachmentName?.toLowerCase().includes(query)
-                  );
-                })
-                .map((m, index, filtered) => {
-                  const mine = m.senderId === account?.id;
-                  const previous = index > 0 ? filtered[index - 1] : null;
-                  const currentDate = new Date(m.createdAt);
-                  const previousDate = previous ? new Date(previous.createdAt) : null;
-                  const showDate =
-                    !previousDate || previousDate.toDateString() !== currentDate.toDateString();
-
-                  const replied = m.replyToId
-                    ? dmMessages.find((candidate) => candidate.id === m.replyToId)
-                    : null;
-
-                  return (
-                    <React.Fragment key={m.id}>
-                      {showDate && (
-                        <div className="dm-date-divider">
-                          <span>
-                            {currentDate.toDateString() === new Date().toDateString()
-                              ? t("common.today")
-                              : currentDate.toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
-
-                      <div
-                        className={`dm-discord-message ${mine ? "mine" : ""} ${m.deletedAt ? "deleted" : ""}`}
-                      >
-                        <div className="avatar">
-                          {mine && account?.avatarData ? (
-                            <img src={account.avatarData} alt="" />
-                          ) : !mine && activeDmFriend.avatarData ? (
-                            <img src={activeDmFriend.avatarData} alt="" />
-                          ) : (
-                            (mine ? username : activeDmFriend.username).slice(0, 2).toUpperCase()
-                          )}
-                        </div>
-
-                        <div className="dm-discord-body">
-                          <div className="dm-discord-meta">
-                            <b>{mine ? username : activeDmFriend.username}</b>
-                            <small>
-                              {currentDate.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
-                            </small>
-                            {m.editedAt && !m.deletedAt && <small>{t("chat.edited")}</small>}
-                          </div>
-
-                          {replied && (
-                            <div className="dm-reply-preview">
-                              ↪{" "}
-                              {replied.deletedAt
-                                ? t("common.deleted")
-                                : replied.body || replied.attachmentName || t("chat.message")}
-                            </div>
-                          )}
-
-                          {m.deletedAt ? (
-                            <div className="dm-deleted-text">{t("chat.deleted")}</div>
-                          ) : (
-                            <>
-                              {m.body && <div className="dm-discord-text">{m.body}</div>}
-
-                              {m.attachmentData && m.attachmentName && (
-                                <div className="dm-attachment">
-                                  {m.attachmentMime?.startsWith("image/") ? (
-                                    <img
-                                      src={m.attachmentData}
-                                      alt={m.attachmentName}
-                                      onClick={() => window.open(m.attachmentData || "", "_blank")}
-                                    />
-                                  ) : (
-                                    <div className="dm-file-icon">📎</div>
-                                  )}
-                                  <div>
-                                    <b>{m.attachmentName}</b>
-                                    <button onClick={() => downloadAttachment(m)}>
-                                      {t("common.download")}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="dm-reactions">
-                                {Object.entries(m.reactions || {}).map(([emoji, ids]) => (
-                                  <button
-                                    key={emoji}
-                                    className={ids.includes(account?.id || "") ? "mine" : ""}
-                                    onClick={() => reactDm(m.id, emoji)}
-                                  >
-                                    {emoji} {ids.length}
-                                  </button>
-                                ))}
-                              </div>
-                            </>
-                          )}
-
-                          {!m.deletedAt && (
-                            <div className="dm-message-actions">
-                              <button onClick={() => setReplyTo(m)}>↩ {t("common.reply")}</button>
-                              {["👍", "❤️", "😂", "🔥"].map((emoji) => (
-                                <button key={emoji} onClick={() => reactDm(m.id, emoji)}>
-                                  {emoji}
-                                </button>
-                              ))}
-                              {mine && (
-                                <button onClick={() => editDm(m)}>✏ {t("chat.editButton")}</button>
-                              )}
-                              {mine && (
-                                <button className="danger" onClick={() => deleteDm(m)}>
-                                  🗑 {t("chat.delete")}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-            </div>
-
-            <div className="dm-composer-zone">
-              {(replyTo || editingDm || dmAttachment) && (
-                <div className="dm-compose-context">
-                  {editingDm && <span>✏ {t("chat.editing")}</span>}
-                  {replyTo && !editingDm && (
-                    <span>
-                      ↩{" "}
-                      {t("chat.replyingTo", {
-                        username:
-                          replyTo.senderId === account?.id ? username : activeDmFriend.username
-                      })}
-                    </span>
-                  )}
-                  {dmAttachment && (
-                    <span>
-                      📎 {dmAttachment.name} · {t("chat.attachmentReady")}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => {
-                      setReplyTo(null);
-                      setEditingDm(null);
-                      setDmAttachment(null);
-                      if (editingDm) setDmText("");
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              <div
-                className={`dm-page-composer ${dmDragActive ? "drag-active" : ""}`}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setDmDragActive(true);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDmDragActive(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setDmDragActive(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDmDragActive(false);
-                  chooseDmFile(e.dataTransfer.files?.[0] || null);
-                }}
-              >
-                {dmDragActive && <div className="dm-drop-hint">{t("chat.dropFile")}</div>}
-                <input
-                  ref={dmFileInputRef}
-                  type="file"
-                  className="hidden-file-input"
-                  onChange={(e) => {
-                    chooseDmFile(e.target.files?.[0] || null);
-                    e.currentTarget.value = "";
-                  }}
-                />
-
-                <button
-                  className="dm-attach-button"
-                  title={t("chat.sendFile")}
-                  onClick={() => dmFileInputRef.current?.click()}
-                >
-                  ＋
-                </button>
-
-                <input
-                  value={dmText}
-                  onFocus={() => sendTyping(true)}
-                  onBlur={() => sendTyping(false)}
-                  onChange={(e) => {
-                    setDmText(e.target.value);
-                    sendTyping(true);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendDm();
-                    }
-                  }}
-                  placeholder={editingDm ? t("chat.edit") : t("chat.messagePlaceholder")}
-                />
-                <button onClick={sendDm}>{editingDm ? t("common.save") : t("common.send")}</button>
-              </div>
-            </div>
-          </div>
+          <DirectMessageView
+            peer={activeDmFriend}
+            statusLabel={
+              dmTyping[activeDmFriend.id]
+                ? t("chat.typing")
+                : activeDmFriend.status === "online"
+                  ? t("presence.online")
+                  : activeDmFriend.status === "idle"
+                    ? t("presence.idle")
+                    : activeDmFriend.status === "dnd"
+                      ? t("presence.dnd")
+                      : t("presence.offline")
+            }
+            searchQuery={dmSearch}
+            callState={callState}
+            callTime={formatCallTime(callSeconds)}
+            muted={muted}
+            deafened={deafened}
+            pushToTalk={pushToTalk}
+            pttPressed={pttPressed}
+            messages={dmMessages}
+            currentAccountId={account?.id || ""}
+            currentUsername={username}
+            currentAvatarData={account?.avatarData}
+            text={dmText}
+            editingLabel={editingDm ? `✏ ${t("chat.editing")}` : undefined}
+            replyingLabel={
+              replyTo && !editingDm
+                ? `↩ ${t("chat.replyingTo", {
+                    username: replyTo.senderId === account?.id ? username : activeDmFriend.username
+                  })}`
+                : undefined
+            }
+            attachmentReadyLabel={
+              dmAttachment ? `📎 ${dmAttachment.name} · ${t("chat.attachmentReady")}` : undefined
+            }
+            dragActive={dmDragActive}
+            threadRef={dmThreadRef}
+            fileInputRef={dmFileInputRef}
+            labels={{
+              header: {
+                back: t("common.back"),
+                block: t("friends.block"),
+                searchPlaceholder: t("chat.searchPlaceholder"),
+                calling: t("call.ringing"),
+                call: t("friends.call"),
+                endCall: t("call.end")
+              },
+              call: {
+                incoming: t("call.incoming"),
+                ringing: t("call.ringing"),
+                privateConversation: (time) => t("call.privateConversation", { time }),
+                microphone: t("media.microphone"),
+                mute: t("common.mute"),
+                unmute: t("common.unmute"),
+                deafen: t("common.deafen"),
+                undeafen: t("common.undeafen"),
+                pushToTalkTitle: t("call.pushToTalkTitle"),
+                speaking: t("call.speaking"),
+                pressToTalk: t("call.pressToTalk"),
+                voiceActivity: t("call.voiceActivity"),
+                close: t("common.close")
+              },
+              thread: {
+                today: t("common.today"),
+                emptyConversation: t("chat.startOfConversation", {
+                  username: activeDmFriend.username
+                }),
+                deletedReply: t("common.deleted"),
+                deletedMessage: t("chat.deleted"),
+                message: t("chat.message"),
+                edited: t("chat.edited"),
+                download: t("common.download"),
+                reply: t("common.reply"),
+                edit: t("chat.editButton"),
+                delete: t("chat.delete")
+              },
+              composer: {
+                inputLabel: t("chat.message"),
+                messagePlaceholder: t("chat.messagePlaceholder"),
+                editPlaceholder: t("chat.edit"),
+                fileLabel: t("chat.sendFile"),
+                clearLabel: t("chat.clearComposerContext"),
+                dragHint: t("chat.dropFile"),
+                sendLabel: t("common.send"),
+                saveLabel: t("common.save")
+              }
+            }}
+            formatDate={(value) =>
+              new Date(value).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")
+            }
+            formatTime={(value) =>
+              new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            }
+            onBack={() => {
+              sendTyping(false);
+              setViewMode("server");
+              setActiveDmFriend(null);
+              setDmText("");
+              setReplyTo(null);
+            }}
+            onSearchQueryChange={setDmSearch}
+            onBlock={() => {
+              if (!socket || !activeDmFriend) return;
+              if (!window.confirm(t("friends.blockConfirm", { username: activeDmFriend.username })))
+                return;
+              socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
+                if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
+                setViewMode("server");
+                setActiveDmFriend(null);
+                loadFriends();
+              });
+            }}
+            onCall={() => {
+              if (callState === "connected" || callState === "calling") {
+                stopPrivateCall(true);
+              } else {
+                callFriend(activeDmFriend);
+              }
+            }}
+            onToggleMute={toggleMute}
+            onToggleDeafen={toggleDeafen}
+            onTogglePushToTalk={() => setPushToTalk((value) => !value)}
+            onEndCall={() => stopPrivateCall(true)}
+            onReply={setReplyTo}
+            onReact={reactDm}
+            onEdit={editDm}
+            onDelete={deleteDm}
+            onDownloadAttachment={downloadAttachment}
+            onOpenAttachment={(data) => window.open(data, "_blank")}
+            onFileSelected={(file) => void chooseDmFile(file)}
+            onDropFile={(file) => void chooseDmFile(file)}
+            onDragActiveChange={setDmDragActive}
+            onTextChange={setDmText}
+            onTypingChange={sendTyping}
+            onSend={sendDm}
+            onClearContext={() => {
+              setReplyTo(null);
+              setEditingDm(null);
+              setDmAttachment(null);
+              if (editingDm) setDmText("");
+            }}
+          />
         ) : (
           <>
-            <header className="topbar">
-              <div>
-                <b># {t("guild.general")}</b>
-                <span>{activeGuild?.name}</span>
-              </div>
-
-              <div className="top-actions">
-                <button
-                  onClick={() => {
-                    refreshAudioDevices();
-                    setShowAudioSettings(true);
-                  }}
-                >
-                  ⚙ {t("media.videoShare")}
-                </button>
-
-                <button
-                  onClick={() => {
-                    loadFriends();
-                    setShowFriends(true);
-                  }}
-                >
-                  👥 {t("friends.list")}
-                  {incomingRequests.length > 0 ? ` (${incomingRequests.length})` : ""}
-                </button>
-
-                <select
-                  className="presence-select"
-                  value={myStatus}
-                  onChange={(e) => setPresenceStatus(e.target.value as any)}
-                  title={t("status.label")}
-                >
-                  <option value="online">🟢 {t("presence.online")}</option>
-                  <option value="idle">🌙 {t("presence.idle")}</option>
-                  <option value="dnd">⛔ {t("presence.dnd")}</option>
-                  <option value="invisible">⚫ {t("status.invisible")}</option>
-                </select>
-
-                <div className="top-state">✨ {t("media.noiseSuppression")}</div>
-              </div>
-            </header>
-
-            <div className="video-toolbar">
-              <div>
-                <b>{t("media.videoShare")}</b>
-                <span>
-                  {screenOn
-                    ? t("media.screenQuality", { quality: screenQuality, fps: screenFps })
-                    : cameraOn
-                      ? t("media.cameraOn")
-                      : t("media.cameraOff")}
-                </span>
-              </div>
-              <div className="video-layout-actions">
-                <button
-                  className={videoLayout === "grid" ? "active" : ""}
-                  onClick={() => setVideoLayout("grid")}
-                >
-                  ▦ {t("media.grid")}
-                </button>
-                <button
-                  className={videoLayout === "focus" ? "active" : ""}
-                  onClick={() => setVideoLayout("focus")}
-                >
-                  ▣ {t("media.focus")}
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`video-zone ${videoLayout === "focus" ? "focus-layout" : "grid-layout"}`}
-            >
-              <video
-                ref={localVideoRef}
-                muted
-                autoPlay
-                playsInline
-                className={
-                  cameraOn || screenOn
-                    ? `local-video ${localSpeaking && !muted ? "speaking-video" : ""}`
-                    : "hidden"
+            <ServerView
+              guildName={activeGuild?.name}
+              incomingRequestCount={incomingRequests.length}
+              status={myStatus}
+              videoLayout={videoLayout}
+              videoStatus={
+                screenOn
+                  ? t("media.screenQuality", { quality: screenQuality, fps: screenFps })
+                  : cameraOn
+                    ? t("media.cameraOn")
+                    : t("media.cameraOff")
+              }
+              localVideoRef={localVideoRef}
+              remoteVideoHostRef={remoteVideoHost}
+              localVideoActive={cameraOn || screenOn}
+              localSpeaking={localSpeaking}
+              muted={muted}
+              cameraOn={cameraOn}
+              screenOn={screenOn}
+              connected={connected}
+              messages={messages}
+              text={text}
+              error={error}
+              labels={{
+                topbar: {
+                  general: t("guild.general"),
+                  mediaSettings: t("media.videoShare"),
+                  friends: t("friends.list"),
+                  status: t("status.label"),
+                  online: t("presence.online"),
+                  idle: t("presence.idle"),
+                  dnd: t("presence.dnd"),
+                  invisible: t("status.invisible"),
+                  noiseSuppression: t("media.noiseSuppression")
+                },
+                video: {
+                  videoShare: t("media.videoShare"),
+                  grid: t("media.grid"),
+                  focus: t("media.focus")
+                },
+                channel: {
+                  welcomeTitle: t("ui.welcomeChannel"),
+                  channelBeginning: t("ui.channelBeginning", { guild: activeGuild?.name || "" })
+                },
+                composer: {
+                  inputLabel: t("chat.message"),
+                  placeholder: t("chat.sendPlaceholder"),
+                  emojiLabel: t("chat.emoji"),
+                  sendLabel: t("common.send")
+                },
+                voice: {
+                  mute: t("common.mute"),
+                  microphone: t("media.microphone"),
+                  camera: t("media.camera"),
+                  cameraOff: t("media.cameraOff"),
+                  screenShare: t("media.screenShare"),
+                  stopScreenShare: t("media.stopScreenShare"),
+                  endCall: t("common.endCall"),
+                  online: t("connection.online"),
+                  offline: t("connection.offline")
                 }
-              />
-
-              <div ref={remoteVideoHost} className="remote-video-host" />
-            </div>
-
-            <section className="message-list">
-              <div className="channel-intro">
-                <div className="big-hash">#</div>
-
-                <h2>{t("ui.welcomeChannel")}</h2>
-
-                <p>{t("ui.channelBeginning", { guild: activeGuild?.name || "" })}</p>
-              </div>
-
-              {messages.map((m) => (
-                <div className="message" key={m.id}>
-                  <div className={`avatar ${m.bot ? "bot" : ""}`}>
-                    {!m.bot && m.avatarData ? (
-                      <img src={m.avatarData} alt="" />
-                    ) : m.bot ? (
-                      "EB"
-                    ) : (
-                      m.username.slice(0, 2).toUpperCase()
-                    )}
-                  </div>
-
-                  <div className="message-body">
-                    <div className="message-meta">
-                      <b>{m.username}</b>
-
-                      <small>{formatLocaleDate(m.createdAt, locale)}</small>
-                    </div>
-
-                    <div className="message-text">{m.text}</div>
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            <div className="composer">
-              <button className="plus">+</button>
-
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder={t("chat.sendPlaceholder")}
-              />
-
-              <button onClick={() => setText((v) => v + " 😂")}>😂</button>
-
-              <button className="send" onClick={sendMessage}>
-                {t("common.send")}
-              </button>
-            </div>
-
-            <div className="call-controls">
-              <button className={muted ? "danger" : ""} onClick={toggleMute}>
-                {muted ? `🔇 ${t("common.mute")}` : `🎙️ ${t("media.microphone")}`}
-              </button>
-
-              <button className={cameraOn ? "active-control" : ""} onClick={toggleCamera}>
-                📹 {cameraOn ? t("media.cameraOff") : t("media.camera")}
-              </button>
-
-              <button className={screenOn ? "active-control" : ""} onClick={toggleScreen}>
-                🖥️ {screenOn ? t("media.stopScreenShare") : t("media.screenShare")}
-              </button>
-
-              <button className="disconnect-btn" onClick={() => leaveVoice(true)}>
-                ☎ {t("common.endCall")}
-              </button>
-
-              <span className="connection">
-                ● {connected ? t("connection.online") : t("connection.offline")}
-              </span>
-            </div>
-
-            {error && (
-              <div className="floating-error" onClick={() => setError("")}>
-                {error}
-              </div>
-            )}
+              }}
+              formatDate={(value) => formatLocaleDate(value, locale)}
+              onOpenMediaSettings={() => {
+                refreshAudioDevices();
+                setShowAudioSettings(true);
+              }}
+              onOpenFriends={() => {
+                loadFriends();
+                setShowFriends(true);
+              }}
+              onStatusChange={setPresenceStatus}
+              onVideoLayoutChange={setVideoLayout}
+              onTextChange={setText}
+              onAddEmoji={() => setText((value) => `${value} 😂`)}
+              onSendMessage={sendMessage}
+              onToggleMute={toggleMute}
+              onToggleCamera={toggleCamera}
+              onToggleScreen={toggleScreen}
+              onEndCall={() => leaveVoice(true)}
+              onDismissError={() => setError("")}
+            />
           </>
         )}
       </main>
 
-      <aside className="members">
-        <div className="members-title">{t("ui.onlineCount", { count: presence.length })}</div>
-
-        {presence.map((p) => {
-          const isSelf = p.socketId === socket?.id;
-
-          return (
-            <div
-              className={`member-card ${
-                (
-                  isSelf
-                    ? localSpeaking && !muted
-                    : speakingPeers[p.socketId] && !peerMuted[p.socketId]
-                )
-                  ? "speaking"
-                  : ""
-              }`}
-              key={p.socketId}
-            >
-              <div className="member">
-                <div className="avatar">
-                  {p.avatarData ? (
-                    <img src={p.avatarData} alt="" />
-                  ) : (
-                    p.username.slice(0, 2).toUpperCase()
-                  )}
-                </div>
-
-                <span>
-                  {p.username}
-                  {isSelf ? t("guild.self") : ""}
-                </span>
-              </div>
-
-              {!isSelf && (
-                <div className="peer-audio-controls">
-                  <button
-                    className={peerMuted[p.socketId] ? "peer-muted" : ""}
-                    onClick={() => togglePeerMute(p.socketId)}
-                    title={t("media.muteOnlyYou")}
-                  >
-                    {peerMuted[p.socketId] ? "🔇" : "🔊"}
-                  </button>
-
-                  <input
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={peerVolumes[p.socketId] ?? 100}
-                    onChange={(e) => setPeerVolume(p.socketId, Number(e.target.value))}
-                  />
-
-                  <span>
-                    {peerMuted[p.socketId] ? "MUTE" : `${peerVolumes[p.socketId] ?? 100}%`}
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        <div className="members-title bots">{t("ui.botsCount")}</div>
-
-        <div className="member">
-          <div className="avatar bot">{t("bot.name").slice(0, 2).toUpperCase()}</div>
-
-          <div>
-            <span>{t("bot.name")}</span>
-            <small className="bot-help">{t("bot.helpCommand")}</small>
-          </div>
-        </div>
-      </aside>
-
-      {showAudioSettings && (
-        <div className="modal-backdrop">
-          <div className="modal audio-settings-modal">
-            <h2>{t("media.audioVideoSettings")}</h2>
-            <p className="settings-subtitle">{t("media.settingsDescription")}</p>
-
-            <label>{t("media.microphoneInput")}</label>
-            <select value={selectedInput} onChange={(e) => switchInput(e.target.value)}>
-              <option value="">{t("media.systemDefault")}</option>
-              {audioInputs.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
-                </option>
-              ))}
-            </select>
-
-            <label>{t("media.speakerOutput")}</label>
-            <select value={selectedOutput} onChange={(e) => switchOutput(e.target.value)}>
-              <option value="">{t("media.systemDefault")}</option>
-              {audioOutputs.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || t("media.speakerFallback", { id: d.deviceId.slice(0, 6) })}
-                </option>
-              ))}
-            </select>
-
-            <div className="settings-divider">{t("media.videoSection")}</div>
-
-            <label>{t("media.cameraInput")}</label>
-            <select value={selectedCamera} onChange={(e) => switchCamera(e.target.value)}>
-              <option value="">{t("media.systemDefault")}</option>
-              {videoInputs.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Kamera ${d.deviceId.slice(0, 6)}`}
-                </option>
-              ))}
-            </select>
-
-            <div className="video-quality-grid">
-              <div>
-                <label>{t("media.screenQualityLabel")}</label>
-                <select
-                  value={screenQuality}
-                  onChange={(e) => {
-                    const value = e.target.value as "720" | "1080";
-                    setScreenQuality(value);
-                    localStorage.setItem("echoverse_screen_quality", value);
-                  }}
-                >
-                  <option value="720">{t("media.quality", { quality: 720 })}</option>
-                  <option value="1080">{t("media.quality", { quality: 1080 })}</option>
-                </select>
-              </div>
-              <div>
-                <label>{t("media.fps")}</label>
-                <select
-                  value={screenFps}
-                  onChange={(e) => {
-                    const value = Number(e.target.value) as 30 | 60;
-                    setScreenFps(value);
-                    localStorage.setItem("echoverse_screen_fps", String(value));
-                  }}
-                >
-                  <option value={30}>30 {t("media.fps")}</option>
-                  <option value={60}>60 {t("media.fps")}</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="screen-share-note">
-              🖥️ {t("media.shareProfile", { quality: screenQuality, fps: screenFps })}
-              <small>{t("media.changeNotice")}</small>
-            </div>
-
-            <div className="sound-settings-block">
-              <label className="sound-toggle-row">
-                <span>
-                  <b>{t("media.lobbySounds")}</b>
-                  <small>{t("media.lobbySoundsDescription")}</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={lobbySoundsEnabled}
-                  onChange={(e) => {
-                    const enabled = e.target.checked;
-                    setLobbySoundsEnabled(enabled);
-                    localStorage.setItem("echoverse_lobby_sounds", enabled ? "on" : "off");
-                  }}
-                />
-              </label>
-
-              <label>{t("media.effectVolume", { volume: effectVolume })}</label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={effectVolume}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  setEffectVolume(value);
-                  localStorage.setItem("echoverse_effect_volume", String(value));
-                }}
-              />
-            </div>
-
-            <div className="modal-actions">
-              <button onClick={() => setShowAudioSettings(false)}>{t("common.close")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showFriends && (
-        <div className="modal-backdrop">
-          <div className="modal friends-modal">
-            <div className="friends-header">
-              <h2>{t("ui.friends")}</h2>
-              <button onClick={() => setShowFriends(false)}>✕</button>
-            </div>
-
-            <div className="friend-search-row">
-              <input
-                value={friendSearch}
-                onChange={(e) => setFriendSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && searchFriends()}
-                placeholder={t("friends.searchPlaceholder")}
-              />
-              <button onClick={searchFriends}>{t("friends.search")}</button>
-            </div>
-
-            {friendSearchResults.length > 0 && (
-              <div className="friend-section">
-                <h3>{t("ui.searchResults")}</h3>
-                {friendSearchResults.map((f) => (
-                  <div className="friend-row" key={f.id}>
-                    <div className="friend-user">
-                      <div className="avatar">
-                        {f.avatarData ? (
-                          <img src={f.avatarData} alt="" />
-                        ) : (
-                          f.username.slice(0, 2).toUpperCase()
-                        )}
-                      </div>
-                      <b>{f.username}</b>
-                    </div>
-                    <button onClick={() => sendFriendRequest(f.id)}>＋ {t("friends.add")}</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {incomingRequests.length > 0 && (
-              <div className="friend-section">
-                <h3>{t("ui.incomingRequests")}</h3>
-                {incomingRequests.map((f) => (
-                  <div className="friend-row" key={f.id}>
-                    <div className="friend-user">
-                      <div className="avatar">
-                        {f.avatarData ? (
-                          <img src={f.avatarData} alt="" />
-                        ) : (
-                          f.username.slice(0, 2).toUpperCase()
-                        )}
-                      </div>
-                      <b>{f.username}</b>
-                    </div>
-                    <div className="friend-actions">
-                      <button onClick={() => respondFriendRequest(f.friendshipId!, true)}>✓</button>
-                      <button onClick={() => respondFriendRequest(f.friendshipId!, false)}>
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="friend-section">
-              <h3>{t("ui.myFriends")}</h3>
-              {friends.length === 0 && <small>{t("ui.noFriends")}</small>}
-
-              {friends.map((f) => (
-                <div className="friend-row" key={f.id}>
-                  <div className="friend-user">
-                    <div className="avatar">
-                      {f.avatarData ? (
-                        <img src={f.avatarData} alt="" />
-                      ) : (
-                        f.username.slice(0, 2).toUpperCase()
-                      )}
-                    </div>
-                    <b>{f.username}</b>
-                  </div>
-
-                  <div className="friend-actions">
-                    <button className="dm-open-button" onClick={() => openDm(f)}>
-                      💬
-                      {(unreadDm[f.id] || 0) > 0 && (
-                        <span className="dm-unread-badge">{Math.min(unreadDm[f.id], 99)}</span>
-                      )}
-                    </button>
-                    <button onClick={() => callFriend(f)}>📞</button>
-                    <button onClick={() => removeFriend(f.id)}>🗑</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {incomingCall && (
-        <div className="incoming-call">
-          <div className="call-avatar">
-            {incomingCall.fromAvatarData ? (
-              <img src={incomingCall.fromAvatarData} alt="" />
-            ) : (
-              incomingCall.fromUsername.slice(0, 2).toUpperCase()
-            )}
-          </div>
-          <div className="call-info">
-            <b>{incomingCall.fromUsername}</b>
-            <span>{t("ui.incomingPrivateCall")}</span>
-          </div>
-          <button className="answer-call" onClick={() => answerIncomingCall(true)}>
-            📞
-          </button>
-          <button className="reject-call" onClick={() => answerIncomingCall(false)}>
-            ✕
-          </button>
-        </div>
-      )}
-
-      {privateCallPeer && (
-        <div className="private-call-bar">
-          <span>
-            📞 {privateCallPeer.username}
-            {ringing
-              ? ` ${t("call.ringing")}`
-              : ` ${t("call.privateConversation", { time: formatCallTime(callSeconds) })}`}
-          </span>
-          <button onClick={() => stopPrivateCall(true)}>{t("common.endCall")}</button>
-        </div>
-      )}
-
-      {showScreenPicker && (
-        <div className="modal-backdrop screen-picker-backdrop">
-          <div className="modal screen-picker-modal">
-            <div className="screen-picker-header">
-              <div>
-                <h2>{t("ui.screenShare")}</h2>
-                <p>{t("ui.chooseSource")}</p>
-              </div>
-              <button onClick={() => setShowScreenPicker(false)}>✕</button>
-            </div>
-
-            {screenPermission === "denied" && (
-              <div className="screen-permission-warning">
-                {t("ui.screenPermissionOff")}
-                <button onClick={() => window.echoverse?.openScreenSettings?.()}>
-                  {t("ui.openSystemSettings")}
-                </button>
-              </div>
-            )}
-
-            <div className="screen-source-grid">
-              {screenSources.map((source) => (
-                <button
-                  className="screen-source-card"
-                  key={source.id}
-                  onClick={() => beginScreenShare(source)}
-                >
-                  <div className="screen-source-preview">
-                    {source.thumbnail ? <img src={source.thumbnail} alt="" /> : <span>🖥️</span>}
-                  </div>
-                  <span>{source.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCreate && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <h2>{t("guild.new")}</h2>
-
-            <input
-              autoFocus
-              placeholder={t("guild.namePlaceholder")}
-              value={newGuildName}
-              onChange={(e) => setNewGuildName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && createGuild()}
-            />
-
-            <div className="modal-actions">
-              <button onClick={() => setShowCreate(false)}>{t("guild.cancel")}</button>
-
-              <button className="primary-small" onClick={createGuild}>
-                {t("guild.create")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WorkspaceOverlays
+        presence={presence}
+        socketId={socket?.id}
+        localSpeaking={localSpeaking}
+        muted={muted}
+        speakingPeers={speakingPeers}
+        peerMuted={peerMuted}
+        peerVolumes={peerVolumes}
+        showAudioSettings={showAudioSettings}
+        audioInputs={audioInputs}
+        audioOutputs={audioOutputs}
+        videoInputs={videoInputs}
+        selectedInput={selectedInput}
+        selectedOutput={selectedOutput}
+        selectedCamera={selectedCamera}
+        screenQuality={screenQuality}
+        screenFps={screenFps}
+        lobbySoundsEnabled={lobbySoundsEnabled}
+        effectVolume={effectVolume}
+        showFriends={showFriends}
+        friends={friends}
+        incomingRequests={incomingRequests}
+        friendSearchResults={friendSearchResults}
+        unreadDm={unreadDm}
+        friendSearch={friendSearch}
+        incomingCall={incomingCall}
+        privateCallPeer={privateCallPeer}
+        ringing={ringing}
+        callTime={formatCallTime(callSeconds)}
+        showScreenPicker={showScreenPicker}
+        screenSources={screenSources}
+        screenPermission={screenPermission}
+        showCreate={showCreate}
+        newGuildName={newGuildName}
+        labels={{
+          members: {
+            onlineCount: (count) => t("ui.onlineCount", { count }),
+            botsCount: t("ui.botsCount"),
+            self: t("guild.self"),
+            muteOnlyYou: t("media.muteOnlyYou"),
+            muted: t("media.mutedShort"),
+            volumeFor: (username) => t("media.volumeFor", { username }),
+            botName: t("bot.name"),
+            botHelp: t("bot.helpCommand")
+          },
+          media: {
+            title: t("media.audioVideoSettings"),
+            description: t("media.settingsDescription"),
+            microphoneInput: t("media.microphoneInput"),
+            speakerOutput: t("media.speakerOutput"),
+            speakerFallback: (id) => t("media.speakerFallback", { id }),
+            systemDefault: t("media.systemDefault"),
+            videoSection: t("media.videoSection"),
+            cameraInput: t("media.cameraInput"),
+            microphoneFallback: (id) => t("media.microphoneFallback", { id }),
+            cameraFallback: (id) => t("media.cameraFallback", { id }),
+            screenQualityLabel: t("media.screenQualityLabel"),
+            quality: (quality) => t("media.quality", { quality }),
+            fps: t("media.fps"),
+            shareProfile: (quality, fps) => t("media.shareProfile", { quality, fps }),
+            changeNotice: t("media.changeNotice"),
+            lobbySounds: t("media.lobbySounds"),
+            lobbySoundsDescription: t("media.lobbySoundsDescription"),
+            effectVolume: (volume) => t("media.effectVolume", { volume }),
+            close: t("common.close")
+          },
+          friends: {
+            title: t("ui.friends"),
+            close: t("common.close"),
+            searchPlaceholder: t("friends.searchPlaceholder"),
+            search: t("friends.search"),
+            searchResults: t("ui.searchResults"),
+            incomingRequests: t("ui.incomingRequests"),
+            myFriends: t("ui.myFriends"),
+            noFriends: t("ui.noFriends"),
+            add: t("friends.add"),
+            accept: t("common.accept"),
+            decline: t("common.reject"),
+            openDirectMessage: t("friends.openDm"),
+            call: t("friends.call"),
+            remove: t("common.remove")
+          },
+          calls: {
+            incomingPrivateCall: t("ui.incomingPrivateCall"),
+            answer: t("common.accept"),
+            reject: t("common.reject"),
+            endCall: t("common.endCall"),
+            ringing: t("call.ringing"),
+            privateConversation: (time) => t("call.privateConversation", { time })
+          },
+          screen: {
+            title: t("ui.screenShare"),
+            chooseSource: t("ui.chooseSource"),
+            close: t("common.close"),
+            permissionOff: t("ui.screenPermissionOff"),
+            openSystemSettings: t("ui.openSystemSettings")
+          },
+          guild: {
+            title: t("guild.new"),
+            namePlaceholder: t("guild.namePlaceholder"),
+            cancel: t("guild.cancel"),
+            create: t("guild.create")
+          }
+        }}
+        onTogglePeerMute={togglePeerMute}
+        onPeerVolumeChange={setPeerVolume}
+        onInputChange={switchInput}
+        onOutputChange={switchOutput}
+        onCameraChange={switchCamera}
+        onScreenQualityChange={(value) => {
+          setScreenQuality(value);
+          localStorage.setItem("echoverse_screen_quality", value);
+        }}
+        onScreenFpsChange={(value) => {
+          setScreenFps(value);
+          localStorage.setItem("echoverse_screen_fps", String(value));
+        }}
+        onLobbySoundsChange={(enabled) => {
+          setLobbySoundsEnabled(enabled);
+          localStorage.setItem("echoverse_lobby_sounds", enabled ? "on" : "off");
+        }}
+        onEffectVolumeChange={(value) => {
+          setEffectVolume(value);
+          localStorage.setItem("echoverse_effect_volume", String(value));
+        }}
+        onCloseAudioSettings={() => setShowAudioSettings(false)}
+        onCloseFriends={() => setShowFriends(false)}
+        onFriendSearchChange={setFriendSearch}
+        onSearchFriends={searchFriends}
+        onSendFriendRequest={sendFriendRequest}
+        onRespondFriendRequest={respondFriendRequest}
+        onOpenDm={openDm}
+        onCallFriend={callFriend}
+        onRemoveFriend={removeFriend}
+        onAnswerCall={answerIncomingCall}
+        onEndCall={() => stopPrivateCall(true)}
+        onCloseScreenPicker={() => setShowScreenPicker(false)}
+        onOpenSystemSettings={() => void window.echoverse?.openScreenSettings?.()}
+        onSelectScreenSource={beginScreenShare}
+        onGuildNameChange={setNewGuildName}
+        onCancelCreate={() => setShowCreate(false)}
+        onCreateGuild={createGuild}
+      />
     </div>
   );
 }

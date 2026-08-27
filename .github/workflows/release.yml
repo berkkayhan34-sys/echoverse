@@ -51,6 +51,20 @@ jobs:
           $escaped = [regex]::Escape($version)
           if ($content -notmatch "version:\s*$escaped") { throw "Windows metadata version mismatch" }
           if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") { throw "Windows metadata filename mismatch" }
+      - name: Verify Windows artifact checksums and blockmap
+        working-directory: project/apps/desktop
+        run: npm run verify:artifacts -- --target win --arch x64
+      - name: Launch packaged Windows smoke test
+        shell: pwsh
+        run: |
+          $installer = "tmp/release/desktop/EchoVerse-Setup-${{ steps.version.outputs.version }}.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP "EchoVerseSmoke"
+          Start-Process $installer -ArgumentList "/S", "/D=$installRoot" -Wait
+          $executable = Join-Path $installRoot "EchoVerse/EchoVerse.exe"
+          if (!(Test-Path $executable)) { throw "Installed executable missing" }
+          $env:ECHO_VERSE_SMOKE_TEST = "1"
+          $process = Start-Process $executable -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Packaged smoke test failed: $($process.ExitCode)" }
       - uses: actions/upload-artifact@v7
         with:
           name: windows-release
@@ -94,6 +108,18 @@ jobs:
           test -f "tmp/release/desktop/EchoVerse-$V-x64.dmg.blockmap"
           test -f "tmp/release/desktop/EchoVerse-$V-x64.zip"
           test -f "tmp/release/desktop/EchoVerse-$V-x64.zip.blockmap"
+      - name: Verify Intel artifact checksums and blockmap
+        working-directory: project/apps/desktop
+        run: npm run verify:artifacts -- --target mac --arch x64
+      - name: Launch packaged Intel smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_point="$RUNNER_TEMP/echoverse-intel-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "tmp/release/desktop/EchoVerse-${{ steps.version.outputs.version }}-x64.dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
+          ECHO_VERSE_SMOKE_TEST=1 "$mount_point/EchoVerse.app/Contents/MacOS/EchoVerse"
       - uses: actions/upload-artifact@v7
         with:
           name: mac-intel-release
@@ -138,6 +164,18 @@ jobs:
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.dmg.blockmap"
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.zip"
           test -f "tmp/release/desktop/EchoVerse-$V-arm64.zip.blockmap"
+      - name: Verify ARM64 artifact checksums and blockmap
+        working-directory: project/apps/desktop
+        run: npm run verify:artifacts -- --target mac --arch arm64
+      - name: Launch packaged Apple Silicon smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount_point="$RUNNER_TEMP/echoverse-arm64-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "tmp/release/desktop/EchoVerse-${{ steps.version.outputs.version }}-arm64.dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point" -quiet || true' EXIT
+          ECHO_VERSE_SMOKE_TEST=1 "$mount_point/EchoVerse.app/Contents/MacOS/EchoVerse"
       - uses: actions/upload-artifact@v7
         with:
           name: mac-arm64-release

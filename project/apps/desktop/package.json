@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
     "build": "vite build",
+    "verify:artifacts": "node electron/artifact-validation.cjs",
     "dist:win": "npm run build && electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never",
     "dist:mac:x64": "npm run build && electron-builder --config electron-builder.config.cjs --mac dmg zip --x64 --publish never",
     "dist:mac:arm64": "npm run build && electron-builder --config electron-builder.config.cjs --mac dmg zip --arm64 --publish never",

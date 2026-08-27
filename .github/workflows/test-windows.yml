@@ -113,6 +113,22 @@ jobs:
           if ($content -notmatch "version:\s*$escaped") { throw "Version mismatch" }
           if ($content -notmatch "EchoVerse-Setup-$escaped\.exe") { throw "Installer filename mismatch" }
 
+      - name: Verify artifact checksums and blockmap
+        working-directory: project/apps/desktop
+        run: npm run verify:artifacts -- --target win --arch x64
+
+      - name: Launch packaged smoke test
+        shell: pwsh
+        run: |
+          $installer = "tmp/release/desktop/EchoVerse-Setup-${{ steps.version.outputs.version }}.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP "EchoVerseSmoke"
+          Start-Process $installer -ArgumentList "/S", "/D=$installRoot" -Wait
+          $executable = Join-Path $installRoot "EchoVerse/EchoVerse.exe"
+          if (!(Test-Path $executable)) { throw "Installed executable missing" }
+          $env:ECHO_VERSE_SMOKE_TEST = "1"
+          $process = Start-Process $executable -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Packaged smoke test failed: $($process.ExitCode)" }
+
       - uses: actions/upload-artifact@v7
         with:
           name: EchoVerse-Windows-Test

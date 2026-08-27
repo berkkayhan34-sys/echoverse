@@ -1,0 +1,237 @@
+/*
+ * SPDX-FileCopyrightText: 2026 EchoVerse contributors
+ * SPDX-License-Identifier: GPL-3.0-only
+ */
+
+import type { FriendUser, IncomingCall, PeerInfo, ScreenSource } from "@echoverse/contracts";
+import { CallAlerts, type CallAlertLabels } from "./calls.js";
+import { CreateGuildDialog, type CreateGuildDialogLabels } from "./guild-dialog.js";
+import { FriendsModal, type FriendsModalLabels } from "./friends.js";
+import { MediaSettingsModal, type MediaSettingsLabels } from "./media-settings.js";
+import { MembersPanel, type MembersPanelLabels } from "./members.js";
+import { ScreenPicker, type ScreenPickerLabels } from "./screen.js";
+
+export type WorkspaceOverlayLabels = {
+  members: MembersPanelLabels;
+  media: MediaSettingsLabels;
+  friends: FriendsModalLabels;
+  calls: CallAlertLabels;
+  screen: ScreenPickerLabels;
+  guild: CreateGuildDialogLabels;
+};
+
+/** Shared workspace overlays; renderers retain state, persistence, and platform effects. */
+export function WorkspaceOverlays({
+  presence,
+  socketId,
+  localSpeaking,
+  muted,
+  speakingPeers,
+  peerMuted,
+  peerVolumes,
+  showAudioSettings,
+  audioInputs,
+  audioOutputs,
+  videoInputs,
+  selectedInput,
+  selectedOutput,
+  selectedCamera,
+  screenQuality,
+  screenFps,
+  lobbySoundsEnabled,
+  effectVolume,
+  showFriends,
+  friends,
+  incomingRequests,
+  friendSearchResults,
+  unreadDm,
+  friendSearch,
+  incomingCall,
+  privateCallPeer,
+  ringing,
+  callTime,
+  showScreenPicker,
+  screenSources,
+  screenPermission,
+  showCreate,
+  newGuildName,
+  labels,
+  onTogglePeerMute,
+  onPeerVolumeChange,
+  onInputChange,
+  onOutputChange,
+  onCameraChange,
+  onScreenQualityChange,
+  onScreenFpsChange,
+  onLobbySoundsChange,
+  onEffectVolumeChange,
+  onCloseAudioSettings,
+  onCloseFriends,
+  onFriendSearchChange,
+  onSearchFriends,
+  onSendFriendRequest,
+  onRespondFriendRequest,
+  onOpenDm,
+  onCallFriend,
+  onRemoveFriend,
+  onAnswerCall,
+  onEndCall,
+  onCloseScreenPicker,
+  onOpenSystemSettings,
+  onSelectScreenSource,
+  onGuildNameChange,
+  onCancelCreate,
+  onCreateGuild
+}: {
+  presence: PeerInfo[];
+  socketId?: string;
+  localSpeaking: boolean;
+  muted: boolean;
+  speakingPeers: Record<string, boolean>;
+  peerMuted: Record<string, boolean>;
+  peerVolumes: Record<string, number>;
+  showAudioSettings: boolean;
+  audioInputs: MediaDeviceInfo[];
+  audioOutputs: MediaDeviceInfo[];
+  videoInputs: MediaDeviceInfo[];
+  selectedInput: string;
+  selectedOutput: string;
+  selectedCamera: string;
+  screenQuality: "720" | "1080";
+  screenFps: 30 | 60;
+  lobbySoundsEnabled: boolean;
+  effectVolume: number;
+  showFriends: boolean;
+  friends: FriendUser[];
+  incomingRequests: FriendUser[];
+  friendSearchResults: FriendUser[];
+  unreadDm: Record<string, number>;
+  friendSearch: string;
+  incomingCall: IncomingCall | null;
+  privateCallPeer: FriendUser | null;
+  ringing: boolean;
+  callTime: string;
+  showScreenPicker: boolean;
+  screenSources: ScreenSource[];
+  screenPermission: string;
+  showCreate: boolean;
+  newGuildName: string;
+  labels: WorkspaceOverlayLabels;
+  onTogglePeerMute: (peerId: string) => void;
+  onPeerVolumeChange: (peerId: string, volume: number) => void;
+  onInputChange: (deviceId: string) => void | Promise<void>;
+  onOutputChange: (deviceId: string) => void | Promise<void>;
+  onCameraChange: (deviceId: string) => void | Promise<void>;
+  onScreenQualityChange: (quality: "720" | "1080") => void;
+  onScreenFpsChange: (fps: 30 | 60) => void;
+  onLobbySoundsChange: (enabled: boolean) => void;
+  onEffectVolumeChange: (volume: number) => void;
+  onCloseAudioSettings: () => void;
+  onCloseFriends: () => void;
+  onFriendSearchChange: (query: string) => void;
+  onSearchFriends: () => void;
+  onSendFriendRequest: (accountId: string) => void;
+  onRespondFriendRequest: (friendshipId: string, accept: boolean) => void;
+  onOpenDm: (friend: FriendUser) => void;
+  onCallFriend: (friend: FriendUser) => void;
+  onRemoveFriend: (accountId: string) => void;
+  onAnswerCall: (accepted: boolean) => void | Promise<void>;
+  onEndCall: () => void | Promise<void>;
+  onCloseScreenPicker: () => void;
+  onOpenSystemSettings: () => void | Promise<void>;
+  onSelectScreenSource: (source: ScreenSource) => void | Promise<void>;
+  onGuildNameChange: (name: string) => void;
+  onCancelCreate: () => void;
+  onCreateGuild: () => void | Promise<void>;
+}) {
+  return (
+    <>
+      <MembersPanel
+        presence={presence}
+        socketId={socketId}
+        localSpeaking={localSpeaking}
+        muted={muted}
+        speakingPeers={speakingPeers}
+        peerMuted={peerMuted}
+        peerVolumes={peerVolumes}
+        labels={labels.members}
+        onTogglePeerMute={onTogglePeerMute}
+        onPeerVolumeChange={onPeerVolumeChange}
+      />
+
+      {showAudioSettings && (
+        <MediaSettingsModal
+          audioInputs={audioInputs}
+          audioOutputs={audioOutputs}
+          videoInputs={videoInputs}
+          selectedInput={selectedInput}
+          selectedOutput={selectedOutput}
+          selectedCamera={selectedCamera}
+          screenQuality={screenQuality}
+          screenFps={screenFps}
+          lobbySoundsEnabled={lobbySoundsEnabled}
+          effectVolume={effectVolume}
+          labels={labels.media}
+          onInputChange={onInputChange}
+          onOutputChange={onOutputChange}
+          onCameraChange={onCameraChange}
+          onScreenQualityChange={onScreenQualityChange}
+          onScreenFpsChange={onScreenFpsChange}
+          onLobbySoundsChange={onLobbySoundsChange}
+          onEffectVolumeChange={onEffectVolumeChange}
+          onClose={onCloseAudioSettings}
+        />
+      )}
+
+      {showFriends && (
+        <FriendsModal
+          friends={friends}
+          incomingRequests={incomingRequests}
+          friendSearchResults={friendSearchResults}
+          unreadDm={unreadDm}
+          searchQuery={friendSearch}
+          labels={labels.friends}
+          onClose={onCloseFriends}
+          onSearchQueryChange={onFriendSearchChange}
+          onSearch={onSearchFriends}
+          onSendFriendRequest={onSendFriendRequest}
+          onRespondFriendRequest={onRespondFriendRequest}
+          onOpenDm={onOpenDm}
+          onCallFriend={onCallFriend}
+          onRemoveFriend={onRemoveFriend}
+        />
+      )}
+
+      <CallAlerts
+        incomingCall={incomingCall}
+        privateCallPeer={privateCallPeer}
+        ringing={ringing}
+        callTime={callTime}
+        labels={labels.calls}
+        onAnswer={onAnswerCall}
+        onEndCall={onEndCall}
+      />
+
+      {showScreenPicker && (
+        <ScreenPicker
+          sources={screenSources}
+          permission={screenPermission}
+          labels={labels.screen}
+          onClose={onCloseScreenPicker}
+          onOpenSystemSettings={onOpenSystemSettings}
+          onSelectSource={onSelectScreenSource}
+        />
+      )}
+
+      {showCreate && (
+        <CreateGuildDialog
+          name={newGuildName}
+          labels={labels.guild}
+          onNameChange={onGuildNameChange}
+          onCancel={onCancelCreate}
+          onCreate={onCreateGuild}
+        />
+      )}
+    </>
+  );
+}
