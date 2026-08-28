@@ -1473,7 +1473,7 @@ export default function App() {
   }
 
   async function authSubmit() {
-    if (!socket || !connected || authBusy) return;
+    if (!serverUrl || authBusy) return;
 
     const email = authEmail.trim();
     const password = authPassword;
@@ -1517,8 +1517,8 @@ export default function App() {
       setAccount(result.account);
       setUsername(result.account.username);
       setIdentified(true);
-      socket.disconnect();
-      socket.connect();
+      socket?.disconnect();
+      socket?.connect();
       setAuthPassword("");
       setError("");
 

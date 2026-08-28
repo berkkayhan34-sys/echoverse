@@ -34,12 +34,14 @@ PATH is loaded.
 Desktop runtime settings are read from `project/apps/desktop/config.json`. Keep a local
 server URL and placeholder integration identifiers there; do not put secrets in
 that file or in examples. `project/apps/server/render.yaml` is the authoritative Render
-manifest; `project/render.yaml` is a compatibility mirror for service
-discovery only. Keep shared service identity and command fields synchronized,
-but keep environment configuration authoritative in `project/apps/server/render.yaml`;
-do not maintain two independent deployment definitions. Changes to either
-manifest must run `make roadmap-check`. Retiring the root mirror or changing
-this policy requires an ADR with a rollback path.
+manifest; `project/render.yaml` is a compatibility/discovery mirror used by
+Render installations that only inspect the project-level manifest. Keep service
+identity, commands, and non-secret browser deployment settings synchronized in
+both files; keep secrets (including generated credentials) authoritative in
+`project/apps/server/render.yaml` and never copy them into the mirror. Do not
+maintain two independent deployment definitions. Changes to either manifest
+must run `make roadmap-check`. Retiring the root mirror or changing this policy
+requires an ADR with a rollback path.
 
 For a local server, use `http://localhost:3001` (or the port configured by the
 server) and start the server before starting web/desktop. For hosted use, use
