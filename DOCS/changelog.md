@@ -5,6 +5,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.8.3
+
+- Repair friend-list synchronization and make incoming/outgoing requests
+  visible across web and desktop surfaces.
+- Generate an invite when a private server is created and present a shared,
+  copyable invite panel instead of a browser alert.
+- Keep the responsive web/mobile shell aligned with the updated shared UI.
+
 ## 1.8.2
 
 - Standardize web, desktop, and responsive mobile navigation on the shared
