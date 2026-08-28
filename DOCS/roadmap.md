@@ -3,522 +3,110 @@ SPDX-FileCopyrightText: 2026 EchoVerse contributors
 SPDX-License-Identifier: GPL-3.0-only
 -->
 
-# Stationary implementation roadmap
+# Current audit and deferred-work roadmap
 
-This is the only authoritative implementation order for EchoVerse. Ordinary
-children are stationary and must be completed in the order shown. A temporary
-audit child may block the ordinary sequence, but it must be removed only after
-its evidence is complete and moved to the historical audit record.
+This is the authoritative tracker for the current EchoVerse baseline. The
+completed v1.8 through v2.1 baseline children are archived in the
+[completed-baseline reference](historic/roadmap/completed-baseline.md), with
+their original evidence records retained under [`evidence/`](evidence/).
 
-Every child has a stable ID, one checkbox, machine-readable metadata, and an
-evidence link or `null`. Allowed statuses are `incomplete`, `in_progress`, and
-`complete`; they must match the checkbox: `[ ]`, `[-]`, and `[x]` respectively.
-The first incomplete or in-progress child is the only active child. Before
-working on it, change its status to `in_progress` and its checkbox to `[-]`.
-Do not edit a later child until the immediately preceding child is explicitly
-complete with implementation, applicable tests, security review,
-documentation, and evidence.
+The purpose of this pass is to finish the current audit record, not to declare
+the product ready for public release. The owner has explicitly deferred the
+remaining release-readiness work until the project is deemed complete. The
+final child below is therefore a reference register, not active implementation
+work. Future feature or change requests will be added as separately ordered
+children after that owner decision; they must not be silently folded into this
+historical baseline.
 
-Every implementation child inherits the applicable checks in
-[testing-policy.md](testing-policy.md). Public events, persisted data,
-authentication, authorization, deployment, compatibility, and release policy
-changes require an ADR before implementation. Evidence records describe what
-was verified at a revision; they do not replace the status in this file.
+Every current child has a stable ID, one checkbox, machine-readable metadata,
+and an evidence link or `null`. Allowed status/checkbox pairs are
+`incomplete`/`[ ]`, `in_progress`/`[-]`, `deferred`/`[ ]`, and
+`complete`/`[x]`. A deferred child is intentionally not active and is excluded
+from the first-active-child rule. Before working on
+an incomplete child, change its status to `in_progress` and its checkbox to
+`[-]`. A complete child requires implementation, applicable tests, security
+review, documentation, and evidence. A deferred child must identify what is
+deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
 The shipped baseline is product version `1.7.5`, with protocol major version 2.
-The workspace cutover, canonical versioning, GPL-3.0-only metadata, dependency
-audit, baseline build/typecheck/Vitest/Playwright smoke checks, and the Render
-deployment are complete. They do not close the incomplete children below.
+The completed documentation, quality, runtime, localization, modular-boundary,
+installer/update, observability, and reliability work is a historical
+reference, not an open implementation queue. Local SQLite validation and CI
+PostgreSQL validation remain the approved database split. Web acceptance is
+complete for the current baseline; desktop development-runtime verification,
+release signing, and public-release readiness remain explicitly deferred.
 
-## v1.8.x — documentation and repository readiness
+## Audit closure
 
-### documentation-and-roadmap-governance
+### audit-closure-and-documentation-pass
 
 ```yaml
-id: DOC-001
-type: documentation_foundation
+id: AUDIT-002
+type: documentation_audit
 status: complete
-evidence: evidence/DOC-001.md
+evidence: evidence/AUDIT-002.md
 blocks_roadmap: true
 ```
 
-[x] Establish the stationary child/evidence convention for this roadmap,
-create the documented `DOCS/evidence/` and `DOCS/audits/` surfaces, add an
-evidence template and a roadmap/status validator, and make `DOCS/README.md`
-the complete navigation index. Keep the first-active-child rule, checkbox and
-metadata consistency, and historical-audit lifecycle machine-checkable.
+[x] Reconcile the active roadmap with the completed baseline, archive completed
+children without losing their evidence, create one final deferred-work
+reference for owner-approved follow-up, reconcile the canonical navigation and
+decision records, and verify the repository with the required documentation,
+quality, build, security, and deployment-manifest checks.
 
-### architecture-and-repository-truth
+## Final deferred work reference
 
-```yaml
-id: DOC-002
-type: documentation_and_architecture
-status: complete
-evidence: evidence/DOC-002.md
-```
-
-[x] Reconcile the architecture map with the actual repository: document the
-feature ownership/public entrypoint/test/README map, account for the empty
-legacy `src/` path, repair the old `desktop/` and `server/` paths in
-`DOCS/release-build-tr.md`, and resolve the dual Render manifest policy. If
-`project/render.yaml` is retired, record the decision and recovery path in an ADR;
-otherwise document and validate one authoritative mirror process.
-
-### development-testing-and-release-docs
+### post-completion-deferred-work
 
 ```yaml
-id: DOC-003
-type: documentation_and_tooling_policy
-status: complete
-evidence: evidence/DOC-003.md
-```
-
-[x] Align development, testing, release, Makefile, and workflow documentation
-with the root npm workspace and Node.js 22 LTS policy. Document the required
-lint/format, SPDX/REUSE, secret-scan, coverage, E2E, integration, artifact,
-checksum, installer-launch, and rollback gates. Document that local release
-targets never publish, that unsigned artifacts are not production-ready, and
-that release scripts cannot publish accidentally.
-
-### security-threat-data-lifecycle
-
-```yaml
-id: DOC-004
-type: security_and_privacy_policy
-status: complete
-evidence: evidence/DOC-004.md
-```
-
-[x] Add the missing threat-model and data-lifecycle detail: trust-boundary
-owners, secret and token handling, session lifecycle, upload/media limits,
-rate-limit and timeout expectations, safe-error rules, log redaction,
-retention/access, user deletion, backup/export deletion, and deletion evidence.
-Link each required control to its owning test and release evidence.
-
-### governance-and-public-release-runbook
-
-```yaml
-id: DOC-005
-type: governance_and_operations
-status: complete
-evidence: evidence/DOC-005.md
-```
-
-[x] Name the operational owner, incident escalation path, release approvers,
-and evidence-retention owner. Write the pre-public-release runbook for
-CODEOWNERS, required reviews, branch protection, security reporting, release
-approval, rollback, and incident response. Keep the solo-maintainer exception
-active until this gate is deliberately activated.
-
-### documentation-foundation-verification
-
-```yaml
-id: DOC-006
-type: verification_audit
-status: complete
-evidence: evidence/DOC-006.md
-```
-
-[x] Run the documentation/repository audit over DOC-001 through DOC-005,
-including links, metadata, SPDX/REUSE declarations, ignored paths, stale
-references, ADR completeness, and the complete diff. Record reproducible
-evidence before any product-runtime code is changed.
-
-## v1.9.x — validation and quality foundation
-
-### canonical-validation-tooling
-
-```yaml
-id: QUAL-001
-type: tooling_and_ci
-status: complete
-evidence: evidence/QUAL-001.md
-```
-
-[x] Add deterministic root-workspace install checks, Node 22 enforcement in all
-local and CI/release jobs, formatting and linting, SPDX/REUSE validation,
-secret scanning, dependency scanning, coverage reporting, and machine-readable
-failure output. Replace app-local installation drift with the documented
-canonical lockfile workflow.
-
-### contract-and-boundary-test-foundation
-
-```yaml
-id: QUAL-002
-type: automated_testing
-status: complete
-evidence: evidence/QUAL-002.md
-```
-
-[x] Expand Vitest contracts and boundary fixtures for event compatibility,
-version negotiation, malformed and oversized payloads, pagination, attachment
-metadata, signaling messages, safe error shapes, and cross-client web/desktop
-compatibility. Add deterministic unit coverage for validators, reducers,
-selectors, adapters, and configuration failures.
-
-### integration-security-and-evidence-gates
-
-```yaml
-id: QUAL-003
-type: ci_quality_gate
-status: complete
-evidence: evidence/QUAL-003.md
-```
-
-[x] Add server HTTP/Socket.IO integration, authorization/IDOR, rate-limit,
-timeout, origin/security-header, secret-negative, and database test jobs. Run
-the Playwright E2E suite in CI, publish concise command/runtime/result/artifact
-evidence, and make every release-blocking failure visible rather than skipped.
-
-## v2.0.x — runtime hardening and modular-monolith completion
-
-### session-and-transport-security
-
-```yaml
-id: CODE-001
-type: runtime_security
-status: complete
-evidence: evidence/CODE-001.md
-```
-
-[x] Implement and test the documented hybrid session model: short-lived
-`Secure`/`HttpOnly` web cookies, desktop OS secure storage, refresh rotation,
-revocation, expiry, logout, origin checks, CORS/trusted-proxy/TLS settings,
-security headers, and fail-closed production secret validation.
-
-### input-limits-and-safe-failure-boundaries
-
-```yaml
-id: CODE-002
-type: runtime_security
-status: complete
-evidence: evidence/CODE-002.md
-```
-
-[x] Enforce boundary schemas, size/type limits, rate limits, timeouts, bounded
-resource use, and privacy-safe error responses for every HTTP route, Socket.IO
-event, upload, OAuth callback, media/signaling operation, and updater input.
-Prove that stack traces, credentials, tokens, message bodies, and other users'
-data never cross the response or log boundary.
-
-### persistence-adapters-and-migrations
-
-```yaml
-id: CODE-003
-type: persistence_and_compatibility
-status: complete
-evidence: evidence/CODE-003.md
-```
-
-[x] Implement the production SQLite adapter, complete PostgreSQL integration
-coverage, and add migration, schema, backup/restore, rollback, and
-SQLite/PostgreSQL compatibility tests. Keep hosted PostgreSQL migrations and
-the local adapter behavior explicitly aligned.
-
-### complete-application-localization
-
-```yaml
-id: CODE-004A-LOCALIZATION
-type: localization_foundation
-status: complete
-evidence: evidence/CODE-004A-LOCALIZATION.md
-```
-
-[x] Inventory every application-owned string, including visible UI text,
-validation and error messages, notifications, empty/loading states, server
-responses, logs, and other runtime text users may not directly see. Move the
-complete inventory into key/value locale catalogs with no hard-coded natural
-language strings left in application code. Ship English (`en`) and Turkish
-(`tr`) first, with explicit locale selection, deterministic fallback, and a
-documented process for adding later locales. Protocol/event names, SQL/CSS
-identifiers, URLs, and third-party literals must be explicitly classified as
-non-localizable rather than silently omitted.
-
-The localization boundary must be Unicode-first and language-independent:
-UTF-8 must be preserved end to end across input, validation, Socket.IO
-payloads, persistence, logs, search, sorting, export/import, and updater
-metadata. Code must not assume ASCII or one-code-point characters; grapheme
-clusters, combining marks, emoji, CJK text, locale-aware case conversion,
-plural/date/number formatting, and font fallback must be handled explicitly.
-The catalogs and UI layout must leave room for future locale metadata such as
-writing direction and longer translations, even though only `en` and `tr` ship
-initially.
-
-The child is incomplete until automated tests prove that both catalogs have
-the same keys, interpolation placeholders and required values match, missing
-translations follow the documented fallback, unknown keys fail safely, server
-and clients resolve the same catalog, and representative web/desktop flows
-work in both English and Turkish. Tests must also cover non-ASCII, combining,
-emoji, and CJK fixtures through the complete client/server/database/search
-path, plus locale-aware formatting and future-direction-safe layout behavior.
-Record static string-inventory and browser acceptance evidence.
-
-Current status recorded on 2026-08-27:
-
-- Server-owned response and user-facing diagnostic strings in the server
-  transport and feature boundaries are catalog-backed in the working tree;
-  commit-level evidence remains pending until the current work is published.
-- The static source inventory and catalog guard now pass for the application
-  source tree, including JSX text, user-facing attributes, DOM text assignment,
-  CSS generated text, catalog key parity, and interpolation parity.
-- The current Playwright and integrated-browser acceptance covers the web shell
-  in English, Turkish, and unsupported-locale English fallback, and the static
-  string-inventory guard passes.
-- Catalog, client, server, and SQLite Unicode fixtures pass locally, including
-  combining marks, emoji, CJK text, grapheme-safe username validation and
-  client/server username search. Export/import coverage is not an existing
-  runtime boundary and remains later roadmap work, as approved by the owner.
-- The experimental Node SQLite adapter was replaced with the approved native
-  `better-sqlite3` adapter; the prior Node experimental warning is no longer
-  emitted by the SQLite tests. Native dependency installation and Node.js 22
-  LTS remain documented prerequisites.
-- Desktop Electron browser-flow verification was intentionally deferred by the
-  owner to the late roadmap. Release signing remains later roadmap work. The
-  local Electron runner could not launch its helper because macOS reported
-  `sandbox_extension_issue_file ... (Operation not permitted)`; this is a
-  verification footnote, not a blocker for the web-first foundation.
-- `.DS_Store` files are intentionally ignored and out of scope; no cleanup or
-  validation action is required for them.
-- Local REUSE and Gitleaks gates are installed and pass. PostgreSQL integration
-  remains intentionally CI-only by owner decision; SQLite is the local database
-  validation target and PostgreSQL is not a local blocker.
-
-> Footnote: desktop runtime verification was not performed. The owner approved
-> deferring it to the late roadmap; web verification is sufficient for closing
-> this localization foundation child.
-
-### server-feature-extraction
-
-```yaml
-id: CODE-004
-type: architecture_refactor
-status: complete
-evidence: evidence/CODE-004.md
-```
-
-[x] Extract identity/accounts, guilds/membership/presence, chat/history,
-friends/DM, calls/signaling, Spotify, persistence, and transport composition
-into cohesive feature modules. Move authorization and input schemas into the
-owning feature boundary, preserve one server process, remove obsolete paths,
-and enforce dependency direction with focused tests.
-
-### authorization-completeness
-
-```yaml
-id: CODE-005
-type: runtime_authorization
-status: complete
-evidence: evidence/CODE-005.md
-```
-
-[x] Enforce server-side authorization for every protected route and event,
-including guild membership, direct messages, attachments, presence, calls,
-signaling, and integrations. Add missing/expired/wrong-user/cross-membership
-negative tests and prove that authorization cannot be bypassed through an
-alternate transport or identifier.
-
-### shared-client-core-and-boundaries
-
-```yaml
-id: CODE-006
-type: client_architecture
-status: complete
-evidence: evidence/CODE-006.md
-```
-
-[x] Extract shared auth/session/socket/feature state into `project/packages/client-core`
-and browser-safe UI primitives into `project/packages/shared-ui`. Split the large web
-and desktop renderer files by feature, keep Electron-only behavior behind the
-narrow preload bridge, and add tests for permissions, reconnect, media controls,
-and renderer/preload isolation.
-
-Current implementation slice recorded on 2026-08-28: `client-core` now owns
-contracts-backed locale and username persistence, auth request construction,
-versioned Socket.IO handshake construction, session/token adapters, and pure
-guild-chat/DM/presence/typing/unread state transitions plus fail-closed audio
-and bounded screen-capture helpers. Both renderers consume these boundaries,
-and the shared `ActionButton`, catalog-driven `LocaleSelect`, `GuildPicker`,
-`FriendsModal`, `ScreenPicker`, `CallAlerts`, `WorkspaceSidebar`,
-`ServerTopbar`, `CreateGuildDialog`, `MediaSettingsModal`, `MembersPanel`,
-`VideoStage`, `VoiceControls`, `PrivateCallStage`, `ChannelMessageList`,
-`ChatComposer`, `DirectMessageThread`, `DirectMessageHeader`,
-`DirectMessageComposer`, and the composed `DirectMessageView` are used by both
-renderers. The composed `ServerView` now similarly owns the shared server
-topbar, video, guild chat, composer, and voice-control composition. Shared UI
-implementation is split by responsibility behind the public barrel, including
-primitives, auth, guild chat, direct messages, and server/direct screen
-composition. `WorkspaceOverlays` now similarly owns the shared members, media
-settings, friends, call, screen-picker, and guild-creation overlay composition.
-Reconnect lobby transitions
-are calculated by a shared pure
-helper and covered by client-core tests. The Electron
-preload API is now built by a separately tested fixed-channel bridge factory;
-the renderer cannot receive the raw IPC object. The remaining renderer feature
-orchestration is the remaining incomplete slice: web and desktop still keep
-large, platform-divergent socket/auth/WebRTC/media workflows in their renderer
-entrypoints. The shared screen composition and overlay extraction is complete,
-and 86 automated tests plus web E2E cover the current boundary. The runtime
-ownership decision is resolved as per-renderer feature modules with shared
-pure helpers in [ADR-0012](decisions/0012-renderer-feature-module-ownership.md).
-Renderer friends/DM and audio-device feature modules are now explicit in both
-renderers, with focused tests and web visual evidence in
-[`DOCS/evidence/CODE-006.md`](evidence/CODE-006.md). Desktop runtime launch
-verification remains deferred by owner decision.
-
-### webrtc-and-media-regressions
-
-```yaml
-id: CODE-007
-type: realtime_media_testing
-status: complete
-evidence: evidence/CODE-007.md
-```
-
-[x] Add repeatable WebRTC and signaling regression coverage for join/leave,
-call connect/end, reconnect, microphone/deafen, screen share, timeout,
-malformed messages, and cleanup after failure. Include attachment/media type,
-size, timeout, and authorization cases.
-
-### installer-and-update-smoke
-
-```yaml
-id: CODE-008
-type: release_validation
-status: complete
-evidence: evidence/CODE-008.md
-```
-
-[x] Add Windows and macOS Intel/Apple Silicon installer launch smoke tests,
-version identity checks, updater manifest and checksum verification, startup
-failure recovery, and update rollback checks. Record platform-specific
-limitations and do not mark unsigned artifacts production-ready.
-
-### v2-runtime-verification-audit
-
-```yaml
-id: CODE-009
-type: verification_audit
-status: complete
-evidence: evidence/CODE-009.md
-blocks_roadmap: true
-```
-
-[x] Audit CODE-001 through CODE-008 and CODE-004A-LOCALIZATION against architecture, security, testing,
-browser acceptance, migration compatibility, release artifacts, and rollback
-evidence. The v2.0 line cannot close until all release blockers are green and
-the complete diff contains no stale runtime, generated, or duplicate paths.
-
-## v2.1.x — operational and release readiness
-
-### privacy-safe-observability
-
-```yaml
-id: OPS-001
-type: operations
-status: complete
-evidence: evidence/OPS-001.md
-```
-
-[x] Implement structured privacy-safe logs, correlation IDs, basic metrics,
-redaction tests, retention/access controls, and documented production
-diagnostics without passwords, tokens, cookies, message bodies, media, or
-unnecessary personal data.
-
-### performance-and-failure-recovery
-
-```yaml
-id: OPS-002
-type: reliability
-status: complete
-evidence: evidence/OPS-002.md
-```
-
-[x] Define and test performance/resource budgets, connection and filesystem
-cleanup, bounded queues, restart behavior, retry/idempotency rules, degraded
-database and network states, and user-visible recovery paths.
-
-### signed-publisher-verified-artifacts
-
-```yaml
-id: OPS-003
-type: release_security
-status: incomplete
-evidence: evidence/OPS-003.md
-blockers: external signing identities, certificates, provider selection, and CI secret configuration are not available
-```
-
-[ ] Select and implement Windows publisher signing plus Apple code signing and
-notarization. Verify publisher identity and update artifacts in CI, retain
-checksums and provenance, and document key rotation and rollback. Until this
-child is complete, release notes must identify artifacts as unsigned. Blocked
-until the owner supplies the signing-provider/identity decision and configures
-the required protected CI credentials.
-
-### support-incident-and-release-evidence
-
-```yaml
-id: OPS-004
-type: operational_readiness
-status: incomplete
+id: DEFER-001
+type: deferred_work_reference
+status: deferred
 evidence: null
+blocks_roadmap: false
+deferred_until: owner declares the current project baseline complete
 ```
 
-[ ] Publish support, incident response, release evidence, artifact retention,
-known-issues, and rollback procedures. Record the exact shipped version,
-commit/tag, checksums, workflow results, signing status, and unresolved risks
-for every release.
+[ ] After the owner declares the current project baseline complete, schedule
+the following as explicit, independently evidenced roadmap work:
 
-### public-release-readiness-gate
+- `OPS-003`: select and implement Windows publisher signing plus Apple code
+  signing/notarization; verify publisher identity and updater artifacts in CI;
+  retain checksums and provenance; document key rotation and rollback. The
+  required signing identities, provider decision, and protected CI credentials
+  are not currently available.
+- `OPS-004`: publish support, incident-response, release-evidence,
+  artifact-retention, known-issues, and rollback procedures for each shipped
+  version.
+- `READY-001`: run the final public-release readiness gate only after the
+  preceding deferred release work is complete, governance is activated, and
+  the owner approves the result.
+- Complete desktop Electron development-runtime and interactive acceptance
+  that the owner intentionally deferred while web acceptance was sufficient
+  for the baseline.
+- Add export/import behavior and its hostile-input, compatibility, deletion,
+  and recovery evidence if that product boundary is approved.
+- Revisit any new audit findings, features, or requested changes introduced
+  after this baseline. Each must be added as a new confirmed child with its own
+  requirements, tests, security review, documentation, and release impact;
+  this reference does not pre-approve future scope.
 
-```yaml
-id: READY-001
-type: final_readiness_gate
-status: incomplete
-evidence: null
-blocks_roadmap: true
-```
+Until this child is activated by the owner, unsigned desktop artifacts remain
+validation-only and must not be called production-ready. No release,
+deployment, signing, or feature implementation is implied by this reference.
 
-[ ] Confirm that every preceding child is complete, all release blockers are
-closed, governance is active, CI and browser evidence are reproducible, the
-database and updater rollback paths are tested, and the public-release
-checklist is approved. No new product feature or visual-polish work may start
-before this gate passes.
+## Roadmap operation after the baseline
 
-## Future product work — starts only after READY-001
-
-### new-product-features
-
-```yaml
-id: FEAT-001
-type: product_feature
-status: incomplete
-evidence: null
-```
-
-[ ] Add new product capabilities only after the readiness gate, each as a
-separately ordered child with an ADR where required, contract changes, focused
-security/integration/E2E tests, browser evidence, release notes, and rollback
-plan.
-
-### interface-and-visual-polish
-
-```yaml
-id: UI-001
-type: visual_polish
-status: incomplete
-evidence: null
-```
-
-[ ] Perform UI and interaction redesign only after READY-001 and the relevant
-feature contract is complete. Each visual change must preserve the shared
-client boundaries, use Codex Browser visible-flow acceptance where applicable,
-and include a deterministic regression test for repeatable behavior.
+The next authorized change should be a specific feature addition or behavior
+change. It must be recorded as a new roadmap child or equivalent owner-approved
+change record before implementation, preserving the repository’s requirement,
+acceptance, security, validation, documentation, and release gates.
 
 ## Release/version rule
 
 The root [`VERSION`](../VERSION) file remains the canonical product version.
-Every release must update package mirrors, roadmap status, changelog/release
-notes, checksums, and workflow evidence together, then publish only the
+Every release must update package mirrors, changelog/release notes, roadmap
+status, checksums, and workflow evidence together, then publish only the
 matching `v<version>` tag as described in [release.md](release.md).

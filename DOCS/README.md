@@ -29,6 +29,7 @@ component references, and operating procedures belong here.
 - [Component references](components/)
 - [Active audits](audits/README.md)
 - [Historical audit records](historic/audits/README.md)
+- [Completed roadmap baseline reference](historic/roadmap/completed-baseline.md)
 - [Contribution guide](../.github/CONTRIBUTING.md)
 - [Security reporting](../.github/SECURITY.md)
 - [Changelog](changelog.md)

@@ -32,7 +32,9 @@ approval are defined in the [governance and public-release runbook](../governanc
 The current owner identity comes from CODEOWNERS; any later delegation must be
 recorded with scope, dates, and handoff evidence.
 
-No unresolved owner decision currently blocks the v2.0 roadmap.
+No unresolved owner decision blocks the current audit-closure documentation
+pass. The deferred release-signing decision below remains intentionally outside
+the current baseline and does not authorize public release.
 
 ### OPS-003 platform signing and notarization
 

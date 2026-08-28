@@ -67,8 +67,9 @@ function validateRoadmap() {
   const roadmap = read("DOCS/roadmap.md");
   const headingMatches = [...roadmap.matchAll(/^### ([^\n]+)$/gm)];
   const children = [];
-  const statuses = new Set(["incomplete", "in_progress", "complete"]);
+  const statuses = new Set(["incomplete", "in_progress", "deferred", "complete"]);
   const checkboxStatuses = { " ": "incomplete", "-": "in_progress", x: "complete" };
+  let deferredSeen = false;
 
   if (headingMatches.length === 0) errors.push("DOCS/roadmap.md: no roadmap children found");
 
@@ -99,7 +100,11 @@ function validateRoadmap() {
       errors.push(`${label}: duplicate id ${metadata.id}`);
     }
     if (!statuses.has(metadata.status)) errors.push(`${label}: invalid status ${metadata.status}`);
-    if (metadata.status !== checkboxStatus) {
+    const checkboxMatchesStatus =
+      metadata.status === "deferred"
+        ? checkboxStatus === "incomplete"
+        : metadata.status === checkboxStatus;
+    if (!checkboxMatchesStatus) {
       errors.push(`${label}: checkbox implies ${checkboxStatus}, metadata says ${metadata.status}`);
     }
     if (metadata.status === "complete") {
@@ -107,10 +112,17 @@ function validateRoadmap() {
     } else if (metadata.evidence && metadata.evidence !== "null") {
       assertPathInsideDocs(metadata.evidence, `${label} ${metadata.id}`);
     }
+    if (metadata.status === "deferred") {
+      deferredSeen = true;
+    } else if (deferredSeen) {
+      errors.push(`${label}: deferred children must be the final roadmap children`);
+    }
     children.push({ id: metadata.id, status: metadata.status });
   }
 
-  const activeIndex = children.findIndex((child) => child.status !== "complete");
+  const activeIndex = children.findIndex(
+    (child) => child.status === "incomplete" || child.status === "in_progress"
+  );
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
     if (child.status === "in_progress" && index !== activeIndex) {

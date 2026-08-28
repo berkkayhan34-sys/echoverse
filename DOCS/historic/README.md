@@ -15,3 +15,8 @@ belgeyi güncelleyin ve değişikliğin nedenini roadmap/ADR içinde kaydedin.
 Roadmap audit records are archived separately under
 [`historic/audits/`](audits/README.md). Do not place current audit work in this
 immutable history directory.
+
+Completed implementation-roadmap children are indexed under
+[`historic/roadmap/`](roadmap/completed-baseline.md). Their original evidence
+records remain under `DOCS/evidence/`; the index is historical reference, not a
+second active tracker.
