@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: AUDIT-002
 status: complete
 date: 2026-08-28
-revision: working tree at documentation-pass completion
+revision: d9656e0
 ```
 
 ## Scope
