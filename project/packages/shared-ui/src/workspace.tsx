@@ -45,7 +45,6 @@ export type WorkspaceSidebarLabels = {
 type MobileWorkspaceNavigationProps = {
   guilds: Guild[];
   activeGuild: Guild | null;
-  activeDmFriend?: FriendUser | null;
   onSelectGuild: (guild: Guild) => void;
   onJoinVoice?: (guild: Guild) => void;
   lobbyName?: string;
@@ -61,7 +60,6 @@ type MobileWorkspaceNavigationProps = {
 function MobileWorkspaceNavigation({
   guilds,
   activeGuild,
-  activeDmFriend,
   onSelectGuild,
   onJoinVoice,
   lobbyName,
@@ -575,7 +573,6 @@ export function WorkspaceSidebar({
       <MobileWorkspaceNavigation
         guilds={guilds}
         activeGuild={activeGuild}
-        activeDmFriend={activeDmFriend}
         onSelectGuild={onSelectGuild}
         onJoinVoice={onJoinVoice}
         lobbyName={lobbyName}
