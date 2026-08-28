@@ -15,7 +15,11 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
+      # Gitleaks compares the pushed revision with the previous revision. Keep
+      # the complete history available so multi-commit pushes are scannable.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -48,7 +52,9 @@ jobs:
           path: |
             tmp/coverage/
             tmp/test-results/
-          if-no-files-found: error
+          # A preflight failure can happen before test artifacts exist; the
+          # failed gate remains visible without masking its original error.
+          if-no-files-found: ignore
 
   database:
     name: PostgreSQL migration and relationship tests
