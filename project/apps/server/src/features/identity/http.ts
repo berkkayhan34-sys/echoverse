@@ -38,6 +38,7 @@ export type IdentityHttpDependencies = {
   accountByEmail(email: string): Promise<Account | null>;
   accountById(id: string): Promise<Account | null>;
   createAccount(email: string, username: string, passwordHash: string): Promise<Account>;
+  ensureMainGuildMembership(account: Account): Promise<void>;
   usernameExists(username: string): Promise<boolean>;
   publicAccount(account: Account): Record<string, unknown>;
   httpError(req: express.Request, key: string, values?: Record<string, string | number>): string;
@@ -131,6 +132,7 @@ export function registerIdentityHttpRoutes({
   accountByEmail,
   accountById,
   createAccount,
+  ensureMainGuildMembership,
   usernameExists,
   publicAccount,
   httpError
@@ -165,6 +167,7 @@ export function registerIdentityHttpRoutes({
         username,
         await bcrypt.hash(parsed.data.password, 12)
       );
+      await ensureMainGuildMembership(account);
       return clientAuthResponse(
         req,
         res,
@@ -192,6 +195,8 @@ export function registerIdentityHttpRoutes({
         res.status(401).json({ ok: false, error: httpError(req, "server.invalidCredentials") });
         return;
       }
+
+      await ensureMainGuildMembership(account);
 
       return clientAuthResponse(
         req,
@@ -224,6 +229,8 @@ export function registerIdentityHttpRoutes({
       return;
     }
 
+    await ensureMainGuildMembership(account);
+
     return clientAuthResponse(req, res, config, publicAccount, account, tokens);
   });
 
@@ -234,6 +241,7 @@ export function registerIdentityHttpRoutes({
       res.status(401).json({ ok: false, error: httpError(req, "server.sessionRequired") });
       return;
     }
+    await ensureMainGuildMembership(account);
     res.json({ ok: true, account: publicAccount(account) });
   });
 

@@ -31,6 +31,15 @@ if a workflow uses a hardcoded product version.
    GitHub Releases plus checksums; because platform signing is not yet selected,
    unsigned artifacts must not be called production-ready.
 
+Packaged desktop startup checks the matching GitHub Release before creating the
+tray or application window. If an update is available, it downloads and
+invokes the silent installer automatically. The install command reuses the
+existing installation directory and the updater's administrative-rights
+metadata, so the established per-user or per-machine scope is retained.
+Release validation must cover this no-UI path on every supported desktop
+platform; a failed or timed-out check must leave the known-good version
+launchable.
+
 ## Automation contract
 
 GitHub Actions reads `VERSION`, validates package mirrors, builds each target,

@@ -4,6 +4,7 @@
  */
 
 import { createRequire } from "node:module";
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -11,7 +12,8 @@ const {
   safeUpdatePercent,
   safeUpdateVersion,
   safeUpdaterFailure,
-  updaterFailureState
+  updaterFailureState,
+  waitForUpdateDownloaded
 } = require("./updater-validation.cjs");
 
 describe("updater boundary validation", () => {
@@ -47,5 +49,26 @@ describe("updater boundary validation", () => {
       error: "Update check failed."
     });
     expect(updaterFailureState("1.7.5\nmalicious", "en").version).toBeNull();
+  });
+
+  it("waits for a verified updater download and cleans up listeners", async () => {
+    const emitter = new EventEmitter();
+    const download = waitForUpdateDownloaded(emitter, 100);
+    const info = { version: "1.8.1", downloadedFile: "update.exe" };
+    emitter.emit("update-downloaded", info);
+
+    await expect(download).resolves.toEqual(info);
+    expect(emitter.listenerCount("update-downloaded")).toBe(0);
+    expect(emitter.listenerCount("error")).toBe(0);
+  });
+
+  it("fails closed when the updater download errors or times out", async () => {
+    const failed = new EventEmitter();
+    const failedDownload = waitForUpdateDownloaded(failed, 100);
+    failed.emit("error", new Error("network failure"));
+    await expect(failedDownload).rejects.toThrow("network failure");
+
+    const timedOut = new EventEmitter();
+    await expect(waitForUpdateDownloaded(timedOut, 1)).rejects.toThrow("timed out");
   });
 });

@@ -13,6 +13,16 @@ doğrulanmış değişiklikleri özetler; planlanan işler release edilmiş say�
 - Dokümantasyon ve repo yönetişimi temeli hazırlanıyor.
 - Runtime davranış değişikliği bu fazın kapsamı dışındadır.
 
+## 1.8.1
+
+- EchoVerse ana sunucusu için kalıcı üyelik ve yapılandırma tabanlı kurucu rolü.
+- Tüm hesaplar için otomatik ana sunucu üyeliği; özel sunucularda davet tabanlı
+  erişim korunuyor.
+- Web, masaüstü ve mobil responsive yüzeyde ortak sunucu/lobi çekmecesi,
+  DM/arkadaşlar erişimi ve marka uyumu.
+- Arkadaşlık isteklerinde yarış durumlarına dayanıklı sunucu işlemi ve görünür
+  istemci hata geri bildirimi.
+
 ## 1.8.0
 
 - Owner ve adminlerin kalıcı ses lobisinin görünen adını değiştirebilmesi.

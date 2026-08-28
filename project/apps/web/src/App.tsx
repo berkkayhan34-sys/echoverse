@@ -2179,6 +2179,7 @@ export default function App() {
         account={account}
         username={username}
         appVersion={appVersion}
+        brandIconSrc="/branding/echoverse-icon.png"
         labels={{
           appName: t("app.name"),
           textChannels: t("guild.textChannels"),
@@ -2204,6 +2205,8 @@ export default function App() {
           createGuild: t("guild.new"),
           directMessages: t("ui.directMessages"),
           openDms: t("friends.list"),
+          servers: t("guild.list"),
+          close: t("common.close"),
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
           renameLobby: t("guild.renameLobby"),
@@ -2218,6 +2221,10 @@ export default function App() {
         activeDmFriend={activeDmFriend}
         onOpenDms={() => {
           setViewMode("dm");
+          setShowFriends(true);
+        }}
+        onOpenFriends={() => {
+          setViewMode("server");
           setShowFriends(true);
         }}
         onCreateInvite={createGuildInvite}

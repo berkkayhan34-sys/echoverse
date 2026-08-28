@@ -17,7 +17,8 @@ const {
   safeUpdatePercent,
   safeUpdateVersion,
   safeUpdaterFailure: safeUpdaterFailureCatalog,
-  updaterFailureState
+  updaterFailureState,
+  waitForUpdateDownloaded
 } = require("./updater-validation.cjs");
 const path = require("path");
 const fs = require("fs");
@@ -87,7 +88,8 @@ let spotifyTokens = null;
 let spotifyLoginServer = null;
 let selectedDisplaySourceId = null;
 let updaterSetupDone = false;
-let updateInstallTimer = null;
+let updateInstallRequested = false;
+const STARTUP_UPDATE_TIMEOUT_MS = 300_000;
 let updaterState = {
   phase: "idle",
   status: "",
@@ -738,7 +740,9 @@ async function runUpdateCheck(source = "automatic") {
 
     return {
       ok: true,
-      version
+      version,
+      available: result?.isUpdateAvailable === true,
+      downloadPromise: result?.downloadPromise || null
     };
   } catch {
     logUpdater("update_check_failed");
@@ -748,14 +752,75 @@ async function runUpdateCheck(source = "automatic") {
   }
 }
 
+async function runStartupUpdateGate() {
+  if (!app.isPackaged) return { ok: true, installing: false };
+
+  let timeoutHandle = null;
+  try {
+    const result = await Promise.race([
+      (async () => {
+        const check = await runUpdateCheck("startup");
+        if (!check.ok || !check.available) return { ...check, installing: false };
+
+        if (check.downloadPromise && typeof check.downloadPromise.then === "function") {
+          await check.downloadPromise;
+        } else {
+          await waitForUpdateDownloaded(autoUpdater, STARTUP_UPDATE_TIMEOUT_MS);
+        }
+
+        return { ...check, downloaded: true, installing: false };
+      })(),
+      new Promise((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          logUpdater("startup_update_timeout");
+          resolve({ ok: false, timeout: true, installing: false });
+        }, STARTUP_UPDATE_TIMEOUT_MS);
+      })
+    ]);
+
+    if (result?.ok && result.downloaded) {
+      return { ...result, installing: installUpdateSilently("startup") };
+    }
+    return result || { ok: false, installing: false };
+  } catch {
+    logUpdater("startup_update_gate_failed");
+    sendUpdateState(updaterFailureStateForCurrentVersion());
+    return { ok: false, installing: false };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+function installUpdateSilently(source = "automatic") {
+  if (!app.isPackaged || updaterState.phase !== "ready") return false;
+  if (updateInstallRequested) return true;
+
+  updateInstallRequested = true;
+  isQuitting = true;
+  logUpdater("silent_quit_and_install", `source=${source}`);
+
+  try {
+    // electron-updater forwards the downloaded package's isAdminRightsRequired
+    // metadata, so the existing per-user/per-machine scope is preserved. The
+    // silent flag suppresses the NSIS installer UI on Windows.
+    autoUpdater.quitAndInstall(true, true);
+    return true;
+  } catch {
+    updateInstallRequested = false;
+    sendUpdateState(updaterFailureStateForCurrentVersion());
+    return false;
+  }
+}
+
 function setupAutoUpdater() {
   if (!app.isPackaged || updaterSetupDone) return;
   updaterSetupDone = true;
 
-  // GitHub Releases is configured by build.publish in package.json.
-  // Download automatically, but only install after the package is fully downloaded.
+  // GitHub Releases is configured by build.publish in package.json. Download
+  // and install are both unattended; startup waits for this package before the
+  // main window is created.
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
 
   autoUpdater.on("checking-for-update", () => {
@@ -847,10 +912,7 @@ function setupAutoUpdater() {
       error: null
     });
 
-    showUpdateNotification(
-      translate("desktop.updateReadyNotification"),
-      translate("desktop.updateReadyNotificationBody", { version })
-    );
+    void installUpdateSilently("downloaded");
   });
 
   autoUpdater.on("error", () => {
@@ -862,11 +924,6 @@ function setupAutoUpdater() {
 
     showUpdateNotification(translate("desktop.updateErrorNotification"), safeUpdaterFailure());
   });
-
-  // Give renderer time to attach its listeners, then check automatically.
-  setTimeout(() => {
-    runUpdateCheck("startup");
-  }, 4500);
 }
 
 async function setupScreenCapture() {
@@ -1021,8 +1078,6 @@ function createWindow() {
   }
 
   mainWindow.webContents.once("did-finish-load", () => {
-    setupAutoUpdater();
-
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
       splashWindow = null;
@@ -1090,7 +1145,7 @@ function runPackagedSmokeTest() {
   app.exit(0);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   app.setName("EchoVerse");
   if (process.platform === "win32") app.setAppUserModelId("com.echoverse.desktop");
   if (
@@ -1105,6 +1160,13 @@ app.whenReady().then(() => {
   // application menu from the main window on every supported platform.
   Menu.setApplicationMenu(null);
   loadSpotifyTokens();
+  setupAutoUpdater();
+
+  // Do not create or reveal the application window until the packaged updater
+  // has checked GitHub Releases and, when needed, installed the update.
+  const startupUpdate = await runStartupUpdateGate();
+  if (startupUpdate.installing) return;
+
   createSplash();
   createTray();
   createWindow();
@@ -1124,7 +1186,13 @@ app.on("window-all-closed", () => {
   // Keep EchoVerse alive in tray/menu bar.
 });
 ipcMain.handle("update:check", async () => {
-  return runUpdateCheck("manual");
+  const result = await runUpdateCheck("manual");
+  return {
+    ok: result.ok,
+    error: result.error,
+    version: result.version,
+    available: result.available
+  };
 });
 
 ipcMain.handle("update:get-state", async () => updaterState);
@@ -1138,20 +1206,9 @@ ipcMain.handle("update:install", async () => {
     return { ok: false, error: translate("desktop.updateInstallReadyMissing") };
   }
 
-  try {
-    if (updateInstallTimer) {
-      clearTimeout(updateInstallTimer);
-      updateInstallTimer = null;
-    }
-
-    isQuitting = true;
-    logUpdater("manual_quit_and_install");
-    autoUpdater.quitAndInstall(false, true);
-    return { ok: true };
-  } catch {
-    sendUpdateState(updaterFailureStateForCurrentVersion());
-    return { ok: false, error: safeUpdaterFailure() };
-  }
+  return installUpdateSilently("manual")
+    ? { ok: true }
+    : { ok: false, error: safeUpdaterFailure() };
 });
 
 ipcMain.handle("update:get-log-path", async () => updaterLogPath());

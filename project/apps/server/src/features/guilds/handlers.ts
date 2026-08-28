@@ -228,7 +228,7 @@ export function registerGuildHandlers({
     "guild:select",
     ({ guildId }: { guildId: string }, callback: any) => {
       const user = users.get(socket.id);
-      if (!user?.accountId || (guildId !== "echoverse" && !isMember(guildId, user.accountId))) {
+      if (!user?.accountId || !isMember(guildId, user.accountId)) {
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
@@ -244,8 +244,8 @@ export function registerGuildHandlers({
     const user = users.get(socket.id);
     if (!user) return;
 
-    const safeGuild = guilds.has(String(guildId)) ? String(guildId) : "echoverse";
-    if (safeGuild !== "echoverse" && (!user.accountId || !isMember(safeGuild, user.accountId))) {
+    const safeGuild = String(guildId || "");
+    if (!guilds.has(safeGuild) || !user.accountId || !isMember(safeGuild, user.accountId)) {
       callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
       return;
     }

@@ -138,6 +138,25 @@ export function createAccountService({ pool, memoryAccounts }: AccountServiceDep
     return accountById(accountId);
   }
 
+  async function listAccounts(): Promise<Account[]> {
+    if (!pool) return [...memoryAccounts.values()];
+
+    const result = await pool.query(
+      `SELECT id, email, username, password_hash, avatar_data, created_at
+       FROM echoverse_users
+       ORDER BY created_at, id`
+    );
+
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      email: String(row.email),
+      username: String(row.username),
+      passwordHash: String(row.password_hash),
+      avatarData: row.avatar_data || null,
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+    }));
+  }
+
   async function publicUserById(id: string) {
     const account = await accountById(id);
     if (!account) return null;
@@ -152,6 +171,7 @@ export function createAccountService({ pool, memoryAccounts }: AccountServiceDep
     accountById,
     accountByEmail,
     createAccount,
+    listAccounts,
     publicAccount,
     publicUserById,
     updateAvatar,

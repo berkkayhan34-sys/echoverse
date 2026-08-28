@@ -131,22 +131,27 @@ export function registerFriendHandlers({
     }
 
     const id = crypto.randomUUID();
-    if (!pool) {
-      memoryFriendships.set(friendshipKey(user.accountId, target.id), {
-        id,
-        requesterId: user.accountId,
-        addresseeId: target.id,
-        status: "pending",
-        createdAt: new Date().toISOString()
-      });
-    } else {
-      const createdAt = new Date().toISOString();
-      await pool.query(
-        `INSERT INTO echoverse_friendships
-          (id, requester_id, addressee_id, status, created_at, updated_at)
-         VALUES ($1, $2, $3, 'pending', $4, $4)`,
-        [id, user.accountId, target.id, createdAt]
-      );
+    try {
+      if (!pool) {
+        memoryFriendships.set(friendshipKey(user.accountId, target.id), {
+          id,
+          requesterId: user.accountId,
+          addresseeId: target.id,
+          status: "pending",
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        const createdAt = new Date().toISOString();
+        await pool.query(
+          `INSERT INTO echoverse_friendships
+            (id, requester_id, addressee_id, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'pending', $4, $4)`,
+          [id, user.accountId, target.id, createdAt]
+        );
+      }
+    } catch {
+      callback?.({ ok: false, error: socketError(socket, "server.friendshipExists") });
+      return;
     }
 
     const targetSocket = socketForAccount(target.id);

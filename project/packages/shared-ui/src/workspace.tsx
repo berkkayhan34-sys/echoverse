@@ -32,12 +32,164 @@ export type WorkspaceSidebarLabels = {
   createGuild: string;
   directMessages?: string;
   openDms?: string;
+  servers?: string;
+  close?: string;
   joinVoice?: string;
   invite?: string;
   renameLobby?: string;
   lobbyNamePlaceholder?: string;
   save?: string;
 };
+
+type MobileWorkspaceNavigationProps = {
+  guilds: Guild[];
+  activeGuild: Guild | null;
+  activeDmFriend?: FriendUser | null;
+  onSelectGuild: (guild: Guild) => void;
+  onJoinVoice?: (guild: Guild) => void;
+  lobbyName?: string;
+  canManageGuild?: boolean;
+  onRenameLobby?: (guild: Guild, name: string) => void;
+  onOpenDms?: () => void;
+  onOpenFriends?: () => void;
+  onCreateGuild: () => void;
+  brandIconSrc?: string;
+  labels: WorkspaceSidebarLabels;
+};
+
+function MobileWorkspaceNavigation({
+  guilds,
+  activeGuild,
+  activeDmFriend,
+  onSelectGuild,
+  onJoinVoice,
+  lobbyName,
+  canManageGuild,
+  onRenameLobby,
+  onOpenDms,
+  onOpenFriends,
+  onCreateGuild,
+  brandIconSrc,
+  labels
+}: MobileWorkspaceNavigationProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const selectGuild = (guild: Guild) => {
+    onSelectGuild(guild);
+    setMobileMenuOpen(false);
+  };
+  const openDms = () => {
+    onOpenDms?.();
+    setMobileMenuOpen(false);
+  };
+  const openFriends = () => {
+    onOpenFriends?.();
+    setMobileMenuOpen(false);
+  };
+  const createGuild = () => {
+    onCreateGuild();
+    setMobileMenuOpen(false);
+  };
+
+  return (
+    <>
+      <div
+        className={`mobile-drawer-backdrop ${mobileMenuOpen ? "open" : ""}`}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setMobileMenuOpen(false);
+        }}
+      >
+        <aside className="mobile-drawer" aria-label={labels.appName}>
+          <div className="mobile-drawer-header">
+            <div className="mobile-brand">
+              {brandIconSrc ? (
+                <img src={brandIconSrc} alt="" />
+              ) : (
+                <span>{displayInitials(labels.appName)}</span>
+              )}
+              <b>{labels.appName}</b>
+            </div>
+            <button
+              className="icon-btn"
+              aria-label={labels.close || labels.appName}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mobile-guild-list">
+            {guilds.map((guild) => (
+              <button
+                key={guild.id}
+                className={`mobile-guild-row ${activeGuild?.id === guild.id ? "active" : ""}`}
+                onClick={() => selectGuild(guild)}
+              >
+                <span className="mobile-guild-icon">{displayInitials(guild.name)}</span>
+                <span>{guild.name}</span>
+                {guild.id === "echoverse" && <small>⌂</small>}
+              </button>
+            ))}
+          </div>
+
+          {activeGuild && (
+            <div className="mobile-channel-list">
+              <div className="mobile-channel-heading">{activeGuild.name}</div>
+              <button className="mobile-channel-row active"># {labels.general}</button>
+              <button className="mobile-channel-row"># {labels.music}</button>
+              <button
+                className="mobile-channel-row voice"
+                onClick={() => {
+                  onJoinVoice?.(activeGuild);
+                  setMobileMenuOpen(false);
+                }}
+              >
+                🔊 {lobbyName || labels.lobby}
+              </button>
+              {canManageGuild && onRenameLobby && (
+                <LobbyNameEditor
+                  key={`mobile:${activeGuild.id}:${lobbyName || labels.lobby}`}
+                  value={lobbyName || labels.lobby}
+                  renameLabel={labels.renameLobby || "Rename lobby"}
+                  placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                  saveLabel={labels.save || "Save"}
+                  onSave={(name) => onRenameLobby(activeGuild, name)}
+                />
+              )}
+            </div>
+          )}
+
+          <button className="mobile-action-row" onClick={openDms}>
+            ✉ <span>{labels.directMessages || "DM"}</span>
+          </button>
+          <button className="mobile-action-row" onClick={openFriends}>
+            👥 <span>{labels.openDms || labels.directMessages || "Friends"}</span>
+          </button>
+          <button className="mobile-action-row add" onClick={createGuild}>
+            ＋ <span>{labels.createGuild}</span>
+          </button>
+        </aside>
+      </div>
+
+      <nav className="mobile-nav" aria-label={labels.appName}>
+        <button onClick={() => setMobileMenuOpen(true)}>
+          ☰ <span>{labels.servers || labels.textChannels}</span>
+        </button>
+        <button onClick={openDms}>
+          ✉ <span>{labels.directMessages || "DM"}</span>
+        </button>
+        <button onClick={openFriends}>
+          👥 <span>{labels.openDms || "Friends"}</span>
+        </button>
+        <button
+          onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
+          disabled={!activeGuild || !onJoinVoice}
+        >
+          🔊 <span>{labels.joinVoice || labels.lobby}</span>
+        </button>
+      </nav>
+    </>
+  );
+}
 
 function LobbyNameEditor({
   value,
@@ -106,6 +258,8 @@ export function WorkspaceSidebar({
   onRenameLobby,
   activeDmFriend,
   onOpenDms,
+  onOpenFriends,
+  brandIconSrc,
   onCreateInvite,
   onCreateGuild,
   onTogglePeerMute,
@@ -146,6 +300,8 @@ export function WorkspaceSidebar({
   onRenameLobby?: (guild: Guild, name: string) => void;
   activeDmFriend?: FriendUser | null;
   onOpenDms?: () => void;
+  onOpenFriends?: () => void;
+  brandIconSrc?: string;
   onCreateInvite?: (guild: Guild) => void;
   onCreateGuild: () => void;
   onTogglePeerMute: (socketId: string) => void;
@@ -162,7 +318,13 @@ export function WorkspaceSidebar({
   return (
     <>
       <aside className="servers">
-        <div className="server-logo">{displayInitials(labels.appName)}</div>
+        <div className="server-logo">
+          {brandIconSrc ? (
+            <img src={brandIconSrc} alt={labels.appName} />
+          ) : (
+            displayInitials(labels.appName)
+          )}
+        </div>
 
         {guilds.map((guild) => (
           <button
@@ -375,20 +537,21 @@ export function WorkspaceSidebar({
         </div>
       </aside>
 
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        <button onClick={() => guilds[0] && onSelectGuild(guilds[0])}>
-          ◈ <span>{labels.textChannels}</span>
-        </button>
-        <button onClick={onOpenDms}>
-          ✉ <span>{labels.directMessages || "DM"}</span>
-        </button>
-        <button
-          onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
-          disabled={!activeGuild || !onJoinVoice}
-        >
-          🔊 <span>{labels.joinVoice || labels.lobby}</span>
-        </button>
-      </nav>
+      <MobileWorkspaceNavigation
+        guilds={guilds}
+        activeGuild={activeGuild}
+        activeDmFriend={activeDmFriend}
+        onSelectGuild={onSelectGuild}
+        onJoinVoice={onJoinVoice}
+        lobbyName={lobbyName}
+        canManageGuild={canManageGuild}
+        onRenameLobby={onRenameLobby}
+        onOpenDms={onOpenDms}
+        onOpenFriends={onOpenFriends}
+        onCreateGuild={onCreateGuild}
+        brandIconSrc={brandIconSrc}
+        labels={labels}
+      />
     </>
   );
 }

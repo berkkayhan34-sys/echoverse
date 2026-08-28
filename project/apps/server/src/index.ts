@@ -223,6 +223,7 @@ const {
   accountByEmail,
   accountById,
   createAccount,
+  listAccounts,
   publicAccount,
   publicUserById,
   updateAvatar,
@@ -269,6 +270,8 @@ const {
   leaveCurrentRoom,
   leaveGuild,
   loadGuilds,
+  ensureMainGuildMembership,
+  ensureMainGuildOwner,
   roleFor,
   roomFor,
   textRoomFor,
@@ -304,6 +307,7 @@ registerIdentityHttpRoutes({
   accountByEmail,
   accountById,
   createAccount,
+  ensureMainGuildMembership,
   usernameExists,
   publicAccount,
   httpError
@@ -378,11 +382,20 @@ io.on("connection", (socket) => {
   });
   socket.data.protocolVersion = PROTOCOL_VERSION;
   socket.emit("protocol:ready", { version: PROTOCOL_VERSION });
-  socket.emit("guild:list", guildList(socket.data.account?.id));
-
   if (socket.data.account) {
     attachAccountToSocket(socket, socket.data.account, socket.data.sessionId);
-    socket.emit("auth:session", { ok: true, account: publicAccount(socket.data.account) });
+    void ensureMainGuildMembership(socket.data.account)
+      .then(() => {
+        socket.emit("guild:list", guildList(socket.data.account.id));
+        socket.emit("auth:session", { ok: true, account: publicAccount(socket.data.account) });
+      })
+      .catch(() => {
+        serverLogger.error("echoverse.guild.main_membership_reconcile_failed");
+        socket.emit("guild:list", guildList());
+        socket.emit("auth:session", { ok: true, account: publicAccount(socket.data.account) });
+      });
+  } else {
+    socket.emit("guild:list", guildList());
   }
 
   const handlerRateLimitedEvents = new Set([
@@ -433,6 +446,7 @@ io.on("connection", (socket) => {
     usernameExists,
     publicAccount,
     guildList,
+    ensureMainGuildMembership,
     attachAccountToSocket,
     verifyToken,
     leaveCurrentRoom,
@@ -569,7 +583,16 @@ export { app, closeDatabase, httpServer, io, initDatabase };
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   initDatabase()
-    .then(() => loadGuilds())
+    .then(async () => {
+      await loadGuilds();
+      const owner = process.env.ECHO_VERSE_MAIN_OWNER_EMAIL
+        ? await accountByEmail(
+            process.env.ECHO_VERSE_MAIN_OWNER_EMAIL.trim().toLocaleLowerCase("en-US")
+          )
+        : null;
+      if (owner) await ensureMainGuildOwner(owner);
+      for (const account of await listAccounts()) await ensureMainGuildMembership(account);
+    })
     .then(() => {
       httpServer.listen(PORT, "0.0.0.0", () => {
         serverLogger.info("echoverse.server.listening", {

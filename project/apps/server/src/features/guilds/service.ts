@@ -4,7 +4,7 @@
  */
 
 import crypto from "node:crypto";
-import type { Guild, GuildRole, SpotifyPartyState, User } from "../../domain/types.js";
+import type { Account, Guild, GuildRole, SpotifyPartyState, User } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 
 export type GuildServiceDependencies = {
@@ -20,6 +20,12 @@ export type GuildServiceDependencies = {
   users: Map<string, User>;
   spotifyParties: Map<string, SpotifyPartyState>;
 };
+
+export const MAIN_GUILD_ID = "echoverse";
+export const MAIN_GUILD_NAME = "EchoVerse";
+/** The deployment supplies the founder identity; never persist it in source. */
+export const MAIN_GUILD_OWNER_EMAIL =
+  process.env.ECHO_VERSE_MAIN_OWNER_EMAIL?.trim().toLocaleLowerCase("en-US") || null;
 
 export function createGuildService({
   io,
@@ -88,7 +94,7 @@ export function createGuildService({
 
   function guildList(accountId?: string) {
     return [...guilds.values()]
-      .filter((guild) => guild.id === "echoverse" || isMember(guild.id, accountId))
+      .filter((guild) => (!accountId ? guild.id === MAIN_GUILD_ID : isMember(guild.id, accountId)))
       .map((guild) => ({ ...guild, role: roleFor(guild.id, accountId) }));
   }
 
@@ -128,6 +134,72 @@ export function createGuildService({
     const roles = guildRoles.get(guildId) || new Map<string, GuildRole>();
     roles.set(accountId, role);
     guildRoles.set(guildId, roles);
+  }
+
+  async function ensureMainGuildOwner(account: Account): Promise<boolean> {
+    if (
+      !MAIN_GUILD_OWNER_EMAIL ||
+      account.email.trim().toLocaleLowerCase("en-US") !== MAIN_GUILD_OWNER_EMAIL
+    ) {
+      return false;
+    }
+
+    const createdAt = new Date().toISOString();
+    const current = guilds.get(MAIN_GUILD_ID);
+    const guild: Guild = {
+      id: MAIN_GUILD_ID,
+      name: current?.name || MAIN_GUILD_NAME,
+      lobbyName: current?.lobbyName || "Lobby",
+      createdBy: account.id,
+      ownerId: account.id,
+      createdAt: current?.createdAt || createdAt
+    };
+
+    if (pool) {
+      await pool.query(
+        `INSERT INTO echoverse_guilds (id, name, lobby_name, owner_id, created_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET name = $2, owner_id = $4`,
+        [guild.id, guild.name, guild.lobbyName, guild.ownerId, guild.createdAt]
+      );
+      await pool.query(
+        `UPDATE echoverse_guild_members
+         SET role = 'member'
+         WHERE guild_id = $1 AND account_id <> $2 AND role = 'owner'`,
+        [MAIN_GUILD_ID, account.id]
+      );
+      await pool.query(
+        `INSERT INTO echoverse_guild_members (guild_id, account_id, role, created_at)
+         VALUES ($1, $2, 'owner', $3)
+         ON CONFLICT (guild_id, account_id) DO UPDATE SET role = 'owner'`,
+        [MAIN_GUILD_ID, account.id, createdAt]
+      );
+    }
+
+    guilds.set(MAIN_GUILD_ID, guild);
+    for (const [memberId, role] of guildRoles.get(MAIN_GUILD_ID) || []) {
+      if (role === "owner" && memberId !== account.id)
+        setMembership(MAIN_GUILD_ID, memberId, "member");
+    }
+    setMembership(MAIN_GUILD_ID, account.id, "owner");
+    return true;
+  }
+
+  async function ensureMainGuildMembership(account: Account): Promise<void> {
+    const owner = await ensureMainGuildOwner(account);
+    const guild = guilds.get(MAIN_GUILD_ID);
+    if (!guild || owner || (pool && !guild.ownerId)) return;
+
+    const role: GuildRole = guild.ownerId === account.id ? "owner" : "member";
+    if (pool) {
+      await pool.query(
+        `INSERT INTO echoverse_guild_members (guild_id, account_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (guild_id, account_id) DO NOTHING`,
+        [MAIN_GUILD_ID, account.id, role]
+      );
+    }
+    setMembership(MAIN_GUILD_ID, account.id, role);
   }
 
   async function createGuild(name: string, ownerId: string) {
@@ -288,6 +360,8 @@ export function createGuildService({
     createInvite,
     getPresence,
     guildList,
+    ensureMainGuildMembership,
+    ensureMainGuildOwner,
     isMember,
     joinByInvite,
     leaveCurrentRoom,

@@ -134,6 +134,19 @@ filesystem access. Update manifests and packages require integrity validation,
 trusted publisher/signing decisions, and a documented rollback path. An
 unsigned artifact must not be described as production-ready.
 
+The packaged desktop client checks for updates before creating any user-facing
+window. Available packages are downloaded automatically and installed with the
+silent updater path; no installer UI or user-controlled elevation flow is
+opened by the application. Windows may still show its standard UAC consent for
+an existing machine-wide installation; the updater never bypasses that
+operating-system security control. The updater preserves the package metadata that
+identifies whether the existing installation requires administrative rights and
+reuses its current installation directory. A bounded startup timeout allows
+the known-good version to open when the update service is unavailable, while a
+later completed download still uses the same silent install path. Startup,
+download, metadata-rejection, timeout, and silent-install behavior require
+automated tests and release evidence.
+
 ### Privacy-safe diagnostics
 
 Logs use correlation identifiers and operational context without passwords,

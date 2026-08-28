@@ -29,6 +29,7 @@ export type IdentityHandlerDependencies = {
   usernameExists(username: string): Promise<boolean>;
   publicAccount(account: Account): Record<string, unknown>;
   guildList(accountId?: string): unknown[];
+  ensureMainGuildMembership(account: Account): Promise<void>;
   attachAccountToSocket(socket: any, account: Account, sessionId?: string): Record<string, unknown>;
   verifyToken(token: string): string;
   leaveCurrentRoom(socket: any, user: User): void;
@@ -53,6 +54,7 @@ export function registerIdentityHandlers({
   usernameExists,
   publicAccount,
   guildList,
+  ensureMainGuildMembership,
   attachAccountToSocket,
   verifyToken,
   leaveCurrentRoom,
@@ -112,6 +114,7 @@ export function registerIdentityHandlers({
 
       const hash = await bcrypt.hash(password, 12);
       const account = await createAccount(email, username, hash);
+      await ensureMainGuildMembership(account);
       const tokens = sessionManager.issue(account.id);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
@@ -146,6 +149,7 @@ export function registerIdentityHandlers({
       }
 
       const tokens = sessionManager.issue(account.id);
+      await ensureMainGuildMembership(account);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
       socket.emit("guild:list", guildList(account.id));
@@ -175,6 +179,7 @@ export function registerIdentityHandlers({
       }
 
       const tokens = current || sessionManager.issue(account.id);
+      await ensureMainGuildMembership(account);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
       socket.emit("guild:list", guildList(account.id));
@@ -241,6 +246,7 @@ export function registerIdentityHandlers({
     if (accountId) {
       const account = await accountById(accountId);
       if (account) {
+        await ensureMainGuildMembership(account);
         attachAccountToSocket(socket, account, socket.data.sessionId);
         socket.emit("guild:list", guildList(account.id));
         return;

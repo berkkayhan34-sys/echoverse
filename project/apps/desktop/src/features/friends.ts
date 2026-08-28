@@ -36,7 +36,10 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     if (!socket) return;
 
     socket.emit("friends:list", {}, (result: any) => {
-      if (!result?.ok) return;
+      if (!result?.ok) {
+        deps.setError(result?.error || deps.translate("error.requestFailed"));
+        return;
+      }
       deps.setFriends(result.accepted || []);
       deps.setIncomingRequests(result.incoming || []);
       deps.setOutgoingRequests(result.outgoing || []);
@@ -52,7 +55,11 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     }
 
     socket.emit("friends:search", { query }, (result: any) => {
-      if (result?.ok) deps.setFriendSearchResults(result.results || []);
+      if (result?.ok) {
+        deps.setFriendSearchResults(result.results || []);
+      } else {
+        deps.setError(result?.error || deps.translate("error.requestFailed"));
+      }
     });
   }
 
@@ -82,7 +89,11 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
 
   function removeFriend(targetId: string) {
     const socket = deps.getSocket();
-    socket?.emit("friends:remove", { targetId }, () => {
+    socket?.emit("friends:remove", { targetId }, (result: any) => {
+      if (!result?.ok) {
+        deps.setError(result?.error || deps.translate("error.requestFailed"));
+        return;
+      }
       loadFriends();
       if (deps.getActiveFriend()?.id === targetId) {
         deps.setActiveFriend(null);

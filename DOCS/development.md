@@ -61,6 +61,13 @@ restore behavior through the approved native `better-sqlite3` adapter, while
 `npm run test:db` covers the PostgreSQL service. The local runtime requires
 Node.js 22 LTS, as required by the approved `better-sqlite3` version.
 
+The public EchoVerse guild is reconciled at startup. Set
+`ECHO_VERSE_MAIN_OWNER_EMAIL` in the server environment to the founder
+account's normalized email before a hosted deployment. The value is an
+environment-only administration setting and must not be committed to source,
+logs, manifests, or examples. When it is unset, the server fails closed and
+does not grant an elevated role to an arbitrary account.
+
 ## Localization workflow
 
 Application-owned text is cataloged in

@@ -27,3 +27,9 @@ event is server-authorized for owners and admins and broadcasts the updated
 guild only to its members.
 SQLite backups can be restored as the local rollback path; hosted PostgreSQL
 restore remains an operator-controlled deployment action.
+
+The `echoverse` main guild is reconciled idempotently at startup and during
+HTTP/socket authentication. `ECHO_VERSE_MAIN_OWNER_EMAIL` identifies the
+founder account from deployment configuration; existing accounts are backfilled
+as members and new accounts are enrolled without changing private-guild invite
+authorization. The value is never stored in source or logs.

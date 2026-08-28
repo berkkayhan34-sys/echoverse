@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { Guild, User } from "../../domain/types.js";
+import type { Account, Guild, User } from "../../domain/types.js";
 import { createGuildService } from "./service.js";
 
 describe("guild and presence service", () => {
@@ -53,5 +53,42 @@ describe("guild and presence service", () => {
         avatarData: null
       }
     ]);
+  });
+
+  it("persists automatic membership for an existing main guild", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "echoverse",
+        {
+          id: "echoverse",
+          name: "EchoVerse",
+          createdBy: "owner",
+          ownerId: "owner",
+          createdAt: "now"
+        }
+      ]
+    ]);
+    const guildMembers = new Map<string, Set<string>>();
+    const member: Account = {
+      id: "member",
+      email: "member@example.test",
+      username: "Member",
+      passwordHash: "hash",
+      avatarData: null,
+      createdAt: "now"
+    };
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      users: new Map(),
+      spotifyParties: new Map()
+    });
+
+    await service.ensureMainGuildMembership(member);
+
+    expect(service.isMember("echoverse", "member")).toBe(true);
+    expect(service.roleFor("echoverse", "member")).toBe("member");
+    expect(service.guildList("member")).toEqual([{ ...guilds.get("echoverse"), role: "member" }]);
   });
 });

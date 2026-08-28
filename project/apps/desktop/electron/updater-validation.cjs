@@ -54,9 +54,43 @@ function updaterFailureState(currentVersion, locale = "tr") {
   };
 }
 
+function waitForUpdateDownloaded(emitter, timeoutMs = 300_000) {
+  if (!emitter || typeof emitter.once !== "function") {
+    return Promise.reject(new TypeError("Updater event source is unavailable"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (typeof emitter.removeListener === "function") {
+        emitter.removeListener("update-downloaded", onDownloaded);
+        emitter.removeListener("error", onError);
+      }
+    };
+    const onDownloaded = (info) => {
+      cleanup();
+      resolve(info);
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error instanceof Error ? error : new Error("Updater download failed"));
+    };
+
+    emitter.once("update-downloaded", onDownloaded);
+    emitter.once("error", onError);
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Updater download timed out"));
+    }, timeoutMs);
+  });
+}
+
 module.exports = {
   safeUpdateVersion,
   safeUpdatePercent,
   safeUpdaterFailure,
-  updaterFailureState
+  updaterFailureState,
+  waitForUpdateDownloaded
 };

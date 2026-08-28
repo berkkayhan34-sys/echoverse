@@ -22,4 +22,6 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0011: server-side authorization boundaries](0011-authorization-boundaries.md)
 - [ADR-0012: renderer feature-module ownership](0012-renderer-feature-module-ownership.md)
 - [ADR-0014: Discord + TeamSpeak product direction](0014-discord-teamspeak-product-direction.md)
+- [ADR-0015: unattended desktop updates](0015-unattended-desktop-updates.md)
+- [ADR-0016: managed main guild and mobile shell](0016-main-guild-and-mobile-shell.md)
 - [Unresolved decisions](unresolved.md)

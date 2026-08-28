@@ -12,6 +12,8 @@ services:
     envVars:
       - key: JWT_SECRET
         generateValue: true
+      - key: ECHO_VERSE_MAIN_OWNER_EMAIL
+        sync: false
       - key: DATABASE_SSL_REJECT_UNAUTHORIZED
         value: "false"
       - key: CORS_ORIGINS

@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.0`, with protocol major version 2.
+The shipped baseline is product version `1.8.1`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -94,6 +94,12 @@ mobile responsive, and mobile voice foundation in implementation order:
 7. Allow server owners and admins to rename the persistent voice lobby through
    an authorized, localized action; persist the name and broadcast updates to
    authorized guild members.
+8. Persist the public `echoverse` main guild, reconcile the deployment-configured
+   founder as owner, backfill existing accounts, and auto-enroll new accounts
+   without weakening private-guild authorization.
+9. Replace the narrow-screen navigation with the shared Discord-style drawer,
+   mobile bottom navigation, explicit lobby entry, DM/friends access, safe-area
+   composer spacing, and the same brand/sound assets across web and desktop.
 
 Acceptance evidence is required for each child before this feature is marked
 complete. No unrelated product feature should be added to this child.

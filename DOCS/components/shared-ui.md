@@ -25,7 +25,10 @@ transport, authorization, file processing, media permissions, preference
 persistence, and other side effects remain in the owning renderer.
 `WorkspaceSidebar` keeps server selection separate from explicit voice-lobby
 entry and includes the persistent Direct Messages navigation; at mobile
-breakpoints the same commands are exposed through the bottom navigation bar.
+breakpoints the same commands are exposed through a server/channel drawer and
+bottom navigation bar, including explicit DM, friends, and voice-lobby entry.
+The drawer uses the renderer's brand asset so web/PWA and desktop retain the
+same visual identity.
 For guild owners and admins it also exposes the localized lobby-name editor;
 the renderer submits the change through the server authorization boundary.
 `ChatComposer` exposes a shared Unicode emoji picker; the platform's emoji font
