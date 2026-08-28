@@ -16,7 +16,8 @@ const { autoUpdater } = require("electron-updater");
 const {
   safeUpdatePercent,
   safeUpdateVersion,
-  safeUpdaterFailure: safeUpdaterFailureCatalog
+  safeUpdaterFailure: safeUpdaterFailureCatalog,
+  updaterFailureState
 } = require("./updater-validation.cjs");
 const path = require("path");
 const fs = require("fs");
@@ -66,6 +67,10 @@ function translate(key, values = {}) {
 
 function safeUpdaterFailure() {
   return safeUpdaterFailureCatalog(desktopLocale);
+}
+
+function updaterFailureStateForCurrentVersion() {
+  return updaterFailureState(app.getVersion(), desktopLocale);
 }
 
 let mainWindow = null;
@@ -708,6 +713,7 @@ async function runUpdateCheck(source = "automatic") {
     const currentVersion = safeUpdateVersion(app.getVersion());
     if (!currentVersion || !["automatic", "manual", "startup"].includes(source)) {
       logUpdater("update_check_rejected");
+      sendUpdateState(updaterFailureStateForCurrentVersion());
       return { ok: false, error: safeUpdaterFailure() };
     }
     logUpdater("checking_for_updates", `source=${source} current=${currentVersion}`);
@@ -717,6 +723,7 @@ async function runUpdateCheck(source = "automatic") {
       : null;
     if (result?.updateInfo?.version && !version) {
       logUpdater("update_metadata_rejected");
+      sendUpdateState(updaterFailureStateForCurrentVersion());
       return { ok: false, error: safeUpdaterFailure() };
     }
 
@@ -726,11 +733,7 @@ async function runUpdateCheck(source = "automatic") {
     };
   } catch {
     logUpdater("update_check_failed");
-    sendUpdateState({
-      phase: "error",
-      status: safeUpdaterFailure(),
-      error: safeUpdaterFailure()
-    });
+    sendUpdateState(updaterFailureStateForCurrentVersion());
 
     return { ok: false, error: safeUpdaterFailure() };
   }
@@ -760,11 +763,7 @@ function setupAutoUpdater() {
     const version = safeUpdateVersion(info?.version);
     if (!version) {
       logUpdater("update_available_metadata_rejected");
-      sendUpdateState({
-        phase: "error",
-        status: safeUpdaterFailure(),
-        error: safeUpdaterFailure()
-      });
+      sendUpdateState(updaterFailureStateForCurrentVersion());
       return;
     }
     logUpdater("update-available", `version=${version}`);
@@ -788,11 +787,7 @@ function setupAutoUpdater() {
       : safeUpdateVersion(app.getVersion());
     if (!version) {
       logUpdater("update_not_available_metadata_rejected");
-      sendUpdateState({
-        phase: "error",
-        status: safeUpdaterFailure(),
-        error: safeUpdaterFailure()
-      });
+      sendUpdateState(updaterFailureStateForCurrentVersion());
       return;
     }
     logUpdater("update-not-available", `latest=${version}`);
@@ -830,11 +825,7 @@ function setupAutoUpdater() {
     const version = safeUpdateVersion(info?.version);
     if (!version) {
       logUpdater("update_downloaded_metadata_rejected");
-      sendUpdateState({
-        phase: "error",
-        status: safeUpdaterFailure(),
-        error: safeUpdaterFailure()
-      });
+      sendUpdateState(updaterFailureStateForCurrentVersion());
       return;
     }
     logUpdater("update-downloaded", `version=${version}`);
@@ -858,11 +849,7 @@ function setupAutoUpdater() {
 
     // IMPORTANT: never hide updater errors. This is how Defender/download
     // failures become visible to the user instead of silently disappearing.
-    sendUpdateState({
-      phase: "error",
-      status: safeUpdaterFailure(),
-      error: safeUpdaterFailure()
-    });
+    sendUpdateState(updaterFailureStateForCurrentVersion());
 
     showUpdateNotification(translate("desktop.updateErrorNotification"), safeUpdaterFailure());
   });
@@ -1137,6 +1124,7 @@ ipcMain.handle("update:install", async () => {
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
   } catch {
+    sendUpdateState(updaterFailureStateForCurrentVersion());
     return { ok: false, error: safeUpdaterFailure() };
   }
 });

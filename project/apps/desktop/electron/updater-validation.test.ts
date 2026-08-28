@@ -10,7 +10,8 @@ const require = createRequire(import.meta.url);
 const {
   safeUpdatePercent,
   safeUpdateVersion,
-  safeUpdaterFailure
+  safeUpdaterFailure,
+  updaterFailureState
 } = require("./updater-validation.cjs");
 
 describe("updater boundary validation", () => {
@@ -35,5 +36,16 @@ describe("updater boundary validation", () => {
     expect(safeUpdaterFailure("en")).toBe("Update check failed.");
     expect(safeUpdaterFailure("tr-TR")).toBe("Güncelleme kontrolü başarısız.");
     expect(safeUpdaterFailure("trick")).toBe("Update check failed.");
+  });
+
+  it("keeps the known-good version while rolling updater state back to a visible error", () => {
+    expect(updaterFailureState("1.7.5", "en")).toEqual({
+      phase: "error",
+      status: "Update check failed.",
+      version: "1.7.5",
+      percent: 0,
+      error: "Update check failed."
+    });
+    expect(updaterFailureState("1.7.5\nmalicious", "en").version).toBeNull();
   });
 });

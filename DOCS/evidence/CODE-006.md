@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: CODE-006
 status: complete
 date: 2026-08-28
-revision: working tree (pending publication)
+revision: 905ebe4
 decision: decisions/0012-renderer-feature-module-ownership.md
 ```
 

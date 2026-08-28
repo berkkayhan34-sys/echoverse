@@ -20,3 +20,8 @@ Release workflows invoke the packaged executable with
 `ECHO_VERSE_SMOKE_TEST=1`. This starts Electron, validates the packaged renderer,
 English/Turkish catalogs, and branding resources, then exits without opening a
 window or contacting a server.
+
+Updater failures preserve the currently installed version in the visible error
+state, clear download progress, and do not invoke installation for rejected
+metadata. Binary rollback after an installer failure remains part of the later
+public-release readiness gate.

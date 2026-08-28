@@ -24,10 +24,12 @@ if a workflow uses a hardcoded product version.
 4. Verify artifact names, updater metadata, embedded version, blockmaps,
    checksums, and installer launch. The desktop package exposes the explicit
    `ECHO_VERSE_SMOKE_TEST=1` startup check used by the platform workflows.
-5. Confirm artifact checksums, publisher trust, and rollback evidence. The
-   current decision uses GitHub Releases plus checksums; because platform
-   signing is not yet selected, unsigned artifacts must not be called
-   production-ready.
+5. Confirm artifact checksums, updater failure recovery, publisher trust, and
+   rollback evidence. CODE-008 verifies that rejected updates preserve the
+   known-good installed version; binary rollback after an installer failure is
+   part of the later public-release readiness gate. The current decision uses
+   GitHub Releases plus checksums; because platform signing is not yet selected,
+   unsigned artifacts must not be called production-ready.
 
 ## Automation contract
 

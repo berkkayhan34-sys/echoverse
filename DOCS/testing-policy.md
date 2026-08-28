@@ -15,8 +15,9 @@ The v2 workspace now has Vitest contract/configuration tests, an in-memory
 HTTP/Socket.IO security boundary suite, PostgreSQL migration/relationship
 tests, and a Playwright smoke suite. The quality workflow installs Chromium,
 runs the browser suite, and publishes machine-readable evidence in CI.
-Deeper feature-level authorization/IDOR coverage, WebRTC, and installer
-coverage remain release-blocking work tracked on the roadmap.
+Deeper feature-level authorization/IDOR coverage and later operational
+hardening remain roadmap work; the CODE-007 WebRTC coverage and CODE-008
+installer coverage are now release-gate evidence.
 
 The workspace now exposes deterministic `format:check`, `lint`,
 `dependency:check`, `reuse:check`, `secret-scan`, `localization:check`, and `coverage` scripts in
@@ -31,9 +32,9 @@ evidence baseline. Shared contract, configuration, validator, and client
 adapter fixtures are covered by `QUAL-002`; HTTP/Socket.IO security cases,
 database migration checks, call timeout behavior, and the browser smoke gate
 are covered by `QUAL-003`. WebRTC depth, artifact checksums, installer launch,
-rollback evidence, and other release-blocking layers remain tracked by later
-children. No current check may be described as covering one of those missing
-layers.
+and platform smoke coverage are recorded by CODE-007 and CODE-008. Remaining
+release work must be described by its own roadmap acceptance criteria rather
+than treated as covered by these baseline checks.
 
 ## Required test layers
 

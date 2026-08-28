@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: CODE-001
 status: complete
 date: 2026-08-27
-revision: working tree (pending publication)
+revision: 2294def
 ```
 
 ## Scope

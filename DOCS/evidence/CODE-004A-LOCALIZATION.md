@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: CODE-004A-LOCALIZATION
 status: complete
 date: 2026-08-27
-revision: working tree (pending publication)
+revision: f876bbb
 ```
 
 ## Scope

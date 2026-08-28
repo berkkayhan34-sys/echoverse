@@ -44,4 +44,19 @@ function safeUpdaterFailure(locale = "tr") {
   return selected["update.failed"] || english["update.failed"] || "[update.failed]";
 }
 
-module.exports = { safeUpdateVersion, safeUpdatePercent, safeUpdaterFailure };
+function updaterFailureState(currentVersion, locale = "tr") {
+  return {
+    phase: "error",
+    status: safeUpdaterFailure(locale),
+    version: safeUpdateVersion(currentVersion),
+    percent: 0,
+    error: safeUpdaterFailure(locale)
+  };
+}
+
+module.exports = {
+  safeUpdateVersion,
+  safeUpdatePercent,
+  safeUpdaterFailure,
+  updaterFailureState
+};

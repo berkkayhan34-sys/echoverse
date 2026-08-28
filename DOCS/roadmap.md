@@ -386,12 +386,11 @@ size, timeout, and authorization cases.
 ```yaml
 id: CODE-008
 type: release_validation
-status: in_progress
-evidence: null
-blocker: Windows installer and macOS Intel launch smoke require their respective CI runner environments; this Apple Silicon host lacks Intel translation support.
+status: complete
+evidence: evidence/CODE-008.md
 ```
 
-[-] Add Windows and macOS Intel/Apple Silicon installer launch smoke tests,
+[x] Add Windows and macOS Intel/Apple Silicon installer launch smoke tests,
 version identity checks, updater manifest and checksum verification, startup
 failure recovery, and update rollback checks. Record platform-specific
 limitations and do not mark unsigned artifacts production-ready.
@@ -401,12 +400,12 @@ limitations and do not mark unsigned artifacts production-ready.
 ```yaml
 id: CODE-009
 type: verification_audit
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/CODE-009.md
 blocks_roadmap: true
 ```
 
-[ ] Audit CODE-001 through CODE-008 and CODE-004A-LOCALIZATION against architecture, security, testing,
+[x] Audit CODE-001 through CODE-008 and CODE-004A-LOCALIZATION against architecture, security, testing,
 browser acceptance, migration compatibility, release artifacts, and rollback
 evidence. The v2.0 line cannot close until all release blockers are green and
 the complete diff contains no stale runtime, generated, or duplicate paths.
