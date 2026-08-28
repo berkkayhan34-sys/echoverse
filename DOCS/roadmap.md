@@ -417,11 +417,11 @@ the complete diff contains no stale runtime, generated, or duplicate paths.
 ```yaml
 id: OPS-001
 type: operations
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/OPS-001.md
 ```
 
-[ ] Implement structured privacy-safe logs, correlation IDs, basic metrics,
+[x] Implement structured privacy-safe logs, correlation IDs, basic metrics,
 redaction tests, retention/access controls, and documented production
 diagnostics without passwords, tokens, cookies, message bodies, media, or
 unnecessary personal data.

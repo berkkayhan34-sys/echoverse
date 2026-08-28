@@ -7,6 +7,7 @@ import pg from "pg";
 import { runMigrations } from "./migrations.js";
 import { type PersistenceDatabase, SqliteDatabase } from "./sqlite.js";
 import { runSqliteMigrations } from "./sqlite-migrations.js";
+import { serverLogger } from "../runtime/observability.js";
 
 type PersistenceRuntimeConfig = {
   databaseUrl?: string;
@@ -42,16 +43,16 @@ export function createPersistenceRuntime(config: PersistenceRuntimeConfig): Pers
 
   async function initDatabase() {
     if (!pool) {
-      console.log("echoverse.accounts.memory_fallback");
+      serverLogger.info("echoverse.accounts.memory_fallback");
       return;
     }
     if (postgresPool) {
       await runMigrations(postgresPool);
-      console.log("echoverse.accounts.postgresql_ready");
+      serverLogger.info("echoverse.accounts.postgresql_ready");
       return;
     }
     await runSqliteMigrations(sqliteDatabase!);
-    console.log("echoverse.accounts.sqlite_ready");
+    serverLogger.info("echoverse.accounts.sqlite_ready");
   }
 
   async function closeDatabase() {

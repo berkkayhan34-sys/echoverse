@@ -8,6 +8,7 @@ import { socketEventPayloadSchemas, type Locale } from "@echoverse/contracts";
 import type { Account, StoredDm, User } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 import type { MemoryFriendship } from "./service.js";
+import { serverLogger } from "../../runtime/observability.js";
 
 type SocketEventName = keyof typeof socketEventPayloadSchemas;
 
@@ -90,7 +91,7 @@ export function registerFriendHandlers({
       );
       callback?.({ ok: true, results });
     } catch {
-      console.error("echoverse.friends.search_failed");
+      serverLogger.error("echoverse.friends.search_failed");
       callback?.({ ok: false, error: socketError(socket, "server.userSearchFailed") });
     }
   });
@@ -105,7 +106,7 @@ export function registerFriendHandlers({
     try {
       callback?.({ ok: true, ...((await listFriendState(user.accountId)) as object) });
     } catch {
-      console.error("echoverse.friends.list_failed");
+      serverLogger.error("echoverse.friends.list_failed");
       callback?.({ ok: false, error: socketError(socket, "server.friendsListFailed") });
     }
   });

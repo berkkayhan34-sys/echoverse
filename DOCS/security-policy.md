@@ -140,6 +140,12 @@ Logs use correlation identifiers and operational context without passwords,
 tokens, cookies, message bodies, media contents, or unnecessary personal data.
 Retention and access for production logs must be documented before launch.
 
+The implemented server diagnostic contract and host retention/access procedure
+are defined in [operations.md](operations.md). HTTP and Socket.IO lifecycle
+records use validated opaque correlation identifiers; request payloads, query
+strings, and user/resource identifiers are not emitted. The process-local
+metrics summary resets on restart and is not a durable user-data store.
+
 Log redaction must remove passwords, access/refresh tokens, cookies, auth
 headers, message bodies, attachment data, media payloads, OAuth codes, and
 unnecessary identifiers before serialization. Correlation IDs may connect

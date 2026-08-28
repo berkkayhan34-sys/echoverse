@@ -17,7 +17,9 @@ tests, and a Playwright smoke suite. The quality workflow installs Chromium,
 runs the browser suite, and publishes machine-readable evidence in CI.
 Deeper feature-level authorization/IDOR coverage and later operational
 hardening remain roadmap work; the CODE-007 WebRTC coverage and CODE-008
-installer coverage are now release-gate evidence.
+installer coverage are now release-gate evidence. OPS-001 adds focused
+observability redaction, correlation, and metric tests and documents the
+host-side retention and access contract.
 
 The workspace now exposes deterministic `format:check`, `lint`,
 `dependency:check`, `reuse:check`, `secret-scan`, `localization:check`, and `coverage` scripts in

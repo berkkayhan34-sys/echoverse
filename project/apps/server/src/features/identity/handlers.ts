@@ -14,6 +14,7 @@ import {
 import { sanitizeEmail, sanitizeName, validEmail } from "../../domain/validation.js";
 import type { Account, User } from "../../domain/types.js";
 import type { SessionManager } from "../../auth/session.js";
+import { serverLogger } from "../../runtime/observability.js";
 
 type SocketEventName = keyof typeof socketEventPayloadSchemas;
 
@@ -116,7 +117,7 @@ export function registerIdentityHandlers({
       socket.data.accessToken = tokens.accessToken;
       callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
-      console.error("echoverse.auth.register_failed");
+      serverLogger.error("echoverse.auth.register_failed");
       callback?.({ ok: false, error: socketError(socket, "server.registrationFailed") });
     }
   });
@@ -148,7 +149,7 @@ export function registerIdentityHandlers({
       socket.data.accessToken = tokens.accessToken;
       callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
-      console.error("echoverse.auth.login_failed");
+      serverLogger.error("echoverse.auth.login_failed");
       callback?.({ ok: false, error: socketError(socket, "server.loginFailed") });
     }
   });
@@ -227,7 +228,7 @@ export function registerIdentityHandlers({
       }
       callback?.({ ok: true, account: publicAccount(account) });
     } catch {
-      console.error("echoverse.profile.avatar_update_failed");
+      serverLogger.error("echoverse.profile.avatar_update_failed");
       callback?.({ ok: false, error: socketError(socket, "server.avatarUpdateFailed") });
     }
   });

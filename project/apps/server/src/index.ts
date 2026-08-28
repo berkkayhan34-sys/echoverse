@@ -47,6 +47,7 @@ import {
   spotifyParties,
   users
 } from "./runtime/state.js";
+import { createCorrelationId, serverLogger, serverMetrics } from "./runtime/observability.js";
 
 const require = createRequire(import.meta.url);
 const APP_VERSION = String(require("../package.json").version);
@@ -85,6 +86,25 @@ function httpError(
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", config.trustProxy);
+app.use((req, res, next) => {
+  const correlationId = createCorrelationId(req.get("X-EchoVerse-Request-ID"));
+  const startedAt = performance.now();
+  res.locals.correlationId = correlationId;
+  res.setHeader("X-EchoVerse-Request-ID", correlationId);
+  serverMetrics.increment("http.requests.started");
+  res.on("finish", () => {
+    const statusClass = `${Math.floor(res.statusCode / 100)}xx`;
+    serverMetrics.increment(`http.responses.${statusClass}`);
+    serverMetrics.observe("http.request_duration_ms", performance.now() - startedAt);
+    serverLogger.info("echoverse.http.request_completed", {
+      correlationId,
+      method: req.method,
+      status: res.statusCode,
+      durationMs: Math.round(performance.now() - startedAt)
+    });
+  });
+  next();
+});
 app.use(helmet());
 app.use(
   cors({
@@ -124,7 +144,8 @@ app.get("/health", (_req, res) => {
     ok: true,
     version: APP_VERSION,
     protocolVersion: PROTOCOL_VERSION,
-    database: config.databaseUrl ? "postgres" : config.sqlitePath ? "sqlite" : "memory"
+    database: config.databaseUrl ? "postgres" : config.sqlitePath ? "sqlite" : "memory",
+    metrics: serverMetrics.snapshot()
   });
 });
 
@@ -271,6 +292,7 @@ function onValidatedSocketEvent(
     const candidate = typeof payload === "function" ? undefined : payload;
     const parsed = schema.safeParse(candidate);
     if (!parsed.success) {
+      serverMetrics.increment("socket.events.invalid_payload");
       actualCallback?.({ ok: false, error: socketError(socket, "server.invalidRequest") });
       return;
     }
@@ -316,6 +338,14 @@ function attachAccountToSocket(socket: any, account: Account, sessionId?: string
 }
 
 io.on("connection", (socket) => {
+  socket.data.correlationId = createCorrelationId(
+    socket.handshake.headers["x-echoverse-request-id"]
+  );
+  serverMetrics.increment("socket.connections.accepted");
+  serverLogger.info("echoverse.socket.connected", {
+    correlationId: socket.data.correlationId,
+    client: socket.data.client
+  });
   socket.data.protocolVersion = PROTOCOL_VERSION;
   socket.emit("protocol:ready", { version: PROTOCOL_VERSION });
   socket.emit("guild:list", guildList(socket.data.account?.id));
@@ -337,6 +367,7 @@ io.on("connection", (socket) => {
   socket.use(([event, payload], next) => {
     const eventName = String(event);
     if (!socketPayloadWithinLimit(payload)) {
+      serverMetrics.increment("socket.events.rejected_oversize");
       next(new Error(socketError(socket, "server.payloadTooLarge")));
       return;
     }
@@ -344,6 +375,7 @@ io.on("connection", (socket) => {
       !handlerRateLimitedEvents.has(eventName) &&
       !allowSocketEvent(socket.id, eventName, socketEventLimit(eventName))
     ) {
+      serverMetrics.increment("socket.events.rejected_rate_limit");
       next(new Error(socketError(socket, "server.tooManyRequests")));
       return;
     }
@@ -450,6 +482,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    serverMetrics.increment("socket.connections.closed");
+    serverLogger.info("echoverse.socket.disconnected", {
+      correlationId: socket.data.correlationId
+    });
     endCallsForSocket(socket.id);
     const user = users.get(socket.id);
 
@@ -495,11 +531,14 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   initDatabase()
     .then(() => {
       httpServer.listen(PORT, "0.0.0.0", () => {
-        console.log(`[echoverse.server.listening:v${APP_VERSION}:port${PORT}]`);
+        serverLogger.info("echoverse.server.listening", {
+          version: APP_VERSION,
+          port: PORT
+        });
       });
     })
     .catch(() => {
-      console.error("echoverse.database.init_failed");
+      serverLogger.error("echoverse.database.init_failed");
       process.exit(1);
     });
 }

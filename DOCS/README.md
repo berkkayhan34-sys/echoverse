@@ -18,6 +18,7 @@ component references, and operating procedures belong here.
 - [Development workflow](development.md)
 - [Repository agent instructions](agent-instructions.md)
 - [Release workflow](release.md)
+- [Operations and production diagnostics](operations.md)
 - [Governance and public-release runbook](governance.md)
 - [Roadmap](roadmap.md)
 - [Command reference](command-reference.md)

@@ -18,6 +18,7 @@ import {
   type SessionManager,
   type SessionTokens
 } from "../../auth/session.js";
+import { serverLogger } from "../../runtime/observability.js";
 
 const ACCESS_COOKIE = "echoverse_access";
 const REFRESH_COOKIE = "echoverse_refresh";
@@ -173,7 +174,7 @@ export function registerIdentityHttpRoutes({
         sessionManager.issue(account.id)
       );
     } catch {
-      console.error("echoverse.http.register_failed");
+      serverLogger.error("echoverse.http.register_failed");
       res.status(500).json({ ok: false, error: httpError(req, "server.registrationFailed") });
     }
   });
@@ -201,7 +202,7 @@ export function registerIdentityHttpRoutes({
         sessionManager.issue(account.id)
       );
     } catch {
-      console.error("echoverse.http.login_failed");
+      serverLogger.error("echoverse.http.login_failed");
       res.status(500).json({ ok: false, error: httpError(req, "server.loginFailed") });
     }
   });
