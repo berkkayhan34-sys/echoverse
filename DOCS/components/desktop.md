@@ -11,10 +11,19 @@ exposes the fixed browser-safe API built by `electron/bridge.cjs`; it does not
 expose `ipcRenderer` or arbitrary IPC access. Renderer code uses the shared
 browser-safe packages.
 
-The renderer-specific `src/features/` modules own desktop runtime commands and
+The packaged preload is bundled from `electron/preload.cjs` and
+`electron/bridge.cjs` into a single sandbox-compatible file during the desktop
+build. This keeps the renderer sandbox enabled while preserving the fixed
+bridge surface. The renderer-specific `src/features/` modules own desktop runtime commands and
 their explicit dependencies. Electron-only sound, updater, session, and
 capture behavior remains in desktop-owned modules and the preload boundary;
 no desktop capability is imported by the web renderer or `client-core`.
+
+Named call, voice, screen-share, mention, message, microphone, and deafen
+effects are packaged under `public/sounds` and played by the renderer through
+the browser-safe audio API. The web renderer receives the same sound set under
+its own `public/sounds` path; mobile web therefore uses the responsive web
+implementation rather than a native audio bridge.
 
 Release workflows invoke the packaged executable with
 `ECHO_VERSE_SMOKE_TEST=1`. This starts Electron, validates the packaged renderer,

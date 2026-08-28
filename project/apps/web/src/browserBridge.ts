@@ -33,7 +33,7 @@ const bridge = {
     spotifyClientId: ""
   }),
 
-  getVersion: async () => "1.7.5-web",
+  getVersion: async () => "1.8.0-web",
 
   onUpdateStatus: (callback: UpdateCallback) => {
     updateCallbacks.add(callback);
@@ -45,10 +45,15 @@ const bridge = {
     return { ok: true, version: "web-latest" };
   },
 
-  notify: async ({ title, body }: { title: string; body: string }) => {
+  notify: async ({ title, body, icon }: { title: string; body: string; icon?: string | null }) => {
     await requestNotifications();
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title || translator()("app.name"), { body: body || "" });
+      new Notification(title || translator()("app.name"), {
+        body: body || "",
+        icon: icon || "/branding/echoverse-icon.png",
+        badge: "/branding/echoverse-icon.png",
+        tag: "echoverse-message"
+      });
     }
     return { ok: true };
   },

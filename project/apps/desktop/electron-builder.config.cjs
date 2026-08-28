@@ -38,6 +38,10 @@ module.exports = {
       to: "config.json"
     },
     {
+      from: "../../../tmp/generated/desktop-electron/preload.bundle.cjs",
+      to: "preload.bundle.cjs"
+    },
+    {
       from: "assets",
       to: "branding"
     },

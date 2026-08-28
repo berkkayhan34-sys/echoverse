@@ -232,7 +232,28 @@ export const socketEventPayloadSchemas = {
     .strict(),
   "call:end": z.object({ toSocketId: identifierSchema, callId: identifierSchema }).strict(),
   "guild:create": z.object({ name: z.string().trim().min(1).max(32) }).strict(),
-  "guild:join-code": z.object({ code: z.string().trim().min(1).max(80) }).strict(),
+  "guild:join-code": z.object({ code: z.string().trim().min(1).max(128) }).strict(),
+  "guild:create-invite": z
+    .object({
+      guildId: identifierSchema,
+      expiresInHours: z.number().int().min(1).max(720).optional()
+    })
+    .strict(),
+  "guild:revoke-invite": z
+    .object({ guildId: identifierSchema, token: z.string().trim().min(1).max(128) })
+    .strict(),
+  "guild:set-role": z
+    .object({
+      guildId: identifierSchema,
+      accountId: identifierSchema,
+      role: z.enum(["admin", "moderator", "member"])
+    })
+    .strict(),
+  "guild:rename-lobby": z
+    .object({ guildId: identifierSchema, name: z.string().trim().min(1).max(32) })
+    .strict(),
+  "guild:leave": z.object({ guildId: identifierSchema }).strict(),
+  "guild:select": z.object({ guildId: identifierSchema }).strict(),
   "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
   "voice:sync-request": optionalEmptyPayloadSchema,
   "leave-room": optionalEmptyPayloadSchema,
@@ -317,7 +338,16 @@ export type ChatMessage = {
   createdAt: string;
   bot?: boolean;
 };
-export type Guild = { id: string; name: string; createdBy: string; createdAt: string };
+export type GuildRole = "owner" | "admin" | "moderator" | "member";
+export type Guild = {
+  id: string;
+  name: string;
+  lobbyName?: string;
+  createdBy: string;
+  ownerId?: string;
+  createdAt: string;
+  role?: GuildRole;
+};
 export type ScreenSource = { id: string; name: string; thumbnail?: string; appIcon?: string };
 export type SpotifyState = {
   guildId?: string;

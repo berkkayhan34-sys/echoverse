@@ -22,9 +22,19 @@ export type User = {
   accountId?: string;
   roomId?: string;
   guildId?: string;
+  activeGuildId?: string;
 };
 
-export type Guild = { id: string; name: string; createdBy: string; createdAt: string };
+export type Guild = {
+  id: string;
+  name: string;
+  lobbyName?: string;
+  createdBy: string;
+  ownerId?: string;
+  createdAt: string;
+};
+
+export type GuildRole = "owner" | "admin" | "moderator" | "member";
 
 export type SpotifyPartyState = {
   guildId: string;

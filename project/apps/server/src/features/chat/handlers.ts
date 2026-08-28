@@ -35,7 +35,7 @@ export function registerChatHandlers({
     const parsed = chatMessageSchema.safeParse(payload);
     if (!parsed.success) return;
     const { guildId, text } = parsed.data;
-    if (!user || !user.roomId || user.guildId !== guildId) return;
+    if (!user || user.activeGuildId !== guildId) return;
 
     const safeText = sanitizeText(text);
     if (!safeText) return;
@@ -50,7 +50,7 @@ export function registerChatHandlers({
       createdAt: new Date().toISOString()
     };
 
-    io.to(user.roomId).emit("chat-message", message);
+    io.to(`guild:${guildId}:text`).emit("chat-message", message);
 
     const botText = utilityBotResponse(
       safeText.toLowerCase(),
@@ -58,7 +58,7 @@ export function registerChatHandlers({
     );
     if (!botText) return;
 
-    io.to(user.roomId).emit("chat-message", {
+    io.to(`guild:${guildId}:text`).emit("chat-message", {
       id: crypto.randomUUID(),
       guildId,
       userId: "bot:utility",

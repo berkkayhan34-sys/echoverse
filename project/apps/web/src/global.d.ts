@@ -33,7 +33,11 @@ declare global {
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       checkForUpdates?: () => Promise<{ ok: boolean; version?: string | null; error?: string }>;
       getVersion?: () => Promise<string>;
-      notify?: (payload: { title: string; body: string }) => Promise<{ ok: boolean }>;
+      notify?: (payload: {
+        title: string;
+        body: string;
+        icon?: string | null;
+      }) => Promise<{ ok: boolean }>;
     };
   }
 }

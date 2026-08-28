@@ -13,6 +13,12 @@ doğrulanmış değişiklikleri özetler; planlanan işler release edilmiş say�
 - Dokümantasyon ve repo yönetişimi temeli hazırlanıyor.
 - Runtime davranış değişikliği bu fazın kapsamı dışındadır.
 
+## 1.8.0
+
+- Owner ve adminlerin kalıcı ses lobisinin görünen adını değiştirebilmesi.
+- Lobi adı için PostgreSQL/SQLite migration, yetki kontrolü, üye yayını ve
+  web/masaüstü arayüzü.
+
 ## 1.7.4
 
 - Mevcut ürün baseline'ı.

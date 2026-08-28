@@ -3,20 +3,33 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import crypto from "node:crypto";
-import type { Guild, SpotifyPartyState, User } from "../../domain/types.js";
+import type { Guild, GuildRole, SpotifyPartyState, User } from "../../domain/types.js";
 
 export type GuildHandlerDependencies = {
   socket: any;
   io: any;
   users: Map<string, User>;
   guilds: Map<string, Guild>;
-  guildMembers: Map<string, Set<string>>;
   spotifyParties: Map<string, SpotifyPartyState>;
   areFriends(a: string, b: string): Promise<boolean>;
   accountPresence: Map<string, string>;
   roomFor(guildId: string): string;
+  textRoomFor(guildId: string): string;
   guildList(accountId?: string): Guild[];
+  canManage(guildId: string, accountId?: string): boolean;
+  createGuild(name: string, ownerId: string): Promise<Guild>;
+  createInvite(
+    guildId: string,
+    createdBy: string,
+    expiresInHours?: number
+  ): Promise<{ token: string; guildId: string; expiresAt: string }>;
+  joinByInvite(token: string, accountId: string): Promise<Guild | null>;
+  leaveGuild(guildId: string, accountId: string): Promise<boolean>;
+  roleFor(guildId: string, accountId?: string): GuildRole | undefined;
+  isMember(guildId: string, accountId?: string): boolean;
+  setRole(guildId: string, accountId: string, role: Exclude<GuildRole, "owner">): Promise<boolean>;
+  revokeInvite(guildId: string, token: string): Promise<void>;
+  renameLobby(guildId: string, name: string): Promise<Guild | null>;
   getPresence(roomId: string): unknown[];
   sendLobbyState(socket: any, roomId: string): void;
   leaveCurrentRoom(socket: any, user: User): void;
@@ -31,12 +44,22 @@ export function registerGuildHandlers({
   io,
   users,
   guilds,
-  guildMembers,
   spotifyParties,
   areFriends,
   accountPresence,
   roomFor,
+  textRoomFor,
   guildList,
+  canManage,
+  createGuild,
+  createInvite,
+  joinByInvite,
+  leaveGuild,
+  roleFor,
+  isMember,
+  setRole,
+  revokeInvite,
+  renameLobby,
   getPresence,
   sendLobbyState,
   leaveCurrentRoom,
@@ -45,64 +68,184 @@ export function registerGuildHandlers({
   socketError,
   onValidatedSocketEvent
 }: GuildHandlerDependencies) {
-  onValidatedSocketEvent(socket, "guild:create", ({ name }: { name: string }, callback: any) => {
-    const user = users.get(socket.id);
-    if (!user?.accountId) {
-      callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
-      return;
+  onValidatedSocketEvent(
+    socket,
+    "guild:create",
+    async ({ name }: { name: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
+        return;
+      }
+
+      const guildName = sanitizeName(name, 32);
+      if (!guildName) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildNameEmpty") });
+        return;
+      }
+
+      const guild = await createGuild(guildName, user.accountId);
+      for (const peer of io.sockets.sockets.values()) {
+        peer.emit("guild:list", guildList(peer.data.account?.id));
+      }
+      callback?.({ ok: true, guild: { ...guild, role: "owner" } });
     }
+  );
 
-    const guildName = sanitizeName(name, 32);
-    if (!guildName) {
-      callback?.({ ok: false, error: socketError(socket, "server.guildNameEmpty") });
-      return;
+  onValidatedSocketEvent(
+    socket,
+    "guild:join-code",
+    async ({ code }: { code: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
+        return;
+      }
+      const guild = await joinByInvite(String(code ?? "").trim(), user.accountId);
+      if (!guild) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildCodeNotFound") });
+        return;
+      }
+
+      for (const peer of io.sockets.sockets.values()) {
+        peer.emit("guild:list", guildList(peer.data.account?.id));
+      }
+      callback?.({ ok: true, guild });
     }
+  );
 
-    const guild: Guild = {
-      id: crypto.randomBytes(4).toString("hex"),
-      name: guildName,
-      createdBy: user.userId,
-      createdAt: new Date().toISOString()
-    };
-
-    guilds.set(guild.id, guild);
-    guildMembers.set(guild.id, new Set([user.accountId]));
-    for (const peer of io.sockets.sockets.values()) {
-      peer.emit("guild:list", guildList(peer.data.account?.id));
+  onValidatedSocketEvent(
+    socket,
+    "guild:create-invite",
+    async (
+      { guildId, expiresInHours }: { guildId: string; expiresInHours?: number },
+      callback: any
+    ) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
+        return;
+      }
+      if (!guilds.has(guildId) || !canManage(guildId, user.accountId)) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      callback?.({ ok: true, invite: await createInvite(guildId, user.accountId, expiresInHours) });
     }
-    callback?.({ ok: true, guild });
-  });
+  );
 
-  onValidatedSocketEvent(socket, "guild:join-code", ({ code }: { code: string }, callback: any) => {
-    const user = users.get(socket.id);
-    if (!user?.accountId) {
-      callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
-      return;
+  onValidatedSocketEvent(
+    socket,
+    "guild:revoke-invite",
+    async ({ guildId, token }: { guildId: string; token: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !canManage(guildId, user.accountId)) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      await revokeInvite(guildId, token);
+      callback?.({ ok: true });
     }
-    const id = String(code ?? "")
-      .trim()
-      .toLowerCase();
+  );
 
-    if (!guilds.has(id)) {
-      callback?.({ ok: false, error: socketError(socket, "server.guildCodeNotFound") });
-      return;
+  onValidatedSocketEvent(
+    socket,
+    "guild:set-role",
+    async (
+      {
+        guildId,
+        accountId,
+        role
+      }: { guildId: string; accountId: string; role: Exclude<GuildRole, "owner"> },
+      callback: any
+    ) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || roleFor(guildId, user.accountId) !== "owner") {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      const changed = await setRole(guildId, accountId, role);
+      callback?.(
+        changed ? { ok: true } : { ok: false, error: socketError(socket, "server.accountNotFound") }
+      );
     }
+  );
 
-    const members = guildMembers.get(id) || new Set<string>();
-    members.add(user.accountId);
-    guildMembers.set(id, members);
-    callback?.({ ok: true, guild: guilds.get(id) });
-  });
+  onValidatedSocketEvent(
+    socket,
+    "guild:rename-lobby",
+    async ({ guildId, name }: { guildId: string; name: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !canManage(guildId, user.accountId)) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      const lobbyName = sanitizeName(name, 32);
+      if (!lobbyName) {
+        callback?.({ ok: false, error: socketError(socket, "server.lobbyNameEmpty") });
+        return;
+      }
+      const updated = await renameLobby(guildId, lobbyName);
+      if (!updated) {
+        callback?.({ ok: false, error: socketError(socket, "server.lobbyRenameFailed") });
+        return;
+      }
+      for (const peer of io.sockets.sockets.values()) {
+        const accountId = peer.data.account?.id;
+        if (accountId && isMember(guildId, accountId)) peer.emit("guild:updated", updated);
+      }
+      callback?.({ ok: true, guild: updated });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:leave",
+    async ({ guildId }: { guildId: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !isMember(guildId, user.accountId)) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+        return;
+      }
+      const left = await leaveGuild(guildId, user.accountId);
+      if (user.guildId === guildId) leaveCurrentRoom(socket, user);
+      if (user.activeGuildId === guildId) {
+        socket.leave(textRoomFor(guildId));
+        user.activeGuildId = undefined;
+        users.set(socket.id, user);
+      }
+      socket.emit("guild:list", guildList(user.accountId));
+      callback?.(
+        left
+          ? { ok: true }
+          : { ok: false, error: socketError(socket, "server.guildOwnerCannotLeave") }
+      );
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:select",
+    ({ guildId }: { guildId: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || (guildId !== "echoverse" && !isMember(guildId, user.accountId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+        return;
+      }
+      if (user.activeGuildId) socket.leave(textRoomFor(user.activeGuildId));
+      user.activeGuildId = guildId;
+      users.set(socket.id, user);
+      socket.join(textRoomFor(guildId));
+      callback?.({ ok: true, guildId });
+    }
+  );
 
   onValidatedSocketEvent(socket, "join-room", ({ guildId }: { guildId: string }, callback: any) => {
     const user = users.get(socket.id);
     if (!user) return;
 
     const safeGuild = guilds.has(String(guildId)) ? String(guildId) : "echoverse";
-    if (
-      safeGuild !== "echoverse" &&
-      (!user.accountId || !guildMembers.get(safeGuild)?.has(user.accountId))
-    ) {
+    if (safeGuild !== "echoverse" && (!user.accountId || !isMember(safeGuild, user.accountId))) {
       callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
       return;
     }
@@ -111,8 +254,10 @@ export function registerGuildHandlers({
     const roomId = roomFor(safeGuild);
     user.roomId = roomId;
     user.guildId = safeGuild;
+    user.activeGuildId = safeGuild;
     users.set(socket.id, user);
     socket.join(roomId);
+    socket.join(textRoomFor(safeGuild));
 
     const peers = getPresence(roomId).filter((peer: any) => peer.socketId !== socket.id);
     socket.emit("room-peers", peers);

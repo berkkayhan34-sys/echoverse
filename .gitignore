@@ -34,6 +34,7 @@ playwright-report/
 .eslintcache
 results.sarif
 **/results.sarif
+work/
 .npm/
 .pnpm-store/
 .yarn/

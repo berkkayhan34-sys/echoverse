@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Account, Guild, PeerInfo, SpotifyState } from "@echoverse/contracts";
+import type { Account, FriendUser, Guild, PeerInfo, SpotifyState } from "@echoverse/contracts";
+import { useState } from "react";
 import { displayInitials } from "./text.js";
 
 export type WorkspaceSidebarLabels = {
@@ -29,7 +30,52 @@ export type WorkspaceSidebarLabels = {
   microphone: string;
   logout: string;
   createGuild: string;
+  directMessages?: string;
+  openDms?: string;
+  joinVoice?: string;
+  invite?: string;
+  renameLobby?: string;
+  lobbyNamePlaceholder?: string;
+  save?: string;
 };
+
+function LobbyNameEditor({
+  value,
+  renameLabel,
+  placeholder,
+  saveLabel,
+  onSave
+}: {
+  value: string;
+  renameLabel: string;
+  placeholder: string;
+  saveLabel: string;
+  onSave: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <form
+      className="lobby-name-editor"
+      aria-label={renameLabel}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const name = draft.trim();
+        if (name && name !== value) onSave(name);
+      }}
+    >
+      <input
+        value={draft}
+        maxLength={32}
+        aria-label={placeholder}
+        placeholder={placeholder}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button type="submit" disabled={!draft.trim() || draft.trim() === value}>
+        {saveLabel}
+      </button>
+    </form>
+  );
+}
 
 /** Shared server/channel/profile sidebar; commands and platform state stay in the renderer. */
 export function WorkspaceSidebar({
@@ -54,6 +100,13 @@ export function WorkspaceSidebar({
   appVersion,
   labels,
   onSelectGuild,
+  onJoinVoice,
+  lobbyName,
+  canManageGuild,
+  onRenameLobby,
+  activeDmFriend,
+  onOpenDms,
+  onCreateInvite,
   onCreateGuild,
   onTogglePeerMute,
   onPeerVolumeChange,
@@ -87,6 +140,13 @@ export function WorkspaceSidebar({
   appVersion: string;
   labels: WorkspaceSidebarLabels;
   onSelectGuild: (guild: Guild) => void;
+  onJoinVoice?: (guild: Guild) => void;
+  lobbyName?: string;
+  canManageGuild?: boolean;
+  onRenameLobby?: (guild: Guild, name: string) => void;
+  activeDmFriend?: FriendUser | null;
+  onOpenDms?: () => void;
+  onCreateInvite?: (guild: Guild) => void;
   onCreateGuild: () => void;
   onTogglePeerMute: (socketId: string) => void;
   onPeerVolumeChange: (socketId: string, volume: number) => void;
@@ -116,6 +176,15 @@ export function WorkspaceSidebar({
         ))}
 
         <button
+          className={`server-circle dm ${activeDmFriend ? "active" : ""}`}
+          aria-label={labels.directMessages || "Direct messages"}
+          title={labels.directMessages || "Direct messages"}
+          onClick={onOpenDms}
+        >
+          ✉
+        </button>
+
+        <button
           className="server-circle add"
           aria-label={labels.createGuild}
           onClick={onCreateGuild}
@@ -127,7 +196,18 @@ export function WorkspaceSidebar({
       <aside className="channels">
         <div className="guild-title">
           <span>{activeGuild?.name}</span>
-          <small className="guild-code">{activeGuild ? `#${activeGuild.id}` : ""}</small>
+          <small className="guild-code">
+            {activeGuild
+              ? `#${activeGuild.id}${activeGuild.role ? ` · ${activeGuild.role}` : ""}`
+              : ""}
+          </small>
+          {activeGuild &&
+            onCreateInvite &&
+            (activeGuild.role === "owner" || activeGuild.role === "admin") && (
+              <button className="guild-invite-button" onClick={() => onCreateInvite(activeGuild)}>
+                + {labels.invite || "Invite"}
+              </button>
+            )}
         </div>
 
         <div className="channel-group">
@@ -138,7 +218,26 @@ export function WorkspaceSidebar({
 
         <div className="channel-group">
           <div className="channel-title">{labels.voiceChannels}</div>
-          <button className="channel voice active">🔊 {labels.lobby}</button>
+          <button
+            className={`channel voice ${onJoinVoice ? "" : "active"}`}
+            disabled={!activeGuild || !onJoinVoice}
+            onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
+          >
+            🔊 {lobbyName || labels.lobby}
+            {!activeGuild ? " · " : ""}
+            {activeGuild && labels.joinVoice ? labels.joinVoice : ""}
+          </button>
+
+          {activeGuild && canManageGuild && onRenameLobby && (
+            <LobbyNameEditor
+              key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
+              value={lobbyName || labels.lobby}
+              renameLabel={labels.renameLobby || "Rename lobby"}
+              placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+              saveLabel={labels.save || "Save"}
+              onSave={(name) => onRenameLobby(activeGuild, name)}
+            />
+          )}
 
           <div className="voice-users">
             {presence.map((peer) => {
@@ -275,6 +374,21 @@ export function WorkspaceSidebar({
           </button>
         </div>
       </aside>
+
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        <button onClick={() => guilds[0] && onSelectGuild(guilds[0])}>
+          ◈ <span>{labels.textChannels}</span>
+        </button>
+        <button onClick={onOpenDms}>
+          ✉ <span>{labels.directMessages || "DM"}</span>
+        </button>
+        <button
+          onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
+          disabled={!activeGuild || !onJoinVoice}
+        >
+          🔊 <span>{labels.joinVoice || labels.lobby}</span>
+        </button>
+      </nav>
     </>
   );
 }

@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.7.5`, with protocol major version 2.
+The shipped baseline is product version `1.8.0`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -55,6 +55,252 @@ children without losing their evidence, create one final deferred-work
 reference for owner-approved follow-up, reconcile the canonical navigation and
 decision records, and verify the repository with the required documentation,
 quality, build, security, and deployment-manifest checks.
+
+## Roadmap operation after the baseline
+
+The next authorized change should be a specific feature addition or behavior
+change. It must be recorded as a new roadmap child or equivalent owner-approved
+change record before implementation, preserving the repository’s requirement,
+acceptance, security, validation, documentation, and release gates.
+
+## Owner-approved feature work
+
+### private-guild-dm-mobile-foundation
+
+```yaml
+id: FEATURE-001
+type: runtime_feature
+status: in_progress
+evidence: null
+blocks_roadmap: true
+decision: decisions/0013-guild-access-dm-mobile.md
+```
+
+[-] Deliver the owner-approved private guild, role, invite, persistent DM,
+mobile responsive, and mobile voice foundation in implementation order:
+
+1. Add durable guild, membership, role, invite, and channel-access data with
+   SQLite/PostgreSQL migrations and migration tests.
+2. Add typed protocol contracts and server-side authorization for guild lists,
+   text-channel access, voice-room entry, invites, and role administration.
+3. Separate server selection from voice-room entry; preserve explicit lobby
+   join/leave behavior and repair reconnect state.
+4. Add the shared Direct Messages navigation and improve the message composer
+   for keyboard, attachment, reply, edit, and mobile input ergonomics.
+5. Apply responsive web navigation drawers, bottom navigation, media controls,
+   permission states, and mobile voice-channel acceptance coverage.
+6. Keep Windows, macOS, and web builds aligned through shared contracts,
+   shared-ui components, localization, tests, and release validation.
+7. Allow server owners and admins to rename the persistent voice lobby through
+   an authorized, localized action; persist the name and broadcast updates to
+   authorized guild members.
+
+Acceptance evidence is required for each child before this feature is marked
+complete. No unrelated product feature should be added to this child.
+
+## Release/version rule
+
+The root [`VERSION`](../VERSION) file remains the canonical product version.
+Every release must update package mirrors, changelog/release notes, roadmap
+status, checksums, and workflow evidence together, then publish only the
+matching `v<version>` tag as described in [release.md](release.md).
+
+## Post-feature parity audit
+
+### discord-gap-analysis-and-parity-roadmap
+
+```yaml
+id: AUDIT-003
+type: product_audit_and_roadmap
+status: complete
+evidence: evidence/AUDIT-003.md
+blocks_roadmap: true
+```
+
+[x] Compare the current EchoVerse implementation with Discord's documented
+server permissions, channel organization, messaging, DM safety, moderation,
+voice/screen-share, emoji/media, and platform surfaces. Record the gaps and
+order the follow-up work so domain, authorization, and safety foundations are
+implemented before UI polish or additional clients.
+
+The ordered follow-up is documented in
+[`audits/discord-gap-analysis.md`](audits/discord-gap-analysis.md) and must be
+split into independently evidenced children before implementation:
+
+1. domain and channel model;
+2. custom roles and permission evaluation;
+3. guild administration, invites, moderation, and auditability;
+4. messaging parity (search, pins, threads, mentions, and content policy);
+5. DM safety and social graph;
+6. emoji and rich media;
+7. voice scaling and mobile lifecycle;
+8. platform strategy (responsive PWA versus native mobile);
+9. reliability, security, accessibility, and release gate.
+
+This audit does not claim Discord compatibility and does not authorize native
+mobile development or production deployment. The current responsive mobile
+web path remains the supported iOS/Android surface until a platform decision
+is recorded.
+
+## Discord + TeamSpeak product direction
+
+The following children are the ordered implementation queue for the target
+product: Discord-like communities, identity, and text/social features combined
+with TeamSpeak-like persistent, low-friction voice rooms. They are deliberately
+incomplete until the owner answers the linked product decisions. Each ID is
+stable and must not be reused; dependencies are machine-facing identifiers.
+
+### foundation-product-contract
+
+```yaml
+id: ARCH-001
+type: product_and_protocol_foundation
+sequence: 100
+status: incomplete
+evidence: null
+blocks_roadmap: true
+decision: decisions/0014-discord-teamspeak-product-direction.md
+depends_on: [FEATURE-001, AUDIT-003]
+```
+
+[ ] Freeze the Discord + TeamSpeak hybrid product contract: server/guild
+ownership, persistent voice rooms, text channels, DMs, identities, presence,
+message/media boundaries, compatibility guarantees, and non-goals.
+
+### channel-and-space-model
+
+```yaml
+id: ARCH-002
+type: domain_model
+sequence: 200
+status: incomplete
+evidence: null
+blocks_roadmap: true
+decision: decisions/0014-discord-teamspeak-product-direction.md
+depends_on: [ARCH-001]
+```
+
+[ ] Design and migrate categories, text channels, persistent voice rooms,
+optional stage/forum spaces, ordering, archive/delete rules, and backward
+compatibility for the current general/music/lobby surface. The compatibility
+slice includes a durable lobby display name that owners and admins can rename
+through an authorized server action, with member-visible updates and migration
+coverage.
+
+### permissions-and-role-hierarchy
+
+```yaml
+id: SEC-001
+type: authorization
+sequence: 300
+status: incomplete
+evidence: null
+blocks_roadmap: true
+decision: decisions/0014-discord-teamspeak-product-direction.md
+depends_on: [ARCH-002]
+```
+
+[ ] Implement a server-side role hierarchy and permission evaluator with
+channel/category overrides, inherited defaults, deny-by-default behavior,
+negative tests, and shared member/role administration UI.
+
+### guild-administration-and-moderation
+
+```yaml
+id: MOD-001
+type: moderation_and_governance
+sequence: 400
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [SEC-001]
+```
+
+[ ] Add member management, invite lifecycle UI, kick/ban/timeout/report flows,
+privacy-safe audit events, retention/deletion rules, rate limits, and a
+moderator-facing safety workflow.
+
+### messaging-and-social-parity
+
+```yaml
+id: CHAT-001
+type: messaging_and_social
+sequence: 500
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [ARCH-002, SEC-001]
+```
+
+[ ] Add guild/DM search, pins, threads, replies, message links, mention
+autocomplete, content/attachment policy, message requests, spam quarantine,
+mute/archive, group DMs, and notification controls.
+
+### emoji-and-rich-media
+
+```yaml
+id: MEDIA-001
+type: client_media
+sequence: 600
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [CHAT-001, MOD-001]
+```
+
+[ ] Version the Unicode catalog and accessibility/search model, then evaluate
+custom server emoji, GIFs, stickers, previews, licensing, upload limits,
+sanitization, and cross-platform rendering.
+
+### scalable-voice-and-presence
+
+```yaml
+id: VOICE-001
+type: realtime_media
+sequence: 700
+status: incomplete
+evidence: null
+blocks_roadmap: true
+decision: decisions/0014-discord-teamspeak-product-direction.md
+depends_on: [ARCH-002, SEC-001]
+```
+
+[ ] Choose the voice topology and provider boundary, then implement persistent
+voice-room semantics, SFU/region readiness, stage/stream permissions,
+reconnect/background lifecycle, device diagnostics, and quality telemetry.
+
+### mobile-and-platform-delivery
+
+```yaml
+id: PLATFORM-001
+type: platform_strategy
+sequence: 800
+status: incomplete
+evidence: null
+blocks_roadmap: true
+decision: decisions/0014-discord-teamspeak-product-direction.md
+depends_on: [CHAT-001, VOICE-001]
+```
+
+[ ] Decide PWA-first versus native iOS/Android delivery, then specify push,
+deep links, permissions, offline behavior, background voice, accessibility,
+store distribution, and Windows/macOS packaging parity.
+
+### reliability-and-public-release-gate
+
+```yaml
+id: READY-002
+type: release_readiness
+sequence: 900
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [MOD-001, MEDIA-001, VOICE-001, PLATFORM-001]
+```
+
+[ ] Add browser/mobile E2E coverage, performance budgets, observability,
+dependency/security scans, migration rollback and backup drills, signed
+artifacts, incident procedures, and the final public-release readiness gate.
 
 ## Final deferred work reference
 
@@ -96,17 +342,3 @@ the following as explicit, independently evidenced roadmap work:
 Until this child is activated by the owner, unsigned desktop artifacts remain
 validation-only and must not be called production-ready. No release,
 deployment, signing, or feature implementation is implied by this reference.
-
-## Roadmap operation after the baseline
-
-The next authorized change should be a specific feature addition or behavior
-change. It must be recorded as a new roadmap child or equivalent owner-approved
-change record before implementation, preserving the repository’s requirement,
-acceptance, security, validation, documentation, and release gates.
-
-## Release/version rule
-
-The root [`VERSION`](../VERSION) file remains the canonical product version.
-Every release must update package mirrors, changelog/release notes, roadmap
-status, checksums, and workflow evidence together, then publish only the
-matching `v<version>` tag as described in [release.md](release.md).

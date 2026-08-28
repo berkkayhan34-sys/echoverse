@@ -115,6 +115,7 @@ export function registerIdentityHandlers({
       const tokens = sessionManager.issue(account.id);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
+      socket.emit("guild:list", guildList(account.id));
       callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
       serverLogger.error("echoverse.auth.register_failed");
@@ -147,6 +148,7 @@ export function registerIdentityHandlers({
       const tokens = sessionManager.issue(account.id);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
+      socket.emit("guild:list", guildList(account.id));
       callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
       serverLogger.error("echoverse.auth.login_failed");
@@ -175,6 +177,7 @@ export function registerIdentityHandlers({
       const tokens = current || sessionManager.issue(account.id);
       attachAccountToSocket(socket, account, tokens.sessionId);
       socket.data.accessToken = tokens.accessToken;
+      socket.emit("guild:list", guildList(account.id));
       callback?.({ ok: true, ...sessionResponse(account, tokens) });
     } catch {
       callback?.({ ok: false });

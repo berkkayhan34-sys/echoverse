@@ -7,6 +7,166 @@ import type { ChatMessage } from "@echoverse/contracts";
 import { ActionButton } from "./primitives.js";
 import { displayInitials } from "./text.js";
 
+const EMOJI_CATALOG = [
+  "😀",
+  "😃",
+  "😄",
+  "😁",
+  "😆",
+  "😅",
+  "😂",
+  "🤣",
+  "😊",
+  "🙂",
+  "🙃",
+  "😉",
+  "😌",
+  "😍",
+  "🥰",
+  "😘",
+  "😗",
+  "😙",
+  "😚",
+  "😋",
+  "😛",
+  "😝",
+  "😜",
+  "🤪",
+  "🤨",
+  "🧐",
+  "🤓",
+  "😎",
+  "🤩",
+  "🥳",
+  "😏",
+  "😒",
+  "😞",
+  "😔",
+  "😟",
+  "😕",
+  "🙁",
+  "☹️",
+  "😣",
+  "😖",
+  "😫",
+  "😩",
+  "🥺",
+  "😢",
+  "😭",
+  "😤",
+  "😠",
+  "😡",
+  "🤬",
+  "🤯",
+  "😳",
+  "🥵",
+  "🥶",
+  "😱",
+  "😨",
+  "😰",
+  "😥",
+  "😓",
+  "🤗",
+  "🤔",
+  "🫡",
+  "🤭",
+  "🤫",
+  "🤥",
+  "😶",
+  "😐",
+  "😑",
+  "😬",
+  "🙄",
+  "😯",
+  "😦",
+  "😧",
+  "😮",
+  "😲",
+  "🥱",
+  "😴",
+  "🤤",
+  "😪",
+  "😵",
+  "🤐",
+  "🥴",
+  "🤢",
+  "🤮",
+  "🤧",
+  "😷",
+  "🤠",
+  "👋",
+  "🤚",
+  "🖐️",
+  "✋",
+  "👌",
+  "🤌",
+  "🤏",
+  "✌️",
+  "🤞",
+  "🤟",
+  "🤘",
+  "🤙",
+  "👍",
+  "👎",
+  "👏",
+  "🙌",
+  "👐",
+  "🤝",
+  "🙏",
+  "💪",
+  "❤️",
+  "🧡",
+  "💛",
+  "💚",
+  "💙",
+  "💜",
+  "🖤",
+  "🤍",
+  "🤎",
+  "💔",
+  "💕",
+  "💯",
+  "✨",
+  "🔥",
+  "🎉",
+  "🎊",
+  "✅",
+  "❌",
+  "⚠️",
+  "💡",
+  "🎵",
+  "🚀",
+  "⭐",
+  "🌟",
+  "☀️",
+  "🌈",
+  "🍕",
+  "🍔",
+  "🍟",
+  "🌮",
+  "🍎",
+  "🍺",
+  "☕",
+  "🎂",
+  "⚽",
+  "🎮",
+  "🎧",
+  "🐶",
+  "🐱",
+  "🦊",
+  "🐻",
+  "🐼",
+  "🐸",
+  "🐵",
+  "🦄",
+  "🐝",
+  "🌸",
+  "🌹",
+  "🌻",
+  "🌙",
+  "🌍"
+] as const;
+
 /** Renders shared guild history without owning transport state. */
 export function ChannelMessageList({
   messages,
@@ -69,7 +229,7 @@ export function ChatComposer({
   emojiLabel: string;
   sendLabel: string;
   onTextChange: (value: string) => void;
-  onAddEmoji: () => void;
+  onAddEmoji: (emoji?: string) => void;
   onSend: () => void;
 }) {
   return (
@@ -84,9 +244,26 @@ export function ChatComposer({
         placeholder={placeholder}
       />
 
-      <ActionButton aria-label={emojiLabel} onClick={onAddEmoji}>
-        😂
-      </ActionButton>
+      <details className="emoji-picker-wrap" aria-label={emojiLabel}>
+        <summary className="emoji-trigger" aria-label={emojiLabel} title={emojiLabel}>
+          😊
+        </summary>
+        <div className="emoji-picker" role="dialog" aria-label={emojiLabel}>
+          {EMOJI_CATALOG.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              aria-label={emoji}
+              onClick={() => {
+                onAddEmoji(emoji);
+                (document.activeElement as HTMLElement | null)?.blur();
+              }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      </details>
 
       <ActionButton className="send" onClick={onSend}>
         {sendLabel}

@@ -56,7 +56,9 @@ describe("PostgreSQL persistence boundary", () => {
     expect(result.rows.map((row) => row.id)).toEqual([
       "001_initial",
       "002_dm_metadata",
-      "003_friendship_updated_at"
+      "003_friendship_updated_at",
+      "004_guild_access",
+      "005_guild_lobby_name"
     ]);
   });
 
@@ -85,8 +87,14 @@ describe("PostgreSQL persistence boundary", () => {
          AND column_name IN ('reply_to_id', 'edited_at', 'deleted_at', 'attachment_name', 'attachment_mime', 'attachment_data', 'reactions')
        ORDER BY column_name`
     );
+    const guildColumns = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'echoverse_guilds' AND column_name = 'lobby_name'`
+    );
 
     expect(friendshipColumns.rowCount).toBe(1);
+    expect(guildColumns.rowCount).toBe(1);
     expect(messageColumns.rows.map((row) => row.column_name)).toEqual([
       "attachment_data",
       "attachment_mime",

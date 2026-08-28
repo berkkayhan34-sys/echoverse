@@ -23,3 +23,7 @@ locations, statuses, evidence links, and unique audit IDs.
 
 Do not use this directory for permanent policy, implementation status, or
 ordinary evidence records.
+
+## Current audit records
+
+- [AUDIT-003: Discord parity gap analysis](discord-gap-analysis.md)

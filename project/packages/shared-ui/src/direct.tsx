@@ -305,7 +305,9 @@ export function DirectMessageComposer({
           ＋
         </ActionButton>
 
-        <input
+        <textarea
+          rows={1}
+          className="dm-message-input"
           aria-label={inputLabel}
           value={text}
           onFocus={() => onTypingChange(true)}

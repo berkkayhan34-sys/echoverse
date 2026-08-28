@@ -168,7 +168,8 @@ describe("shared chat UI", () => {
     const clearButton = buttons.find((button) => button.props["aria-label"] === "Clear context");
     const sendButton = buttons.find((button) => buttonText(button).includes("Save"));
 
-    expect(elementsOfType(element, "input")).toHaveLength(2);
+    expect(elementsOfType(element, "input")).toHaveLength(1);
+    expect(elementsOfType(element, "textarea")).toHaveLength(1);
     expect(
       elementsOfType(element, "div").some((node) => node.props.children === "Drop the file here")
     ).toBe(true);

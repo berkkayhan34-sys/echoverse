@@ -182,7 +182,13 @@ describe("protocol contracts", () => {
       "call:answer",
       "call:end",
       "guild:create",
+      "guild:create-invite",
       "guild:join-code",
+      "guild:revoke-invite",
+      "guild:set-role",
+      "guild:rename-lobby",
+      "guild:leave",
+      "guild:select",
       "join-room",
       "voice:sync-request",
       "leave-room",
@@ -208,6 +214,18 @@ describe("protocol contracts", () => {
       socketEventPayloadSchemas["dm:send"].safeParse({ friendId: "x", body: "x", attachment: null })
         .success
     ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["guild:rename-lobby"].safeParse({
+        guildId: "guild",
+        name: "Quiet Room"
+      }).success
+    ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["guild:rename-lobby"].safeParse({
+        guildId: "guild",
+        name: ""
+      }).success
+    ).toBe(false);
     expect(
       socketEventPayloadSchemas["spotify:sync"].safeParse({
         guildId: "guild",

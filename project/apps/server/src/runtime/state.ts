@@ -7,6 +7,7 @@ import type {
   Account,
   CallSession,
   Guild,
+  GuildRole,
   StoredDm,
   SpotifyPartyState,
   User
@@ -15,6 +16,11 @@ import type {
 export const users = new Map<string, User>();
 export const guilds = new Map<string, Guild>();
 export const guildMembers = new Map<string, Set<string>>();
+export const guildRoles = new Map<string, Map<string, GuildRole>>();
+export const guildInvites = new Map<
+  string,
+  { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
+>();
 export const spotifyParties = new Map<string, SpotifyPartyState>();
 export const pendingCalls = new Map<
   string,

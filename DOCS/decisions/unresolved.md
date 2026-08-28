@@ -36,6 +36,14 @@ No unresolved owner decision blocks the current audit-closure documentation
 pass. The deferred release-signing decision below remains intentionally outside
 the current baseline and does not authorize public release.
 
+### ARCH-001 Discord + TeamSpeak product direction — resolved
+
+Resolved on 2026-08-28 using [ADR-0014](0014-discord-teamspeak-product-direction.md):
+Discord-style space hierarchy, granular permissions, provider-neutral SFU
+boundary, account/friend/DM identity, PWA-first mobile delivery,
+owner/admin-first moderation, Unicode/custom emoji before rich media, and
+public single-region scale with private invitation-only servers.
+
 ### OPS-003 platform signing and notarization
 
 OPS-003 is blocked as of 2026-08-28. The release workflows intentionally

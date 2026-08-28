@@ -431,7 +431,16 @@ describe("server HTTP and Socket.IO boundaries", () => {
       ok: false,
       error: tr("server.guildMembershipRequired")
     });
-    expect(await emitWithAck(member.socket, "guild:join-code", { code: guild.id })).toEqual({
+    const invite = (await emitWithAck(owner.socket, "guild:create-invite", {
+      guildId: guild.id
+    })) as {
+      ok: boolean;
+      invite: { token: string };
+    };
+    expect(invite.ok).toBe(true);
+    expect(
+      await emitWithAck(member.socket, "guild:join-code", { code: invite.invite.token })
+    ).toEqual({
       ok: true,
       guild: expect.objectContaining({ id: guild.id })
     });
@@ -439,6 +448,37 @@ describe("server HTTP and Socket.IO boundaries", () => {
       ok: true,
       guildId: guild.id
     });
+
+    expect(
+      await emitWithAck(member.socket, "guild:rename-lobby", {
+        guildId: guild.id,
+        name: "Member Attempt"
+      })
+    ).toEqual({
+      ok: false,
+      error: tr("server.guildPermissionRequired")
+    });
+    const renamed = await emitWithAck(owner.socket, "guild:rename-lobby", {
+      guildId: guild.id,
+      name: "Quiet Room"
+    });
+    expect(renamed).toMatchObject({
+      ok: true,
+      guild: { id: guild.id, lobbyName: "Quiet Room" }
+    });
+    expect(
+      await emitWithAck(owner.socket, "guild:set-role", {
+        guildId: guild.id,
+        accountId: member.accountId,
+        role: "admin"
+      })
+    ).toEqual({ ok: true });
+    expect(
+      await emitWithAck(member.socket, "guild:rename-lobby", {
+        guildId: guild.id,
+        name: "Admin Room"
+      })
+    ).toMatchObject({ ok: true, guild: { lobbyName: "Admin Room" } });
 
     await emitWithAck(outsider.socket, "presence:set", { status: "dnd" });
     const hiddenPresence = await emitWithAck(owner.socket, "presence:get", {

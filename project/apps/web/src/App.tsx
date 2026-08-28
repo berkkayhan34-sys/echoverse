@@ -55,6 +55,37 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" }
 ];
 
+const EV_SOUNDS = {
+  join: "/sounds/voice-join.wav",
+  leave: "/sounds/voice-leave.wav",
+  message: "/sounds/message.wav",
+  mic: "/sounds/mic-toggle.wav",
+  call: "/sounds/incoming-call.wav",
+  outgoing: "/sounds/outgoing-call.wav",
+  connected: "/sounds/call-connected.wav",
+  ended: "/sounds/call-ended.wav",
+  deafen: "/sounds/deafen-toggle.wav",
+  screenShare: "/sounds/screen-share-toggle.wav",
+  mention: "/sounds/mention.wav"
+} as const;
+
+function resolveEvSoundUrl(path: string) {
+  return typeof document === "undefined" ? path : new URL(path, document.baseURI).toString();
+}
+
+function playEvSound(key: keyof typeof EV_SOUNDS, volume = 0.55, loop = false) {
+  try {
+    const audio = new Audio(resolveEvSoundUrl(EV_SOUNDS[key]));
+    audio.preload = "auto";
+    audio.volume = Math.max(0, Math.min(1, volume));
+    audio.loop = loop;
+    audio.play()?.catch(() => {});
+    return audio;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [serverUrl, setServerUrl] = useState("");
   const [locale, setLocale] = useState<Locale>(() =>
@@ -89,6 +120,7 @@ export default function App() {
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
+  const [showStartupSettings, setShowStartupSettings] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
@@ -205,6 +237,8 @@ export default function App() {
   const speakingIntervals = useRef<Map<string, number>>(new Map());
   const ringAudio = useRef<HTMLAudioElement | null>(null);
   const ringbackAudio = useRef<HTMLAudioElement | null>(null);
+  const ringStartTimer = useRef<number | null>(null);
+  const ringbackStartTimer = useRef<number | null>(null);
   const activeDmFriendRef = useRef<FriendUser | null>(null);
   const accountRef = useRef<Account | null>(null);
   const viewModeRef = useRef<"server" | "dm">("server");
@@ -296,34 +330,7 @@ export default function App() {
     if (now - lobbySoundCooldown.current < 180) return;
     lobbySoundCooldown.current = now;
 
-    try {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new Ctx();
-      if (ctx.state === "suspended") void ctx.resume();
-      const master = ctx.createGain();
-      master.gain.value = Math.max(0, Math.min(1, effectVolumeRef.current / 100)) * 0.32;
-      master.connect(ctx.destination);
-
-      const notes = kind === "join" ? [520, 700] : [620, 420];
-      notes.forEach((frequency, index) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const start = ctx.currentTime + index * 0.075;
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(frequency, start);
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.7, start + 0.012);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.095);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(start);
-        osc.stop(start + 0.11);
-      });
-
-      window.setTimeout(() => ctx.close().catch(() => {}), 500);
-    } catch (err) {
-      console.warn("[echoverse.lobby_sound_failed]", err);
-    }
+    playEvSound(kind, Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
   }
 
   useEffect(() => {
@@ -534,6 +541,12 @@ export default function App() {
     });
 
     s.on("guild:list", (list: Guild[]) => setGuilds(list));
+    s.on("guild:updated", (updated: Guild) => {
+      setGuilds((prev) =>
+        prev.map((guild) => (guild.id === updated.id ? { ...guild, ...updated } : guild))
+      );
+      setActiveGuild((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+    });
 
     s.on("friends:changed", () => {
       loadFriends(s);
@@ -593,12 +606,14 @@ export default function App() {
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
+        playEvSound("message", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
         if (!isOpenConversation) {
           setUnreadDm((prev) => incrementDmUnread(prev, msg.senderId));
 
           window.echoverse?.notify?.({
-            title: msg.senderUsername || translatorRef.current("notification.newMessageTitle"),
-            body: msg.body
+            title: `${translatorRef.current("app.name")} · ${msg.senderUsername || translatorRef.current("notification.newMessageTitle")}`,
+            body: msg.body,
+            icon: msg.senderAvatarData
           });
         }
       }
@@ -645,6 +660,7 @@ export default function App() {
 
       setPrivateCallSocketId(result.responderSocketId);
       setCallState("connected");
+      playEvSound("connected", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       await createPeer(s, result.responderSocketId, true);
     });
 
@@ -654,6 +670,19 @@ export default function App() {
 
     s.on("chat-message", (msg: ChatMessage) => {
       setMessages((prev) => appendChatMessage(prev, msg));
+      const currentAccount = accountRef.current;
+      if (currentAccount && msg.username !== currentAccount.username) {
+        const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
+        playEvSound("message", volume);
+        if (currentAccount.username && msg.text.includes(`@${currentAccount.username}`)) {
+          playEvSound("mention", volume);
+        }
+        window.echoverse?.notify?.({
+          title: `${translatorRef.current("app.name")} · ${msg.username}`,
+          body: msg.text,
+          icon: msg.avatarData
+        });
+      }
     });
 
     s.on("presence", (list: PeerInfo[]) => {
@@ -925,6 +954,7 @@ export default function App() {
   function toggleDeafen() {
     const next = !deafened;
     setDeafened(next);
+    playEvSound("deafen", 0.55);
 
     remoteAudio.current.forEach((audio, peerId) => {
       audio.volume = next ? 0 : peerMuted[peerId] ? 0 : (peerVolumes[peerId] ?? 100) / 100;
@@ -994,50 +1024,23 @@ export default function App() {
     setMyStatus(status);
     socket?.emit("presence:set", { status });
   }
-  function createToneLoop(frequencies: number[], intervalMs: number, volume = 0.035) {
-    try {
-      const ctx = new AudioContext();
-      let stopped = false;
-      let index = 0;
-
-      const play = () => {
-        if (stopped) return;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = frequencies[index % frequencies.length];
-        gain.gain.value = volume;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.28);
-        index++;
-      };
-
-      play();
-      const timer = window.setInterval(play, intervalMs);
-
-      return {
-        stop: () => {
-          stopped = true;
-          window.clearInterval(timer);
-          try {
-            ctx.close();
-          } catch {}
-        }
-      };
-    } catch {
-      return { stop: () => {} };
-    }
-  }
-
   function startRingtone() {
     stopRingtone();
-    const loop = createToneLoop([820, 980], 900, 0.045);
-    ringAudio.current = { pause: loop.stop } as unknown as HTMLAudioElement;
+    ringStartTimer.current = window.setTimeout(() => {
+      ringStartTimer.current = null;
+      ringAudio.current = playEvSound(
+        "call",
+        Math.max(0, Math.min(1, effectVolumeRef.current / 100)),
+        true
+      );
+    }, 180);
   }
 
   function stopRingtone() {
+    if (ringStartTimer.current !== null) {
+      window.clearTimeout(ringStartTimer.current);
+      ringStartTimer.current = null;
+    }
     try {
       ringAudio.current?.pause();
     } catch {}
@@ -1047,11 +1050,21 @@ export default function App() {
   function startRingback() {
     stopRingback();
     setRingbackPlaying(true);
-    const loop = createToneLoop([440, 480], 1600, 0.028);
-    ringbackAudio.current = { pause: loop.stop } as unknown as HTMLAudioElement;
+    ringbackStartTimer.current = window.setTimeout(() => {
+      ringbackStartTimer.current = null;
+      ringbackAudio.current = playEvSound(
+        "outgoing",
+        Math.max(0, Math.min(1, effectVolumeRef.current / 100)),
+        true
+      );
+    }, 180);
   }
 
   function stopRingback() {
+    if (ringbackStartTimer.current !== null) {
+      window.clearTimeout(ringbackStartTimer.current);
+      ringbackStartTimer.current = null;
+    }
     try {
       ringbackAudio.current?.pause();
     } catch {}
@@ -1060,31 +1073,13 @@ export default function App() {
   }
 
   function playCallEndTone() {
-    try {
-      const ctx = new AudioContext();
-      const gain = ctx.createGain();
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(520, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(260, ctx.currentTime + 0.32);
-      gain.gain.setValueAtTime(0.04, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
-      window.setTimeout(() => {
-        try {
-          ctx.close();
-        } catch {}
-      }, 600);
-    } catch {}
+    playEvSound("ended", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
   }
 
   async function prepareForPrivateCall() {
     // Private call and server voice are mutually exclusive.
     if (joined) {
-      await leaveVoice(true);
+      await leaveVoice();
     }
 
     pcs.current.forEach((pc) => pc.close());
@@ -1633,9 +1628,11 @@ export default function App() {
   async function joinGuild(guild: Guild) {
     if (!socket) return;
 
-    await leaveVoice(false);
+    if (joined) await leaveVoice();
 
     setActiveGuild(guild);
+    setViewMode("server");
+    setActiveDmFriend(null);
     setMessages([]);
     setPresence([]);
     setSpotifyParty(null);
@@ -1646,11 +1643,23 @@ export default function App() {
     lobbyMembersRef.current = [];
     reconnectingRef.current = false;
 
-    socket.emit("join-room", {
-      guildId: guild.id
+    socket.emit("guild:select", { guildId: guild.id }, (result: any) => {
+      if (!result?.ok) setError(result?.error || t("error.guildJoinFailed"));
     });
+    setJoined(false);
+  }
 
-    setJoined(true);
+  function joinVoiceGuild(guild: Guild) {
+    if (!socket) return;
+    socket.emit("join-room", { guildId: guild.id }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.guildJoinFailed"));
+        return;
+      }
+      setActiveGuild(guild);
+      setViewMode("server");
+      setJoined(true);
+    });
   }
 
   function createGuild() {
@@ -1666,6 +1675,27 @@ export default function App() {
       setNewGuildName("");
       setShowCreate(false);
       joinGuild(result.guild);
+    });
+  }
+
+  function createGuildInvite(guild: Guild) {
+    socket?.emit("guild:create-invite", { guildId: guild.id }, async (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.operationFailed"));
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(result.invite.token);
+        window.alert(t("guild.inviteCreated"));
+      } catch {
+        window.alert(`${t("guild.invite")}: ${result.invite.token}`);
+      }
+    });
+  }
+
+  function renameLobby(guild: Guild, name: string) {
+    socket?.emit("guild:rename-lobby", { guildId: guild.id, name }, (result: any) => {
+      if (!result?.ok) setError(result?.error || t("server.lobbyRenameFailed"));
     });
   }
 
@@ -1685,7 +1715,7 @@ export default function App() {
     });
   }
 
-  async function leaveVoice(returnHome = true) {
+  async function leaveVoice() {
     lobbyStateReadyRef.current = false;
     lobbyMembersRef.current = [];
     reconnectingRef.current = false;
@@ -1701,13 +1731,8 @@ export default function App() {
     setSpotifyFollowing(false);
     setSpotifyLeader(false);
     setSpotifyParty(null);
-
-    if (returnHome) {
-      setJoined(false);
-      setActiveGuild(null);
-      setPresence([]);
-      setMessages([]);
-    }
+    setJoined(false);
+    setPresence([]);
   }
 
   function stopCameraAndScreen() {
@@ -1747,7 +1772,7 @@ export default function App() {
   }
 
   function sendMessage() {
-    if (!socket || !joined || !activeGuild) return;
+    if (!socket || !activeGuild) return;
 
     const value = text.trim();
     if (!value) return;
@@ -1771,6 +1796,7 @@ export default function App() {
     });
 
     setMuted(next);
+    playEvSound("mic", 0.78);
   }
 
   function setPeerVolume(peerId: string, volume: number) {
@@ -1921,6 +1947,7 @@ export default function App() {
       }
 
       setScreenOn(false);
+      playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       await setOutboundVideo(cameraTrack.current);
       return;
     }
@@ -1976,6 +2003,7 @@ export default function App() {
 
       screenTrack.current = track;
       setScreenOn(true);
+      playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       await setOutboundVideo(track);
 
       track.onended = async () => {
@@ -1983,6 +2011,7 @@ export default function App() {
 
         screenTrack.current = null;
         setScreenOn(false);
+        playEvSound("screenShare", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
         await setOutboundVideo(cameraTrack.current);
       };
     } catch {
@@ -2044,30 +2073,38 @@ export default function App() {
             onSubmit={authSubmit}
           />
 
-          <div className="v16-qol">
-            <button onClick={checkForUpdates}>{t("update.checking")}</button>
-            {updateProgress > 0 && updateProgress < 100 && (
-              <progress max="100" value={updateProgress} />
-            )}
-            <button onClick={testMicrophone}>{t("media.testMicrophone")}</button>
-            <span>{t("media.level", { level: micTestLevel })}</span>
-            <button onClick={testOutput}>{t("media.testOutput")}</button>
-            <LocaleSelect
-              label={t("locale.select")}
-              value={locale}
-              options={[
-                { value: "en", label: t("locale.english") },
-                { value: "tr", label: t("locale.turkish") }
-              ]}
-              onChange={changeLocale}
-            />
-            <select value={myStatus} onChange={(e) => setPresenceStatus(e.target.value as any)}>
-              <option value="online">{t("status.online")}</option>
-              <option value="idle">{t("status.idle")}</option>
-              <option value="dnd">{t("status.dndShort")}</option>
-              <option value="invisible">{t("status.invisible")}</option>
-            </select>
-          </div>
+          <button
+            className="startup-settings-toggle"
+            onClick={() => setShowStartupSettings((visible) => !visible)}
+          >
+            ⚙ {showStartupSettings ? t("common.close") : t("common.settings")}
+          </button>
+          {showStartupSettings && (
+            <div className="v16-qol">
+              <button onClick={checkForUpdates}>{t("update.checking")}</button>
+              {updateProgress > 0 && updateProgress < 100 && (
+                <progress max="100" value={updateProgress} />
+              )}
+              <button onClick={testMicrophone}>{t("media.testMicrophone")}</button>
+              <span>{t("media.level", { level: micTestLevel })}</span>
+              <button onClick={testOutput}>{t("media.testOutput")}</button>
+              <LocaleSelect
+                label={t("locale.select")}
+                value={locale}
+                options={[
+                  { value: "en", label: t("locale.english") },
+                  { value: "tr", label: t("locale.turkish") }
+                ]}
+                onChange={changeLocale}
+              />
+              <select value={myStatus} onChange={(e) => setPresenceStatus(e.target.value as any)}>
+                <option value="online">{t("status.online")}</option>
+                <option value="idle">{t("status.idle")}</option>
+                <option value="dnd">{t("status.dndShort")}</option>
+                <option value="invisible">{t("status.invisible")}</option>
+              </select>
+            </div>
+          )}
           {updateStatus && <div className="update-box">{updateStatus}</div>}
           {error && <div className="error-box">{error}</div>}
 
@@ -2077,7 +2114,7 @@ export default function App() {
     );
   }
 
-  if (!joined) {
+  if (!activeGuild) {
     return (
       <GuildPicker
         guilds={guilds}
@@ -2164,9 +2201,26 @@ export default function App() {
           voiceConnected: (version) => t("profile.voiceConnected", { version }),
           microphone: t("media.microphone"),
           logout: t("auth.logout"),
-          createGuild: t("guild.new")
+          createGuild: t("guild.new"),
+          directMessages: t("ui.directMessages"),
+          openDms: t("friends.list"),
+          joinVoice: t("guild.joinVoice"),
+          invite: t("guild.invite"),
+          renameLobby: t("guild.renameLobby"),
+          lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
+          save: t("common.save")
         }}
         onSelectGuild={joinGuild}
+        onJoinVoice={joinVoiceGuild}
+        lobbyName={activeGuild?.lobbyName}
+        canManageGuild={activeGuild?.role === "owner" || activeGuild?.role === "admin"}
+        onRenameLobby={renameLobby}
+        activeDmFriend={activeDmFriend}
+        onOpenDms={() => {
+          setViewMode("dm");
+          setShowFriends(true);
+        }}
+        onCreateInvite={createGuildInvite}
         onCreateGuild={() => {
           setJoined(false);
           setShowCreate(true);
@@ -2404,12 +2458,14 @@ export default function App() {
               onStatusChange={setPresenceStatus}
               onVideoLayoutChange={setVideoLayout}
               onTextChange={setText}
-              onAddEmoji={() => setText((value) => `${value} 😂`)}
+              onAddEmoji={(emoji = "😂") =>
+                setText((value) => `${value}${value ? " " : ""}${emoji}`)
+              }
               onSendMessage={sendMessage}
               onToggleMute={toggleMute}
               onToggleCamera={toggleCamera}
               onToggleScreen={toggleScreen}
-              onEndCall={() => leaveVoice(true)}
+              onEndCall={() => leaveVoice()}
               onDismissError={() => setError("")}
             />
           </>

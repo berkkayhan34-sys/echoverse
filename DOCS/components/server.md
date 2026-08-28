@@ -22,5 +22,8 @@ Electron through the OS secure-storage bridge.
 Set exactly one persistence mode for a running server: `DATABASE_URL` selects
 PostgreSQL, while `SQLITE_PATH` selects the local SQLite adapter. Both modes
 share migration IDs and the account, friendship, and direct-message schema.
+Guild persistence also stores the lobby display name; the `guild:rename-lobby`
+event is server-authorized for owners and admins and broadcasts the updated
+guild only to its members.
 SQLite backups can be restored as the local rollback path; hosted PostgreSQL
 restore remains an operator-controlled deployment action.

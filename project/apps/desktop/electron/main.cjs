@@ -346,15 +346,24 @@ ipcMain.handle("echoverse:notify", (_evt, payload) => {
       typeof payload.title !== "string" ||
       typeof payload.body !== "string" ||
       payload.title.length > 200 ||
-      payload.body.length > 1000
+      payload.body.length > 1000 ||
+      (payload.icon !== undefined && payload.icon !== null && typeof payload.icon !== "string") ||
+      (typeof payload.icon === "string" && payload.icon.length > 700_000)
     ) {
       return { ok: false, error: translate("desktop.notificationInvalid") };
     }
     const { title, body } = payload;
+    const icon =
+      typeof payload.icon === "string" &&
+      /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(payload.icon)
+        ? nativeImage.createFromDataURL(payload.icon)
+        : nativeImage.createFromPath(brandingIcon);
     if (Notification.isSupported()) {
       new Notification({
-        title: title.trim() || translate("app.name"),
-        body: body.trim()
+        title: title.trim() || "EchoVerse",
+        body: body.trim(),
+        icon: icon.isEmpty() ? nativeImage.createFromPath(brandingIcon) : icon,
+        silent: false
       }).show();
     }
   } catch {}
@@ -968,6 +977,20 @@ function createTray() {
 }
 
 function createWindow() {
+  const preloadPath = app.isPackaged
+    ? path.join(process.resourcesPath, "preload.bundle.cjs")
+    : path.join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "tmp",
+        "generated",
+        "desktop-electron",
+        "preload.bundle.cjs"
+      );
+
   mainWindow = new BrowserWindow({
     show: false,
     icon: process.platform === "win32" ? brandingIco : brandingIcon,
@@ -978,7 +1001,7 @@ function createWindow() {
     backgroundColor: "#101218",
     title: translate("app.name"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -1068,6 +1091,8 @@ function runPackagedSmokeTest() {
 }
 
 app.whenReady().then(() => {
+  app.setName("EchoVerse");
+  if (process.platform === "win32") app.setAppUserModelId("com.echoverse.desktop");
   if (
     process.env.ECHO_VERSE_SMOKE_TEST === "1" ||
     process.argv.includes("--echoverse-smoke-test")

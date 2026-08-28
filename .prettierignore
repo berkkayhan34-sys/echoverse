@@ -9,6 +9,7 @@ tmp/
 results.sarif
 **/results.sarif
 DOCS/historic/
+work/
 package-lock.json
 *.png
 *.ico

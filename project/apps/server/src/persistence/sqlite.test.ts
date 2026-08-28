@@ -40,8 +40,13 @@ describe("SQLite persistence adapter", () => {
     expect(migrations.rows.map((row) => row.id)).toEqual([
       "001_initial",
       "002_dm_metadata",
-      "003_friendship_updated_at"
+      "003_friendship_updated_at",
+      "004_guild_access",
+      "005_guild_lobby_name"
     ]);
+
+    const guildColumns = await database.query("PRAGMA table_info(echoverse_guilds)");
+    expect(guildColumns.rows.some((row) => row.name === "lobby_name")).toBe(true);
 
     const first = crypto.randomUUID();
     const second = crypto.randomUUID();

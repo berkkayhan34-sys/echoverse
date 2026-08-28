@@ -40,6 +40,8 @@ import {
   dmReadAt,
   guilds,
   guildMembers,
+  guildRoles,
+  guildInvites,
   memoryAccounts,
   memoryDmMessages,
   memoryFriendships,
@@ -245,9 +247,36 @@ const {
   storeDm,
   validateAttachment
 } = friendService;
-const guildService = createGuildService({ io, guilds, guildMembers, users, spotifyParties });
-const { broadcastPresence, getPresence, guildList, leaveCurrentRoom, roomFor, sendLobbyState } =
-  guildService;
+const guildService = createGuildService({
+  io,
+  pool,
+  guilds,
+  guildMembers,
+  guildRoles,
+  guildInvites,
+  users,
+  spotifyParties
+});
+const {
+  broadcastPresence,
+  canManage,
+  createGuild,
+  createInvite,
+  getPresence,
+  guildList,
+  isMember,
+  joinByInvite,
+  leaveCurrentRoom,
+  leaveGuild,
+  loadGuilds,
+  roleFor,
+  roomFor,
+  textRoomFor,
+  sendLobbyState,
+  setRole,
+  revokeInvite,
+  renameLobby
+} = guildService;
 
 guilds.set("echoverse", {
   id: "echoverse",
@@ -327,7 +356,8 @@ function attachAccountToSocket(socket: any, account: Account, sessionId?: string
     username: account.username,
     avatarData: account.avatarData,
     roomId: current?.roomId,
-    guildId: current?.guildId
+    guildId: current?.guildId,
+    activeGuildId: current?.activeGuildId
   };
 
   users.set(socket.id, user);
@@ -439,12 +469,22 @@ io.on("connection", (socket) => {
     io,
     users,
     guilds,
-    guildMembers,
     spotifyParties,
     areFriends,
     accountPresence,
     roomFor,
+    textRoomFor,
     guildList,
+    canManage,
+    createGuild,
+    createInvite,
+    isMember,
+    joinByInvite,
+    leaveGuild,
+    roleFor,
+    setRole,
+    revokeInvite,
+    renameLobby,
     getPresence,
     sendLobbyState,
     leaveCurrentRoom,
@@ -529,6 +569,7 @@ export { app, closeDatabase, httpServer, io, initDatabase };
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   initDatabase()
+    .then(() => loadGuilds())
     .then(() => {
       httpServer.listen(PORT, "0.0.0.0", () => {
         serverLogger.info("echoverse.server.listening", {
