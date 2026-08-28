@@ -445,13 +445,16 @@ database and network states, and user-visible recovery paths.
 id: OPS-003
 type: release_security
 status: incomplete
-evidence: null
+evidence: evidence/OPS-003.md
+blockers: external signing identities, certificates, provider selection, and CI secret configuration are not available
 ```
 
 [ ] Select and implement Windows publisher signing plus Apple code signing and
 notarization. Verify publisher identity and update artifacts in CI, retain
 checksums and provenance, and document key rotation and rollback. Until this
-child is complete, release notes must identify artifacts as unsigned.
+child is complete, release notes must identify artifacts as unsigned. Blocked
+until the owner supplies the signing-provider/identity decision and configures
+the required protected CI credentials.
 
 ### support-incident-and-release-evidence
 

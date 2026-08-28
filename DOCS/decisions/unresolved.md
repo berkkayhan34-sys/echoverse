@@ -33,3 +33,13 @@ The current owner identity comes from CODEOWNERS; any later delegation must be
 recorded with scope, dates, and handoff evidence.
 
 No unresolved owner decision currently blocks the v2.0 roadmap.
+
+### OPS-003 platform signing and notarization
+
+OPS-003 is blocked as of 2026-08-28. The release workflows intentionally
+produce unsigned validation artifacts, and the repository has no configured
+Windows publisher certificate/provider or Apple Developer signing and
+notarization credentials. The owner must select a signing arrangement and
+provision protected CI credentials before implementation can continue. The
+exact evidence and remaining work are recorded in
+[`../evidence/OPS-003.md`](../evidence/OPS-003.md).
