@@ -19,7 +19,9 @@ Deeper feature-level authorization/IDOR coverage and later operational
 hardening remain roadmap work; the CODE-007 WebRTC coverage and CODE-008
 installer coverage are now release-gate evidence. OPS-001 adds focused
 observability redaction, correlation, and metric tests and documents the
-host-side retention and access contract.
+host-side retention and access contract. OPS-002 adds bounded retry, duplicate
+call, SQLite cleanup, and degraded-state coverage; the implemented budgets are
+listed in [reliability.md](reliability.md).
 
 The workspace now exposes deterministic `format:check`, `lint`,
 `dependency:check`, `reuse:check`, `secret-scan`, `localization:check`, and `coverage` scripts in

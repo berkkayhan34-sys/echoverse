@@ -18,6 +18,7 @@ import {
   resolveClientLocale,
   isLocalAudioEnabled,
   formatCallTime,
+  REALTIME_RETRY_POLICY,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -539,7 +540,7 @@ export default function App() {
 
     const s = io(serverUrl, {
       transports: ["websocket", "polling"],
-      reconnection: true,
+      ...REALTIME_RETRY_POLICY,
       auth: createSocketAuth(locale, "desktop")
     });
 
@@ -604,6 +605,13 @@ export default function App() {
       setConnected(false);
       setConnectionMessage(translatorRef.current("connection.retrying"));
       setError(translatorRef.current("error.connectionFailed"));
+    });
+
+    s.io.on("reconnect_failed", () => {
+      setConnected(false);
+      setConnectionMessage(translatorRef.current("connection.offline"));
+      setError(translatorRef.current("error.connectionFailed"));
+      stopAllMedia();
     });
 
     s.on("guild:list", (list: Guild[]) => setGuilds(list));

@@ -431,11 +431,11 @@ unnecessary personal data.
 ```yaml
 id: OPS-002
 type: reliability
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/OPS-002.md
 ```
 
-[ ] Define and test performance/resource budgets, connection and filesystem
+[x] Define and test performance/resource budgets, connection and filesystem
 cleanup, bounded queues, restart behavior, retry/idempotency rules, degraded
 database and network states, and user-visible recovery paths.
 

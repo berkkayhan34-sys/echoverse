@@ -15,6 +15,11 @@ repair.
 Renderer-specific credential storage and platform capabilities remain outside
 this package.
 
+The package also exports the shared bounded realtime retry policy used by both
+renderers. It limits reconnect attempts and delay growth so an unavailable
+server reaches a deliberate user-visible offline state instead of retrying
+forever.
+
 Feature-state helpers are pure functions. They preserve message ordering,
 reject duplicate guild-chat and DM delivery by message ID, clear deleted
 attachment data, and update only the account or conversation named by an event.

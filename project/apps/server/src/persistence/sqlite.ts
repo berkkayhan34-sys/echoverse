@@ -71,6 +71,7 @@ export class SqliteDatabase implements PersistenceDatabase {
   }
 
   close() {
+    if (!this.raw.open) return;
     this.raw.close();
   }
 }

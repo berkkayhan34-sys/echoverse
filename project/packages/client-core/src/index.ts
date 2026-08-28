@@ -111,5 +111,5 @@ export {
 export { createScreenVideoConstraints, formatCallTime, isLocalAudioEnabled } from "./media.js";
 export type { ScreenFps, ScreenQuality } from "./media.js";
 
-export { getLobbyMemberTransition } from "./realtime.js";
+export { getLobbyMemberTransition, REALTIME_RETRY_POLICY } from "./realtime.js";
 export type { LobbyMemberTransition } from "./realtime.js";

@@ -25,6 +25,7 @@ import {
   readStoredUsername,
   readStoredSession,
   isLocalAudioEnabled,
+  REALTIME_RETRY_POLICY,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -32,6 +33,18 @@ import {
   writeStoredUsername,
   writeSessionToken
 } from "./index.js";
+
+describe("realtime recovery policy", () => {
+  it("bounds reconnect attempts and delays", () => {
+    expect(REALTIME_RETRY_POLICY).toEqual({
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5_000,
+      timeout: 10_000
+    });
+  });
+});
 
 function storageFixture() {
   const values = new Map<string, string>();

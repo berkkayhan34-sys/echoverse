@@ -11,6 +11,8 @@ import {
 import crypto from "node:crypto";
 import type { CallSession, User } from "../../domain/types.js";
 
+const MAX_PENDING_CALLS = 1_024;
+
 type SocketEventName = keyof typeof socketEventPayloadSchemas;
 
 export type CallHandlerDependencies = {
@@ -54,6 +56,20 @@ export function registerCallHandlers({
     const friendSocket = socketForAccount(friend);
     if (!friendSocket) {
       callback?.({ ok: false, error: socketError(socket, "server.userOffline") });
+      return;
+    }
+
+    const hasExistingCall = [...pendingCalls.values(), ...activeCalls.values()].some(
+      (candidate) =>
+        (candidate.callerAccountId === user.accountId && candidate.targetAccountId === friend) ||
+        (candidate.callerAccountId === friend && candidate.targetAccountId === user.accountId)
+    );
+    if (hasExistingCall) {
+      callback?.({ ok: false, error: socketError(socket, "call.alreadyActive") });
+      return;
+    }
+    if (pendingCalls.size >= MAX_PENDING_CALLS) {
+      callback?.({ ok: false, error: socketError(socket, "server.tooManyRequests") });
       return;
     }
 

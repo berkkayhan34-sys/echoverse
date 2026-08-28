@@ -404,6 +404,11 @@ describe("server HTTP and Socket.IO boundaries", () => {
       });
       expect(started.ok).toBe(true);
 
+      const duplicate = await emitWithAck(caller.socket, "call:start", {
+        friendId: target.accountId
+      });
+      expect(duplicate).toEqual({ ok: false, error: tr("call.alreadyActive") });
+
       await vi.advanceTimersByTimeAsync(35_000);
 
       await expect(callerAnswer).resolves.toMatchObject({ accept: false, reason: "timeout" });

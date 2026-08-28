@@ -12,6 +12,18 @@ export type LobbyMemberTransition = {
 };
 
 /**
+ * Bounds reconnect work so an unavailable server cannot create an infinite
+ * retry loop or leave the renderer in an ambiguous connection state.
+ */
+export const REALTIME_RETRY_POLICY = {
+  reconnection: true,
+  reconnectionAttempts: 8,
+  reconnectionDelay: 500,
+  reconnectionDelayMax: 5_000,
+  timeout: 10_000
+} as const;
+
+/**
  * Compares server-authoritative lobby membership for reconnect repair. The
  * renderer may use the deltas for sound, while the returned IDs reconcile its
  * peer graph even when point events were missed.
