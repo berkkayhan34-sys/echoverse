@@ -30,7 +30,10 @@ bottom navigation bar, including explicit DM, friends, and voice-lobby entry.
 The drawer uses the renderer's brand asset so web/PWA and desktop retain the
 same visual identity.
 For guild owners and admins it also exposes the localized lobby-name editor;
-the renderer submits the change through the server authorization boundary.
+the renderer submits the change through the server authorization boundary. The
+editor is hidden behind a pencil action until the lobby row is hovered or
+focused on desktop-sized layouts; on touch layouts the same action remains
+visible so it is discoverable without hover.
 `ChatComposer` exposes a shared Unicode emoji picker; the platform's emoji font
 does the final glyph rendering so the same message format works on Windows,
 macOS, iOS, and Android browsers.

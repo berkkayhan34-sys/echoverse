@@ -33,7 +33,7 @@ const bridge = {
     spotifyClientId: ""
   }),
 
-  getVersion: async () => "1.8.1-web",
+  getVersion: async () => "1.8.2-web",
 
   onUpdateStatus: (callback: UpdateCallback) => {
     updateCallbacks.add(callback);

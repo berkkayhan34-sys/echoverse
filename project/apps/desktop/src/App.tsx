@@ -2340,7 +2340,8 @@ export default function App() {
           invite: t("guild.invite"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
-          save: t("common.save")
+          save: t("common.save"),
+          cancel: t("common.cancel")
         }}
         onSelectGuild={joinGuild}
         onJoinVoice={joinVoiceGuild}

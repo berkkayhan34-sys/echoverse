@@ -2146,7 +2146,7 @@ button {
   transform: scale(0.98);
 }
 
-/* EchoVerse v1.8.1 — main guild and mobile navigation */
+/* EchoVerse v1.8.2 — shared responsive navigation */
 .fatal-error-screen {
   min-height: 100vh;
   display: grid;

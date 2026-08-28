@@ -39,6 +39,7 @@ export type WorkspaceSidebarLabels = {
   renameLobby?: string;
   lobbyNamePlaceholder?: string;
   save?: string;
+  cancel?: string;
 };
 
 type MobileWorkspaceNavigationProps = {
@@ -136,25 +137,28 @@ function MobileWorkspaceNavigation({
               <div className="mobile-channel-heading">{activeGuild.name}</div>
               <button className="mobile-channel-row active"># {labels.general}</button>
               <button className="mobile-channel-row"># {labels.music}</button>
-              <button
-                className="mobile-channel-row voice"
-                onClick={() => {
-                  onJoinVoice?.(activeGuild);
-                  setMobileMenuOpen(false);
-                }}
-              >
-                🔊 {lobbyName || labels.lobby}
-              </button>
-              {canManageGuild && onRenameLobby && (
-                <LobbyNameEditor
-                  key={`mobile:${activeGuild.id}:${lobbyName || labels.lobby}`}
-                  value={lobbyName || labels.lobby}
-                  renameLabel={labels.renameLobby || "Rename lobby"}
-                  placeholder={labels.lobbyNamePlaceholder || labels.lobby}
-                  saveLabel={labels.save || "Save"}
-                  onSave={(name) => onRenameLobby(activeGuild, name)}
-                />
-              )}
+              <div className="mobile-lobby-channel-row">
+                <button
+                  className="mobile-channel-row voice"
+                  onClick={() => {
+                    onJoinVoice?.(activeGuild);
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  🔊 {lobbyName || labels.lobby}
+                </button>
+                {canManageGuild && onRenameLobby && (
+                  <LobbyNameEditor
+                    key={`mobile:${activeGuild.id}:${lobbyName || labels.lobby}`}
+                    value={lobbyName || labels.lobby}
+                    renameLabel={labels.renameLobby || "Rename lobby"}
+                    placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                    saveLabel={labels.save || "Save"}
+                    cancelLabel={labels.cancel || "Cancel"}
+                    onSave={(name) => onRenameLobby(activeGuild, name)}
+                  />
+                )}
+              </div>
             </div>
           )}
 
@@ -196,15 +200,37 @@ function LobbyNameEditor({
   renameLabel,
   placeholder,
   saveLabel,
+  cancelLabel,
   onSave
 }: {
   value: string;
   renameLabel: string;
   placeholder: string;
   saveLabel: string;
+  cancelLabel: string;
   onSave: (name: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="lobby-edit-trigger"
+        aria-label={renameLabel}
+        title={renameLabel}
+        onClick={() => setEditing(true)}
+      >
+        ✎
+      </button>
+    );
+  }
+
   return (
     <form
       className="lobby-name-editor"
@@ -212,7 +238,10 @@ function LobbyNameEditor({
       onSubmit={(event) => {
         event.preventDefault();
         const name = draft.trim();
-        if (name && name !== value) onSave(name);
+        if (name && name !== value) {
+          onSave(name);
+          setEditing(false);
+        }
       }}
     >
       <input
@@ -224,6 +253,9 @@ function LobbyNameEditor({
       />
       <button type="submit" disabled={!draft.trim() || draft.trim() === value}>
         {saveLabel}
+      </button>
+      <button type="button" onClick={cancel}>
+        {cancelLabel}
       </button>
     </form>
   );
@@ -380,26 +412,29 @@ export function WorkspaceSidebar({
 
         <div className="channel-group">
           <div className="channel-title">{labels.voiceChannels}</div>
-          <button
-            className={`channel voice ${onJoinVoice ? "" : "active"}`}
-            disabled={!activeGuild || !onJoinVoice}
-            onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
-          >
-            🔊 {lobbyName || labels.lobby}
-            {!activeGuild ? " · " : ""}
-            {activeGuild && labels.joinVoice ? labels.joinVoice : ""}
-          </button>
+          <div className="lobby-channel-row">
+            <button
+              className={`channel voice ${onJoinVoice ? "" : "active"}`}
+              disabled={!activeGuild || !onJoinVoice}
+              onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
+            >
+              🔊 {lobbyName || labels.lobby}
+              {!activeGuild ? " · " : ""}
+              {activeGuild && labels.joinVoice ? labels.joinVoice : ""}
+            </button>
 
-          {activeGuild && canManageGuild && onRenameLobby && (
-            <LobbyNameEditor
-              key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
-              value={lobbyName || labels.lobby}
-              renameLabel={labels.renameLobby || "Rename lobby"}
-              placeholder={labels.lobbyNamePlaceholder || labels.lobby}
-              saveLabel={labels.save || "Save"}
-              onSave={(name) => onRenameLobby(activeGuild, name)}
-            />
-          )}
+            {activeGuild && canManageGuild && onRenameLobby && (
+              <LobbyNameEditor
+                key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
+                value={lobbyName || labels.lobby}
+                renameLabel={labels.renameLobby || "Rename lobby"}
+                placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                saveLabel={labels.save || "Save"}
+                cancelLabel={labels.cancel || "Cancel"}
+                onSave={(name) => onRenameLobby(activeGuild, name)}
+              />
+            )}
+          </div>
 
           <div className="voice-users">
             {presence.map((peer) => {

@@ -5,6 +5,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.8.2
+
+- Standardize web, desktop, and responsive mobile navigation on the shared
+  workspace surface.
+- Make administrator lobby renaming discoverable through a hover/focus pencil
+  action while preserving server-side authorization.
+- Keep the public main-guild bootstrap configuration explicit and secure.
+
 Sürümler root `VERSION` dosyasına göre adlandırılır. Bu kayıt, belgelenmiş ve
 doğrulanmış değişiklikleri özetler; planlanan işler release edilmiş sayılmaz.
 
