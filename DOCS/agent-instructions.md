@@ -146,7 +146,19 @@ application code.
 - Until public release, the owner may self-review as the sole maintainer. Before
   public release, CODEOWNERS and mandatory reviewer enforcement must be active
   for security, release, deployment, architecture, licensing, and data changes.
-- Do not commit or push unless explicitly requested.
+- The owner grants standing authorization, without repeated per-operation
+  approval, to inspect this GitHub repository and its checks, commits, pull
+  requests, issues, Actions runs, logs, artifacts, and workflow status.
+- The owner also grants standing authorization to dispatch, rerun, cancel, and
+  inspect this repository's GitHub Actions workflows, and to edit the local
+  `.github/workflows/` definitions as part of authorized repository work. Do
+  not ask for a separate approval for those operations.
+- Local repository edits and commits do not require a separate approval. A
+  remote `git push` requires explicit owner approval; pushing to or merging into
+  protected `main` additionally requires explicit approval for that exact
+  change. Force-pushes, history rewrites, releases, deployments, repository
+  settings, branch protection, secrets, and protected variables remain subject
+  to the higher-priority safety and external-effect rules.
 - A documentation-only change must state its affected source-of-truth files,
   validation performed, and any deferred runtime work.
 

@@ -142,4 +142,9 @@ tokens, cookies, database URLs, or signing keys into Git or issue trackers.
 Use a focused `docs/<topic>` branch for documentation/governance work unless
 the owner explicitly directs another path. Pull requests must state scope,
 validation, security impact, and deferred runtime work. Do not commit or push
-from an agent session unless explicitly requested.
+from an agent session unless explicitly requested. The owner has granted
+standing authorization for repository GitHub inspection and for this
+repository's GitHub Actions operations, including reading status/logs/artifacts,
+dispatching, rerunning, cancelling, and editing workflow definitions, without
+separate per-operation approval. Remote pushes still require explicit approval;
+protected `main` changes and merges require approval for the exact change.
