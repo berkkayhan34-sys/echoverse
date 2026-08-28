@@ -60,8 +60,9 @@ jobs:
           $installer = "tmp/release/desktop/EchoVerse-Setup-${{ steps.version.outputs.version }}.exe"
           $installRoot = Join-Path $env:RUNNER_TEMP "EchoVerseSmoke"
           Start-Process $installer -ArgumentList "/S", "/D=$installRoot" -Wait
-          $executable = Join-Path $installRoot "EchoVerse/EchoVerse.exe"
-          if (!(Test-Path $executable)) { throw "Installed executable missing" }
+          $executables = @(Get-ChildItem -Path $installRoot -Filter "EchoVerse.exe" -Recurse -File -ErrorAction SilentlyContinue)
+          if ($executables.Count -ne 1) { throw "Expected exactly one installed executable under $installRoot, found $($executables.Count)" }
+          $executable = $executables[0].FullName
           $env:ECHO_VERSE_SMOKE_TEST = "1"
           $process = Start-Process $executable -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Packaged smoke test failed: $($process.ExitCode)" }
