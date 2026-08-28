@@ -85,10 +85,11 @@ export function registerGuildHandlers({
       }
 
       const guild = await createGuild(guildName, user.accountId);
+      const invite = await createInvite(guild.id, user.accountId);
       for (const peer of io.sockets.sockets.values()) {
         peer.emit("guild:list", guildList(peer.data.account?.id));
       }
-      callback?.({ ok: true, guild: { ...guild, role: "owner" } });
+      callback?.({ ok: true, guild: { ...guild, role: "owner" }, invite });
     }
   );
 

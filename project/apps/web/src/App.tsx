@@ -116,6 +116,9 @@ export default function App() {
   const [screenOn, setScreenOn] = useState(false);
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [inviteGuildName, setInviteGuildName] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [newGuildName, setNewGuildName] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -161,7 +164,7 @@ export default function App() {
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
-  const [, setOutgoingRequests] = useState<FriendUser[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState<FriendUser[]>([]);
   const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
@@ -1675,22 +1678,54 @@ export default function App() {
       setNewGuildName("");
       setShowCreate(false);
       joinGuild(result.guild);
+      setInviteGuildName(result.guild.name);
+      setInviteToken(result.invite?.token || "");
+      setInviteCopied(false);
+      if (!result.invite?.token) createGuildInvite(result.guild, true);
     });
   }
 
-  function createGuildInvite(guild: Guild) {
+  function createGuildInvite(guild: Guild, openDialog = false) {
     socket?.emit("guild:create-invite", { guildId: guild.id }, async (result: any) => {
       if (!result?.ok) {
         setError(result?.error || t("error.operationFailed"));
         return;
       }
-      try {
-        await navigator.clipboard.writeText(result.invite.token);
-        window.alert(t("guild.inviteCreated"));
-      } catch {
-        window.alert(`${t("guild.invite")}: ${result.invite.token}`);
-      }
+      setInviteGuildName(guild.name);
+      setInviteToken(result.invite.token);
+      setInviteCopied(false);
+      if (openDialog) setError("");
     });
+  }
+
+  async function copyInvite() {
+    if (!inviteToken) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(inviteToken);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = inviteToken;
+        input.setAttribute("readonly", "true");
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        input.remove();
+        if (!copied) throw new Error("clipboard unavailable");
+      }
+      setInviteCopied(true);
+      setError("");
+    } catch {
+      setError(t("guild.inviteCopyFailed"));
+    }
+  }
+
+  function closeInvite() {
+    setInviteToken("");
+    setInviteGuildName("");
+    setInviteCopied(false);
   }
 
   function renameLobby(guild: Guild, name: string) {
@@ -2502,6 +2537,7 @@ export default function App() {
         showFriends={showFriends}
         friends={friends}
         incomingRequests={incomingRequests}
+        outgoingRequests={outgoingRequests}
         friendSearchResults={friendSearchResults}
         unreadDm={unreadDm}
         friendSearch={friendSearch}
@@ -2514,6 +2550,9 @@ export default function App() {
         screenPermission={screenPermission}
         showCreate={showCreate}
         newGuildName={newGuildName}
+        inviteGuildName={inviteGuildName}
+        inviteToken={inviteToken}
+        inviteCopied={inviteCopied}
         labels={{
           members: {
             onlineCount: (count) => t("ui.onlineCount", { count }),
@@ -2553,6 +2592,7 @@ export default function App() {
             search: t("friends.search"),
             searchResults: t("ui.searchResults"),
             incomingRequests: t("ui.incomingRequests"),
+            outgoingRequests: t("ui.outgoingRequests"),
             myFriends: t("ui.myFriends"),
             noFriends: t("ui.noFriends"),
             add: t("friends.add"),
@@ -2582,6 +2622,13 @@ export default function App() {
             namePlaceholder: t("guild.namePlaceholder"),
             cancel: t("guild.cancel"),
             create: t("guild.create")
+          },
+          invite: {
+            title: t("guild.inviteTitle"),
+            description: t("guild.inviteDescription"),
+            copy: t("guild.copyInvite"),
+            copied: t("guild.inviteCreated"),
+            close: t("common.close")
           }
         }}
         onTogglePeerMute={togglePeerMute}
@@ -2622,6 +2669,8 @@ export default function App() {
         onGuildNameChange={setNewGuildName}
         onCancelCreate={() => setShowCreate(false)}
         onCreateGuild={createGuild}
+        onCopyInvite={copyInvite}
+        onCloseInvite={closeInvite}
       />
     </div>
   );

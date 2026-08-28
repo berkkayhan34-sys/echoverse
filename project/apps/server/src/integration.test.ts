@@ -423,8 +423,11 @@ describe("server HTTP and Socket.IO boundaries", () => {
     const member = await registerClient(await connectClient(), "gmember");
     const outsider = await registerClient(await connectClient(), "goutside");
 
-    const created = await emitWithAck(owner.socket, "guild:create", { name: "Private Guild" });
+    const created = (await emitWithAck(owner.socket, "guild:create", {
+      name: "Private Guild"
+    })) as { ok: boolean; guild: { id: string }; invite?: { token: string } };
     expect(created.ok).toBe(true);
+    expect(created.invite?.token).toEqual(expect.any(String));
     const guild = created.guild as { id: string };
 
     expect(await emitWithAck(member.socket, "join-room", { guildId: guild.id })).toEqual({

@@ -13,6 +13,7 @@ export type FriendsModalLabels = {
   search: string;
   searchResults: string;
   incomingRequests: string;
+  outgoingRequests: string;
   myFriends: string;
   noFriends: string;
   add: string;
@@ -27,6 +28,7 @@ export type FriendsModalLabels = {
 export function FriendsModal({
   friends,
   incomingRequests,
+  outgoingRequests,
   friendSearchResults,
   unreadDm,
   searchQuery,
@@ -42,6 +44,7 @@ export function FriendsModal({
 }: {
   friends: FriendUser[];
   incomingRequests: FriendUser[];
+  outgoingRequests: FriendUser[];
   friendSearchResults: FriendUser[];
   unreadDm: Record<string, number>;
   searchQuery: string;
@@ -134,6 +137,27 @@ export function FriendsModal({
                     ✕
                   </button>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {outgoingRequests.length > 0 && (
+          <div className="friend-section">
+            <h3>{labels.outgoingRequests}</h3>
+            {outgoingRequests.map((friend) => (
+              <div className="friend-row" key={friend.id}>
+                <div className="friend-user">
+                  <div className="avatar">
+                    {friend.avatarData ? (
+                      <img src={friend.avatarData} alt="" />
+                    ) : (
+                      displayInitials(friend.username)
+                    )}
+                  </div>
+                  <b>{friend.username}</b>
+                </div>
+                <small className="friend-pending">{labels.outgoingRequests}</small>
               </div>
             ))}
           </div>

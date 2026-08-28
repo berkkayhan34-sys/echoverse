@@ -43,9 +43,11 @@ export function ServerTopbar({
       </div>
 
       <div className="top-actions">
-        <button onClick={onOpenMediaSettings}>⚙ {labels.mediaSettings}</button>
+        <button className="top-action-media" onClick={onOpenMediaSettings}>
+          ⚙ {labels.mediaSettings}
+        </button>
 
-        <button onClick={onOpenFriends}>
+        <button className="top-action-friends" onClick={onOpenFriends}>
           👥 {labels.friends}
           {incomingRequestCount > 0 ? ` (${incomingRequestCount})` : ""}
         </button>

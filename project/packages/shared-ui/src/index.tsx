@@ -38,6 +38,8 @@ export { DirectMessageHeader } from "./direct-header.js";
 export type { DirectMessageHeaderLabels } from "./direct-header.js";
 export { CreateGuildDialog } from "./guild-dialog.js";
 export type { CreateGuildDialogLabels } from "./guild-dialog.js";
+export { InviteDialog } from "./invite-dialog.js";
+export type { InviteDialogLabels } from "./invite-dialog.js";
 export { ServerTopbar } from "./topbar.js";
 export type { PresenceStatus, ServerTopbarLabels } from "./topbar.js";
 export { displayInitials } from "./text.js";

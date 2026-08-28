@@ -17,6 +17,7 @@ import {
   DirectMessageView,
   FriendsModal,
   GuildPicker,
+  InviteDialog,
   MediaSettingsModal,
   MembersPanel,
   PrivateCallStage,
@@ -28,6 +29,35 @@ import {
   WorkspaceOverlays,
   WorkspaceSidebar
 } from "./index.js";
+
+describe("invite dialog", () => {
+  it("renders the guild code and delegates copy/close actions", () => {
+    const onCopy = vi.fn();
+    const onClose = vi.fn();
+    const element = InviteDialog({
+      guildName: "Private room",
+      token: "invite-token",
+      copied: false,
+      labels: {
+        title: "Invite {{guild}}",
+        description: "Share code",
+        copy: "Copy",
+        copied: "Copied",
+        close: "Close"
+      },
+      onCopy,
+      onClose
+    });
+
+    expect(JSON.stringify(element)).toContain("Private room");
+    expect(JSON.stringify(element)).toContain("invite-token");
+    const buttons = elementsOfType(element, "button");
+    (buttons.find((button) => buttonText(button) === "Copy")?.props.onClick as () => void)();
+    (buttons.find((button) => buttonText(button) === "Close")?.props.onClick as () => void)();
+    expect(onCopy).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+});
 
 function elementsOfType(node: ReactNode, type: unknown): ReactElement[] {
   if (!isValidElement(node)) return [];
@@ -343,6 +373,7 @@ describe("shared chat UI", () => {
     const element = FriendsModal({
       friends: [friend],
       incomingRequests: [friend],
+      outgoingRequests: [],
       friendSearchResults: [friend],
       unreadDm: { "account-2": 3 },
       searchQuery: "Lin",
@@ -353,6 +384,7 @@ describe("shared chat UI", () => {
         search: "Search",
         searchResults: "Search results",
         incomingRequests: "Incoming requests",
+        outgoingRequests: "Pending requests",
         myFriends: "My friends",
         noFriends: "No friends",
         add: "Add",
@@ -975,6 +1007,7 @@ describe("shared server chrome", () => {
       showFriends: true,
       friends: [],
       incomingRequests: [],
+      outgoingRequests: [],
       friendSearchResults: [],
       unreadDm: {},
       friendSearch: "",
@@ -987,6 +1020,9 @@ describe("shared server chrome", () => {
       screenPermission: "denied",
       showCreate: true,
       newGuildName: "",
+      inviteGuildName: "",
+      inviteToken: "",
+      inviteCopied: false,
       labels: {
         members: {
           onlineCount: (count) => `${count} online`,
@@ -1026,6 +1062,7 @@ describe("shared server chrome", () => {
           search: "Search",
           searchResults: "Results",
           incomingRequests: "Requests",
+          outgoingRequests: "Pending",
           myFriends: "My friends",
           noFriends: "No friends",
           add: "Add",
@@ -1050,7 +1087,14 @@ describe("shared server chrome", () => {
           permissionOff: "Permission off",
           openSystemSettings: "Settings"
         },
-        guild: { title: "Guild", namePlaceholder: "Name", cancel: "Cancel", create: "Create" }
+        guild: { title: "Guild", namePlaceholder: "Name", cancel: "Cancel", create: "Create" },
+        invite: {
+          title: "Invite {{guild}}",
+          description: "Description",
+          copy: "Copy",
+          copied: "Copied",
+          close: "Close"
+        }
       },
       onTogglePeerMute: vi.fn(),
       onPeerVolumeChange: vi.fn(),
@@ -1077,7 +1121,9 @@ describe("shared server chrome", () => {
       onSelectScreenSource: vi.fn(),
       onGuildNameChange: vi.fn(),
       onCancelCreate,
-      onCreateGuild: vi.fn()
+      onCreateGuild: vi.fn(),
+      onCopyInvite: vi.fn(),
+      onCloseInvite: vi.fn()
     });
     const friends = elementsOfType(element, FriendsModal)[0];
     const screenPicker = elementsOfType(element, ScreenPicker)[0];

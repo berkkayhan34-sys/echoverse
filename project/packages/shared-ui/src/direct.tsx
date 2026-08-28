@@ -324,7 +324,9 @@ export function DirectMessageComposer({
           }}
           placeholder={placeholder}
         />
-        <ActionButton onClick={onSend}>{sendLabel}</ActionButton>
+        <ActionButton className="dm-send-button" onClick={onSend}>
+          {sendLabel}
+        </ActionButton>
       </div>
     </div>
   );

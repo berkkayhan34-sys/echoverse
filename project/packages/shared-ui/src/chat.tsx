@@ -265,7 +265,7 @@ export function ChatComposer({
         </div>
       </details>
 
-      <ActionButton className="send" onClick={onSend}>
+      <ActionButton className="send composer-send" onClick={onSend}>
         {sendLabel}
       </ActionButton>
     </div>

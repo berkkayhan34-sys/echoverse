@@ -10,6 +10,7 @@ import { FriendsModal, type FriendsModalLabels } from "./friends.js";
 import { MediaSettingsModal, type MediaSettingsLabels } from "./media-settings.js";
 import { MembersPanel, type MembersPanelLabels } from "./members.js";
 import { ScreenPicker, type ScreenPickerLabels } from "./screen.js";
+import { InviteDialog, type InviteDialogLabels } from "./invite-dialog.js";
 
 export type WorkspaceOverlayLabels = {
   members: MembersPanelLabels;
@@ -18,6 +19,7 @@ export type WorkspaceOverlayLabels = {
   calls: CallAlertLabels;
   screen: ScreenPickerLabels;
   guild: CreateGuildDialogLabels;
+  invite: InviteDialogLabels;
 };
 
 /** Shared workspace overlays; renderers retain state, persistence, and platform effects. */
@@ -43,6 +45,7 @@ export function WorkspaceOverlays({
   showFriends,
   friends,
   incomingRequests,
+  outgoingRequests,
   friendSearchResults,
   unreadDm,
   friendSearch,
@@ -55,6 +58,9 @@ export function WorkspaceOverlays({
   screenPermission,
   showCreate,
   newGuildName,
+  inviteGuildName,
+  inviteToken,
+  inviteCopied,
   labels,
   onTogglePeerMute,
   onPeerVolumeChange,
@@ -81,7 +87,9 @@ export function WorkspaceOverlays({
   onSelectScreenSource,
   onGuildNameChange,
   onCancelCreate,
-  onCreateGuild
+  onCreateGuild,
+  onCopyInvite,
+  onCloseInvite
 }: {
   presence: PeerInfo[];
   socketId?: string;
@@ -104,6 +112,7 @@ export function WorkspaceOverlays({
   showFriends: boolean;
   friends: FriendUser[];
   incomingRequests: FriendUser[];
+  outgoingRequests: FriendUser[];
   friendSearchResults: FriendUser[];
   unreadDm: Record<string, number>;
   friendSearch: string;
@@ -116,6 +125,9 @@ export function WorkspaceOverlays({
   screenPermission: string;
   showCreate: boolean;
   newGuildName: string;
+  inviteGuildName: string;
+  inviteToken: string;
+  inviteCopied: boolean;
   labels: WorkspaceOverlayLabels;
   onTogglePeerMute: (peerId: string) => void;
   onPeerVolumeChange: (peerId: string, volume: number) => void;
@@ -143,6 +155,8 @@ export function WorkspaceOverlays({
   onGuildNameChange: (name: string) => void;
   onCancelCreate: () => void;
   onCreateGuild: () => void | Promise<void>;
+  onCopyInvite: () => void | Promise<void>;
+  onCloseInvite: () => void;
 }) {
   return (
     <>
@@ -187,6 +201,7 @@ export function WorkspaceOverlays({
         <FriendsModal
           friends={friends}
           incomingRequests={incomingRequests}
+          outgoingRequests={outgoingRequests}
           friendSearchResults={friendSearchResults}
           unreadDm={unreadDm}
           searchQuery={friendSearch}
@@ -230,6 +245,17 @@ export function WorkspaceOverlays({
           onNameChange={onGuildNameChange}
           onCancel={onCancelCreate}
           onCreate={onCreateGuild}
+        />
+      )}
+
+      {inviteToken && (
+        <InviteDialog
+          guildName={inviteGuildName}
+          token={inviteToken}
+          copied={inviteCopied}
+          labels={labels.invite}
+          onCopy={onCopyInvite}
+          onClose={onCloseInvite}
         />
       )}
     </>

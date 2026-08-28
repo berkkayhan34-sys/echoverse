@@ -45,6 +45,7 @@ export type WorkspaceSidebarLabels = {
 type MobileWorkspaceNavigationProps = {
   guilds: Guild[];
   activeGuild: Guild | null;
+  activeDmFriend?: FriendUser | null;
   onSelectGuild: (guild: Guild) => void;
   onJoinVoice?: (guild: Guild) => void;
   lobbyName?: string;
@@ -60,6 +61,7 @@ type MobileWorkspaceNavigationProps = {
 function MobileWorkspaceNavigation({
   guilds,
   activeGuild,
+  activeDmFriend,
   onSelectGuild,
   onJoinVoice,
   lobbyName,
@@ -173,10 +175,18 @@ function MobileWorkspaceNavigation({
       </div>
 
       <nav className="mobile-nav" aria-label={labels.appName}>
-        <button onClick={() => setMobileMenuOpen(true)}>
+        <button
+          className={!activeDmFriend && activeGuild ? "active" : ""}
+          aria-current={!activeDmFriend && activeGuild ? "page" : undefined}
+          onClick={() => setMobileMenuOpen(true)}
+        >
           ☰ <span>{labels.servers || labels.textChannels}</span>
         </button>
-        <button onClick={openDms}>
+        <button
+          className={activeDmFriend ? "active" : ""}
+          aria-current={activeDmFriend ? "page" : undefined}
+          onClick={openDms}
+        >
           ✉ <span>{labels.directMessages || "DM"}</span>
         </button>
         <button onClick={openFriends}>
@@ -573,6 +583,7 @@ export function WorkspaceSidebar({
       <MobileWorkspaceNavigation
         guilds={guilds}
         activeGuild={activeGuild}
+        activeDmFriend={activeDmFriend}
         onSelectGuild={onSelectGuild}
         onJoinVoice={onJoinVoice}
         lobbyName={lobbyName}

@@ -70,7 +70,10 @@ export function DirectMessageHeader({
         >
           🚫
         </button>
-        <button className={callState === "connected" ? "call-connected" : ""} onClick={onCall}>
+        <button
+          className={`dm-call-button ${callState === "connected" ? "call-connected" : ""}`}
+          onClick={onCall}
+        >
           {callState === "calling"
             ? `📞 ${labels.calling}`
             : callState === "connected"
