@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: FEATURE-002
 status: complete
 date: 2026-08-29
-revision: pending-release-commit
+revision: f1ab9e8a75022df471b72214ad2349f0145c3b11 (pre-release)
 ```
 
 ## Scope
@@ -28,14 +28,16 @@ revision: pending-release-commit
 
 ## Validation
 
-| Check                                         | Result  | Evidence                                                                                             |
-| --------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `npm test -- --run`                           | pending | Full unit/integration suite after the release changes.                                               |
-| `npm run typecheck`                           | pending | All workspace packages.                                                                              |
-| `npm run build`                               | pending | Web, desktop, server, and shared packages.                                                           |
-| `npm run format:check` and `git diff --check` | pending | Formatting and whitespace gate.                                                                      |
-| Integrated browser inspection                 | pending | Browser view verifies browser marker/title, branding, server rail, leave control, and invite dialog. |
-| Render health and release workflow            | pending | Post-deploy version and artifact checks.                                                             |
+| Check                                                           | Result  | Evidence                                                                                                                                                                       |
+| --------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm test -- --run`                                             | pass    | 20 test files and 101 tests passed.                                                                                                                                            |
+| `npm run typecheck`                                             | pass    | All workspace packages type-checked successfully.                                                                                                                              |
+| `npm run build`                                                 | pass    | Web, desktop, server, and shared packages built successfully.                                                                                                                  |
+| `npm run format:check` and `git diff --check`                   | pass    | Formatting and whitespace gates passed.                                                                                                                                        |
+| `npm run lint`, `npm run localization:check`, roadmap validator | pass    | Lint, catalog parity, and roadmap checks passed.                                                                                                                               |
+| `npm run dependency:check` / `npm audit --audit-level=high`     | pass    | No high-or-critical dependency vulnerabilities reported.                                                                                                                       |
+| Integrated browser inspection                                   | partial | At 390x844, branded landing view rendered without horizontal overflow. Authenticated workspace interaction was not run because credential-entry confirmation was not provided. |
+| Render health and release workflow                              | pending | Must be rechecked after the `v1.8.6` tag deploys.                                                                                                                              |
 
 ## Security notes
 
