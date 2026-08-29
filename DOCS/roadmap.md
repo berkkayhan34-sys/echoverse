@@ -308,6 +308,10 @@ without claiming the parent parity item is complete:
   history, and fan-out messaging; owner/admin membership changes are included.
 - `CHAT-001.3` — group-call signaling for accepted conversation members, with
   a ten-person cap and call-only disconnect semantics.
+- `CHAT-001.4` — browser sessions authenticated through the HTTP-only cookie
+  can select the public main guild and send persisted guild messages; missing
+  legacy main-guild channel rows are repaired or served from the canonical
+  `general`/`Lobby` defaults during startup.
 
 Still deferred under `CHAT-001`: search/pins/threads/mentions, message-request
 and spam workflows, attachment policy UI, and notification controls. The
@@ -357,6 +361,10 @@ reconnect/background lifecycle, device diagnostics, and quality telemetry.
 existing bounded P2P transport, membership authorization, ten-member limit,
 and per-participant leave behavior. SFU scaling, background lifecycle,
 quality telemetry, and in-place participant renegotiation remain deferred.
+
+`VOICE-001.2` — authenticated web/mobile clients use the same main-guild
+membership and lobby authorization path as desktop; the integration suite
+covers cookie-authenticated `join-room` and guild chat together.
 
 ### mobile-and-platform-delivery
 

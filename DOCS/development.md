@@ -85,12 +85,12 @@ Node.js 22 LTS, as required by the approved `better-sqlite3` version.
 
 The public EchoVerse guild is reconciled at startup. Set
 `ECHO_VERSE_MAIN_OWNER_EMAIL` in the server environment to the founder
-account's normalized email before a hosted deployment. The value is an
+account's normalized email before a hosted deployment. This is an
 environment-only administration setting and must not be committed to source,
 logs, manifests, or examples. When it is unset, the server fails closed and
-does not grant an elevated role to an arbitrary account; the `echoverse` guild
-itself remains public and visible to authenticated accounts, even if a stale
-or missing membership row exists.
+does not grant an elevated role to an arbitrary account;
+the `echoverse` guild remains public and visible to authenticated accounts,
+including its repaired default text and voice channels.
 
 ## Localization workflow
 

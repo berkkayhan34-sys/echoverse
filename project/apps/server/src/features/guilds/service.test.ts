@@ -103,8 +103,14 @@ describe("guild and presence service", () => {
 
     expect(service.isMember("echoverse", "any-account")).toBe(true);
     expect(service.guildList("any-account")).toEqual([
-      { ...guilds.get("echoverse"), role: undefined }
+      { ...guilds.get("echoverse"), role: "member" }
     ]);
+    expect(service.guildChannels("echoverse")).toEqual([
+      expect.objectContaining({ id: "echoverse:general", type: "text" }),
+      expect.objectContaining({ id: "echoverse:lobby", type: "voice" })
+    ]);
+    expect(service.hasScopedPermission("echoverse", "any-account", "message:send")).toBe(true);
+    expect(service.canManage("echoverse", "any-account")).toBe(false);
     expect(await service.leaveGuild("echoverse", "any-account")).toBe(false);
   });
 

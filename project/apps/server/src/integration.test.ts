@@ -175,6 +175,76 @@ describe("server HTTP and Socket.IO boundaries", () => {
     expect(afterLogout.status).toBe(401);
   });
 
+  it("authenticates a browser Socket.IO session from the HTTP-only cookie", async () => {
+    const suffix = `${Date.now()}-${fixtureSequence++}`;
+    const registration = await fetch(`${baseUrl}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://localhost:5173",
+        "X-EchoVerse-Client": "web"
+      },
+      body: JSON.stringify({
+        email: `socket-web-${suffix}@example.test`,
+        username: `socketweb${suffix}`,
+        password: "secret123"
+      })
+    });
+    expect(registration.status).toBe(200);
+    const cookies = cookieHeader(registration);
+    const socket = createClient(baseUrl, {
+      auth: { protocolVersion: 2, locale: "tr" },
+      extraHeaders: { Cookie: cookies },
+      transports: ["websocket"],
+      reconnection: false
+    });
+    clients.push(socket);
+
+    const guildListPromise = new Promise<any[]>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("browser guild list timeout")), 500);
+      socket.once("guild:list", (list: any[]) => {
+        clearTimeout(timer);
+        resolve(list);
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", () => resolve());
+      socket.once("connect_error", reject);
+    });
+
+    const guilds = await guildListPromise;
+    expect(guilds).toEqual(expect.arrayContaining([expect.objectContaining({ id: "echoverse" })]));
+
+    expect(await emitWithAck(socket, "guild:select", { guildId: "echoverse" })).toEqual({
+      ok: true,
+      guildId: "echoverse"
+    });
+    const lobbyStatePromise = new Promise<{ members: any[] }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("browser voice lobby timeout")), 500);
+      socket.once("voice:lobby-state", (state: { members: any[] }) => {
+        clearTimeout(timer);
+        resolve(state);
+      });
+    });
+    expect(await emitWithAck(socket, "join-room", { guildId: "echoverse" })).toEqual({
+      ok: true,
+      guildId: "echoverse"
+    });
+    expect((await lobbyStatePromise).members).toEqual(
+      expect.arrayContaining([expect.objectContaining({ socketId: socket.id })])
+    );
+    const chat = await emitWithAck(socket, "chat-message", {
+      guildId: "echoverse",
+      channelId: "echoverse:general",
+      text: "browser transport works"
+    });
+    expect(chat).toEqual({
+      ok: true,
+      message: expect.objectContaining({ text: "browser transport works" })
+    });
+  });
+
   it("does not expose socket login as a browser credential transport", async () => {
     const client = await connectClient(2, "web");
     const response = await emitWithAck(client, "auth:login", {

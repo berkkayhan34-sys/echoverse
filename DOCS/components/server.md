@@ -43,12 +43,13 @@ restore remains an operator-controlled deployment action.
 
 The `echoverse` main guild is reconciled idempotently at startup and during
 HTTP/socket authentication. `ECHO_VERSE_MAIN_OWNER_EMAIL` identifies the
-founder account from deployment configuration; existing accounts are backfilled
+founder account from deployment configuration. Existing accounts are backfilled
 as members and new accounts are enrolled without changing private-guild invite
-authorization. If historical membership rows are missing, the fixed main-guild
-identifier remains publicly readable/selectable while no account is promoted to
-owner/admin without the configured founder identity. The value is never stored
-in source or logs.
+authorization. If historical membership or default-channel rows are missing,
+the fixed main-guild identifier and its
+`general`/`Lobby` channels remain readable/selectable while repair completes.
+No account is promoted to owner/admin without the configured founder identity,
+and the identity value is never stored in source or logs.
 
 WebRTC signaling is authorized per transport boundary: active private calls
 may relay only between their two call participants, while guild voice offers,

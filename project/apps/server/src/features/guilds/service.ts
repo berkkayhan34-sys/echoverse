@@ -131,15 +131,13 @@ export function createGuildService({
     };
   }
 
-  async function ensureDefaultChannels(guildId: string) {
-    if (guildChannels.has(guildId) && guildChannels.get(guildId)!.length) return;
-    const createdAt = new Date().toISOString();
-    const defaults: GuildChannel[] = [
+  function defaultChannelsFor(guildId: string, createdAt = new Date().toISOString()) {
+    return [
       {
         id: `${guildId}:general`,
         guildId,
         name: "general",
-        type: "text",
+        type: "text" as const,
         categoryId: null,
         position: 0,
         archived: false,
@@ -149,13 +147,19 @@ export function createGuildService({
         id: `${guildId}:lobby`,
         guildId,
         name: "Lobby",
-        type: "voice",
+        type: "voice" as const,
         categoryId: null,
         position: 1,
         archived: false,
         createdAt
       }
-    ];
+    ] satisfies GuildChannel[];
+  }
+
+  async function ensureDefaultChannels(guildId: string) {
+    if (guildChannels.has(guildId) && guildChannels.get(guildId)!.length) return;
+    const createdAt = new Date().toISOString();
+    const defaults = defaultChannelsFor(guildId, createdAt);
     if (pool) {
       for (const channel of defaults) {
         await pool.query(
@@ -250,7 +254,13 @@ export function createGuildService({
 
   function roleFor(guildId: string, accountId?: string): GuildRole | undefined {
     if (!accountId) return undefined;
-    return guildRoles.get(guildId)?.get(accountId);
+    const role = guildRoles.get(guildId)?.get(accountId);
+    if (role) return role;
+    // Public main-guild members may be present before a persistence backfill
+    // reaches this process. Give them the least-privileged member role so
+    // ordinary chat/voice access matches the public membership invariant;
+    // management still requires an explicit owner/admin role.
+    return isPublicMainGuild(guildId) ? "member" : undefined;
   }
 
   function isPublicMainGuild(guildId: string) {
@@ -475,7 +485,18 @@ export function createGuildService({
   }
 
   function listChannels(guildId: string) {
-    return [...(guildChannels.get(guildId) || [])].filter((channel) => !channel.archived);
+    const persisted = guildChannels.get(guildId);
+    // The public main guild is created/reconciled during startup, but a
+    // reconnect can briefly observe the in-memory placeholder before the
+    // database repair finishes. Keep the canonical channels available during
+    // that window so authenticated web clients can chat and join voice.
+    const channels =
+      persisted && persisted.length
+        ? persisted
+        : guildId === MAIN_GUILD_ID && guilds.has(MAIN_GUILD_ID)
+          ? defaultChannelsFor(guildId, "1970-01-01T00:00:00.000Z")
+          : [];
+    return [...channels].filter((channel) => !channel.archived);
   }
 
   function listCategories(guildId: string) {

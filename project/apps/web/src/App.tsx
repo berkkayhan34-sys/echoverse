@@ -1492,7 +1492,11 @@ export default function App() {
 
       setAccount(result.account);
       setUsername(result.account.username);
-      setIdentified(true);
+      // The HTTP response only proves that credentials were accepted. Keep
+      // the workspace locked until the reconnecting Socket.IO session has
+      // authenticated with the same HTTP-only cookie and emitted
+      // `auth:session`; otherwise clicks can be lost on a stale socket.
+      setIdentified(false);
       socket?.disconnect();
       socket?.connect();
       setAuthPassword("");
@@ -1607,7 +1611,10 @@ export default function App() {
   }
 
   async function joinGuild(guild: Guild) {
-    if (!socket) return;
+    if (!socket || !connected || !identified) {
+      setError(t("connection.retrying"));
+      return;
+    }
 
     if (joined) await leaveVoice();
 
@@ -1651,7 +1658,10 @@ export default function App() {
   }
 
   function joinVoiceGuild(guild: Guild) {
-    if (!socket) return;
+    if (!socket || !connected || !identified) {
+      setError(t("connection.retrying"));
+      return;
+    }
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
       if (!result?.ok) {
         setError(result?.error || t("error.guildJoinFailed"));
@@ -1806,7 +1816,10 @@ export default function App() {
   }
 
   function sendMessage() {
-    if (!socket || !activeGuild) return;
+    if (!socket || !connected || !identified || !activeGuild) {
+      setError(t("connection.retrying"));
+      return;
+    }
 
     const value = text.trim();
     if (!value) return;

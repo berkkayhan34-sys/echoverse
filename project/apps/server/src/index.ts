@@ -648,13 +648,12 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   initDatabase()
     .then(async () => {
       await loadGuilds();
-      const owner = process.env.ECHO_VERSE_MAIN_OWNER_EMAIL
-        ? await accountByEmail(
-            process.env.ECHO_VERSE_MAIN_OWNER_EMAIL.trim().toLocaleLowerCase("en-US")
-          )
-        : null;
+      const accounts = await listAccounts();
+      const configuredOwnerEmail =
+        process.env.ECHO_VERSE_MAIN_OWNER_EMAIL?.trim().toLocaleLowerCase("en-US");
+      const owner = configuredOwnerEmail ? await accountByEmail(configuredOwnerEmail) : null;
       if (owner) await ensureMainGuildOwner(owner);
-      for (const account of await listAccounts()) await ensureMainGuildMembership(account);
+      for (const account of accounts) await ensureMainGuildMembership(account);
     })
     .then(() => {
       httpServer.listen(PORT, "0.0.0.0", () => {
