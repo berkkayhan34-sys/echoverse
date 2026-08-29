@@ -20,6 +20,8 @@ const {
   updaterFailureState,
   waitForUpdateDownloaded
 } = require("./updater-validation.cjs");
+const { prepareUiUpdate } = require("./ui-update.cjs");
+const { publicKeyDerBase64: uiSigningPublicKey } = require("./ui-signing-public.cjs");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -97,6 +99,7 @@ let updaterState = {
   percent: 0,
   error: null
 };
+let activeUi = { directory: null, entrypoint: null, version: null, source: "bundled" };
 
 const SPOTIFY_CALLBACK_PORT = 43821;
 const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
@@ -114,7 +117,8 @@ function readConfig() {
   } catch {
     return {
       serverUrl: "http://localhost:3001",
-      spotifyClientId: ""
+      spotifyClientId: "",
+      uiUpdate: { enabled: false, manifestUrl: "" }
     };
   }
 }
@@ -414,6 +418,7 @@ ipcMain.handle("capture:openScreenSettings", async () => {
 });
 
 ipcMain.handle("echoverse:getVersion", () => app.getVersion());
+ipcMain.handle("ui:get-version", () => activeUi.version);
 
 ipcMain.handle("spotify:status", async () => {
   const cfg = readConfig();
@@ -1073,9 +1078,27 @@ function createWindow() {
   if (process.argv.includes("--dev")) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
-    // electron-builder places the renderer at the asar root's `dist` path.
-    mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    const rendererEntrypoint =
+      activeUi.entrypoint ||
+      path.join(activeUi.directory || path.join(__dirname, "..", "dist"), "index.html");
+    mainWindow.loadFile(rendererEntrypoint);
   }
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (process.argv.includes("--dev") && url.startsWith("http://localhost:5173")) return;
+    if (!process.argv.includes("--dev") && url.startsWith("file://")) {
+      try {
+        const fileUrl = new URL(url);
+        const decodedPath = decodeURIComponent(fileUrl.pathname);
+        const filePath =
+          process.platform === "win32" ? decodedPath.replace(/^\//u, "") : decodedPath;
+        const allowedRoot = path.resolve(activeUi.directory || path.join(__dirname, "..", "dist"));
+        if (path.resolve(filePath).startsWith(`${allowedRoot}${path.sep}`)) return;
+      } catch {}
+    }
+    event.preventDefault();
+  });
 
   mainWindow.webContents.once("did-finish-load", () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
@@ -1145,6 +1168,40 @@ function runPackagedSmokeTest() {
   app.exit(0);
 }
 
+async function prepareStartupUi() {
+  const bundledDirectory = path.join(__dirname, "..", "dist");
+  const config = readConfig();
+  const uiConfig = config?.uiUpdate;
+  if (!app.isPackaged || !uiConfig?.enabled || typeof uiConfig.manifestUrl !== "string") {
+    activeUi = {
+      directory: bundledDirectory,
+      entrypoint: path.join(bundledDirectory, "index.html"),
+      version: null,
+      source: "bundled"
+    };
+    return;
+  }
+
+  const result = await prepareUiUpdate({
+    manifestUrl: uiConfig.manifestUrl,
+    cacheRoot: path.join(app.getPath("userData"), "ui-cache"),
+    bundledDirectory,
+    shellVersion: app.getVersion(),
+    publicKeyDerBase64: uiSigningPublicKey
+  });
+  activeUi = {
+    directory: result.directory,
+    entrypoint: result.entrypoint,
+    version: result.version,
+    source: result.source
+  };
+  logUpdater(
+    "ui_ready",
+    `source=${result.source}${result.version ? ` version=${result.version}` : ""}`
+  );
+  if (result.fallback) logUpdater("ui_update_fallback", result.error || "unknown");
+}
+
 app.whenReady().then(async () => {
   app.setName("EchoVerse");
   if (process.platform === "win32") app.setAppUserModelId("com.echoverse.desktop");
@@ -1167,6 +1224,7 @@ app.whenReady().then(async () => {
   const startupUpdate = await runStartupUpdateGate();
   if (startupUpdate.installing) return;
 
+  await prepareStartupUi();
   createSplash();
   createTray();
   createWindow();

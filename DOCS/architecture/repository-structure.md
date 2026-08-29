@@ -38,15 +38,15 @@ echoverse/
 
 ## Current-to-target mapping
 
-| Current path            | Target responsibility                             | Constraint                                                                      |
-| ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `project/apps/server/`  | backend application                               | Keep transport composition separate from feature modules.                       |
-| `project/apps/web/`     | browser application plus shared packages          | Shared contracts/core are the integration boundary.                             |
-| `project/apps/desktop/` | Electron application plus shared packages         | Keep native APIs behind the Electron boundary.                                  |
-| `src/`                  | retired legacy entrypoint                         | Removed in v2 cutover; restore only by rollback to `1ab4dd2`.                   |
-| `DOCS/`                 | canonical documentation                           | Keep new policy in the canonical files indexed by `DOCS/README.md`.             |
-| `tmp/`                  | ignored generated/local state                     | Keep build output, reports, environments, runtime data, and scratch files here. |
-| `DOCS/historic/`        | immutable historical notes and roadmap references | Do not add new policy or current setup guidance here.                           |
+| Current path            | Target responsibility                             | Constraint                                                                                                   |
+| ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `project/apps/server/`  | backend application                               | Keep transport composition separate from feature modules.                                                    |
+| `project/apps/web/`     | browser application plus shared packages          | Shared contracts/core are the integration boundary.                                                          |
+| `project/apps/desktop/` | Electron application plus shared packages         | Keep native APIs behind the Electron boundary; signed UI cache activation stays in `electron/ui-update.cjs`. |
+| `src/`                  | retired legacy entrypoint                         | Removed in v2 cutover; restore only by rollback to `1ab4dd2`.                                                |
+| `DOCS/`                 | canonical documentation                           | Keep new policy in the canonical files indexed by `DOCS/README.md`.                                          |
+| `tmp/`                  | ignored generated/local state                     | Keep build output, reports, environments, runtime data, and scratch files here.                              |
+| `DOCS/historic/`        | immutable historical notes and roadmap references | Do not add new policy or current setup guidance here.                                                        |
 
 ## Dependency direction
 

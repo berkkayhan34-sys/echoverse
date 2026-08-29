@@ -71,6 +71,14 @@ state. Feature modules own their screens, selectors, commands, and tests.
 Desktop-only code is limited to an explicit bridge for native capabilities;
 renderer code must not reach directly into Node or the filesystem.
 
+The desktop renderer uses a bundled last-known-good build as its recovery
+source. At packaged startup it may activate a separately published web UI only
+after the signed manifest, shell compatibility, same-origin file list, sizes,
+and SHA-512 digests have been verified. The UI is materialized under the
+per-user cache and switched atomically; the Electron shell never treats an
+arbitrary live remote page as the application renderer. See
+[ADR-0018](decisions/0018-signed-remote-ui-cache.md).
+
 ## Trust and data flow
 
 External HTTP requests, Socket.IO events, OAuth callbacks, media/signaling

@@ -38,6 +38,7 @@ describe("Electron preload bridge", () => {
       "openScreenSettings",
       "checkForUpdates",
       "getVersion",
+      "getUiVersion",
       "notify"
     ]);
     expect((bridge as { ipcRenderer?: unknown }).ipcRenderer).toBeUndefined();

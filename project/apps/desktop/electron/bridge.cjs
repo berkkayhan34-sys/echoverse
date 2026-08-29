@@ -45,6 +45,7 @@ function createEchoVerseBridge(ipcRenderer) {
     openScreenSettings: () => ipcRenderer.invoke("capture:openScreenSettings"),
     checkForUpdates: () => ipcRenderer.invoke("update:check"),
     getVersion: () => ipcRenderer.invoke("echoverse:getVersion"),
+    getUiVersion: () => ipcRenderer.invoke("ui:get-version"),
     notify: (payload) => ipcRenderer.invoke("echoverse:notify", payload)
   };
 }

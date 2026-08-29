@@ -8,6 +8,10 @@ on:
     branches: ["main"]
     paths:
       - "project/apps/web/**"
+      - "project/packages/client-core/**"
+      - "project/packages/config/**"
+      - "project/packages/contracts/**"
+      - "project/packages/shared-ui/**"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
@@ -39,6 +43,11 @@ jobs:
       - name: Build web app
         working-directory: project/apps/web
         run: npm run build
+
+      - name: Create signed UI manifest
+        env:
+          ECHO_VERSE_UI_SIGNING_KEY: ${{ secrets.ECHO_VERSE_UI_SIGNING_KEY }}
+        run: npm run ui:manifest
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

@@ -50,8 +50,8 @@ const bridge = {
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(title || translator()("app.name"), {
         body: body || "",
-        icon: icon || "/branding/echoverse-icon.png",
-        badge: "/branding/echoverse-icon.png",
+        icon: icon || "./branding/echoverse-icon.png",
+        badge: "./branding/echoverse-icon.png",
         tag: "echoverse-message"
       });
     }
@@ -85,4 +85,9 @@ const bridge = {
   spotifyApplySync: async (_state: any) => ({ ok: false })
 };
 
-(window as any).echoverse = bridge;
+// Electron provides the native bridge before the renderer loads. Keep it
+// intact so cached web UI builds retain notifications, auth storage, capture,
+// and other platform capabilities; browsers receive the fallback bridge.
+if (!(window as any).echoverse) {
+  (window as any).echoverse = bridge;
+}

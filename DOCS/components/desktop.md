@@ -48,3 +48,14 @@ version opens and the failure remains visible in updater state; a completed
 download can still trigger the same silent install while the app is running.
 For a machine-wide installation, Windows may still require its standard UAC
 consent; the updater does not bypass that operating-system security control.
+
+## UI cache delivery
+
+The bundled desktop renderer is the final recovery copy. Packaged startup also
+checks the HTTPS `ui-manifest.json` configured in `config.json`. The Electron
+shell activates that web renderer only after Ed25519 signature, shell-version,
+same-origin path, size, and SHA-512 checks succeed. Files are downloaded into a
+per-user staging directory and switched through an atomic cache pointer; an
+invalid or unavailable update keeps the previous verified cache or bundled
+renderer. The web renderer preserves the native bridge when it is running
+inside Electron, while browser sessions install their own fallback bridge.
