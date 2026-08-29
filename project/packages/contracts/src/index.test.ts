@@ -171,6 +171,7 @@ describe("protocol contracts", () => {
       "friends:list",
       "friends:request",
       "friends:respond",
+      "friends:cancel",
       "friends:remove",
       "friends:block",
       "friends:unblock",
@@ -193,9 +194,6 @@ describe("protocol contracts", () => {
       "voice:sync-request",
       "leave-room",
       "chat-message",
-      "spotify:party-start",
-      "spotify:party-stop",
-      "spotify:sync",
       "webrtc-offer",
       "webrtc-answer",
       "webrtc-ice",
@@ -226,11 +224,5 @@ describe("protocol contracts", () => {
         name: ""
       }).success
     ).toBe(false);
-    expect(
-      socketEventPayloadSchemas["spotify:sync"].safeParse({
-        guildId: "guild",
-        state: { albumImage: "", timestamp: Date.now() }
-      }).success
-    ).toBe(true);
   });
 });

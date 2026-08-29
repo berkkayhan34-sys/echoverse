@@ -33,12 +33,6 @@ function createEchoVerseBridge(ipcRenderer) {
     installUpdate: () => ipcRenderer.invoke("update:install"),
     getUpdaterLogPath: () => ipcRenderer.invoke("update:get-log-path"),
 
-    spotifyStatus: () => ipcRenderer.invoke("spotify:status"),
-    spotifyLogin: () => ipcRenderer.invoke("spotify:login"),
-    spotifyLogout: () => ipcRenderer.invoke("spotify:logout"),
-    spotifyPlayback: () => ipcRenderer.invoke("spotify:playback"),
-    spotifyApplySync: (state) => ipcRenderer.invoke("spotify:applySync", state),
-
     screenPermission: () => ipcRenderer.invoke("capture:screenPermission"),
     listScreenSources: () => ipcRenderer.invoke("capture:listSources"),
     selectScreenSource: (sourceId) => ipcRenderer.invoke("capture:selectSource", sourceId),

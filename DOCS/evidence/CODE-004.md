@@ -15,8 +15,7 @@ revision: f876bbb
 ## Scope
 
 - Feature ownership moved from the server entrypoint into `features/identity`,
-  `features/guilds`, `features/chat`, `features/friends`, `features/calls`,
-  and `features/spotify`.
+  `features/guilds`, `features/chat`, `features/friends`, and `features/calls`.
 - Account and direct-message persistence access remains behind feature services;
   database selection, migration, and shutdown lifecycle moved to
   `persistence/runtime.ts`.

@@ -192,11 +192,7 @@ select:focus {
 .dm-page-actions button,
 .dm-back,
 .icon-btn,
-.secondary-wide,
-.spotify-action,
-.spotify-connect,
-.spotify-logout,
-.spotify-stop {
+.secondary-wide {
   border: 1px solid var(--ev-border);
   border-radius: var(--ev-radius-sm);
   background: var(--ev-surface-hover);
@@ -210,11 +206,7 @@ select:focus {
 .modal-actions button:hover,
 .dm-page-actions button:hover,
 .dm-back:hover,
-.secondary-wide:hover,
-.spotify-action:hover,
-.spotify-connect:hover,
-.spotify-logout:hover,
-.spotify-stop:hover {
+.secondary-wide:hover {
   border-color: var(--ev-border-strong);
   background: var(--ev-surface-active);
   color: var(--ev-text);
@@ -1508,6 +1500,91 @@ select:focus {
 
   .dm-page-user small {
     max-width: 110px;
+  }
+}
+
+/* Mobile workspace chrome mirrors the reference Discord-style layout: a
+   compact server rail stays visible while the channel drawer is touch-first. */
+@media (max-width: 760px) {
+  .app {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .servers {
+    position: relative;
+    z-index: 45;
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    width: 64px;
+    min-width: 64px;
+    gap: 10px;
+    padding: 14px 8px calc(84px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    background: #0d0f14;
+    border-right: 1px solid var(--ev-border);
+  }
+
+  .server-logo,
+  .server-circle {
+    width: 46px;
+    height: 46px;
+    flex: none;
+    border-radius: 15px;
+  }
+
+  .channels,
+  .members {
+    display: none;
+  }
+
+  .content {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    width: 100%;
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-drawer-backdrop {
+    left: 64px;
+    z-index: 44;
+    background: rgba(3, 5, 10, 0.72);
+  }
+
+  .mobile-drawer {
+    width: min(78vw, 320px);
+    max-width: calc(100vw - 64px);
+    padding-inline: 14px;
+    border-right: 1px solid var(--ev-border-strong);
+  }
+
+  .mobile-nav {
+    left: 64px;
+    width: calc(100% - 64px);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .topbar {
+    min-height: 58px;
+    padding-inline: 12px;
+  }
+
+  .topbar > div:first-child span {
+    max-width: 34vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .friend-row,
+  .guild-row,
+  .channel,
+  .mobile-channel-row,
+  .mobile-action-row {
+    min-height: 46px;
   }
 }
 

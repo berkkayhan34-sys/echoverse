@@ -87,6 +87,22 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     });
   }
 
+  function cancelFriendRequest(friendshipId: string) {
+    const socket = deps.getSocket();
+    socket?.emit("friends:cancel", { friendshipId }, (result: any) => {
+      if (!result?.ok) {
+        deps.setError(result?.error || deps.translate("error.requestFailed"));
+        return;
+      }
+      loadFriends();
+      deps.setFriendSearchResults((results) =>
+        results.map((friend) =>
+          friend.friendshipId === friendshipId ? { ...friend, relationship: "none" } : friend
+        )
+      );
+    });
+  }
+
   function removeFriend(targetId: string) {
     const socket = deps.getSocket();
     socket?.emit("friends:remove", { targetId }, (result: any) => {
@@ -133,6 +149,7 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     searchFriends,
     sendFriendRequest,
     respondFriendRequest,
+    cancelFriendRequest,
     removeFriend,
     openDm
   };

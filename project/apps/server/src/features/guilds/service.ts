@@ -4,7 +4,7 @@
  */
 
 import crypto from "node:crypto";
-import type { Account, Guild, GuildRole, SpotifyPartyState, User } from "../../domain/types.js";
+import type { Account, Guild, GuildRole, User } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 
 export type GuildServiceDependencies = {
@@ -18,7 +18,6 @@ export type GuildServiceDependencies = {
     { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
   >;
   users: Map<string, User>;
-  spotifyParties: Map<string, SpotifyPartyState>;
 };
 
 export const MAIN_GUILD_ID = "echoverse";
@@ -34,8 +33,7 @@ export function createGuildService({
   guildMembers,
   guildRoles: providedGuildRoles,
   guildInvites: providedGuildInvites,
-  users,
-  spotifyParties
+  users
 }: GuildServiceDependencies) {
   const guildRoles = providedGuildRoles ?? new Map<string, Map<string, GuildRole>>();
   const guildInvites =
@@ -174,6 +172,22 @@ export function createGuildService({
          ON CONFLICT (guild_id, account_id) DO UPDATE SET role = 'owner'`,
         [MAIN_GUILD_ID, account.id, createdAt]
       );
+
+      // A founder may sign in after other users are already connected. Backfill
+      // every existing account in one idempotent pass and refresh their lists
+      // so the public main server appears without requiring a second login.
+      const accounts = await pool.query("SELECT id FROM echoverse_users WHERE id <> $1", [
+        account.id
+      ]);
+      for (const row of accounts.rows) {
+        await pool.query(
+          `INSERT INTO echoverse_guild_members (guild_id, account_id, role, created_at)
+           VALUES ($1, $2, 'member', $3)
+           ON CONFLICT (guild_id, account_id) DO NOTHING`,
+          [MAIN_GUILD_ID, String(row.id), createdAt]
+        );
+        setMembership(MAIN_GUILD_ID, String(row.id), "member");
+      }
     }
 
     guilds.set(MAIN_GUILD_ID, guild);
@@ -182,6 +196,10 @@ export function createGuildService({
         setMembership(MAIN_GUILD_ID, memberId, "member");
     }
     setMembership(MAIN_GUILD_ID, account.id, "owner");
+    for (const peer of io.sockets.sockets.values()) {
+      const peerAccountId = peer.data.account?.id;
+      if (peerAccountId) peer.emit("guild:list", guildList(peerAccountId));
+    }
     return true;
   }
 
@@ -338,14 +356,6 @@ export function createGuildService({
     const oldGuild = user.guildId;
     socket.leave(oldRoom);
     socket.to(oldRoom).emit("peer-left", { socketId: socket.id, username: user.username });
-
-    if (oldGuild) {
-      const party = spotifyParties.get(oldGuild);
-      if (party?.leaderSocketId === socket.id) {
-        spotifyParties.delete(oldGuild);
-        io.to(oldRoom).emit("spotify:party-ended");
-      }
-    }
 
     user.roomId = undefined;
     user.guildId = undefined;

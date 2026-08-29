@@ -29,8 +29,7 @@ async function requestNotifications() {
 const bridge = {
   getConfig: async () => ({
     // Local web development must use the local backend described by DOCS/development.md.
-    serverUrl: defaultServerUrl(),
-    spotifyClientId: ""
+    serverUrl: defaultServerUrl()
   }),
 
   getVersion: async () => __ECHO_VERSE_WEB_VERSION__,
@@ -70,20 +69,7 @@ const bridge = {
     }
   ],
   selectScreenSource: async (_sourceId: string) => ({ ok: true }),
-  openScreenSettings: async () => ({ ok: true }),
-
-  // Spotify Together is desktop-only until browser OAuth is configured.
-  spotifyStatus: async () => ({
-    connected: false,
-    configured: false,
-    error: translator()("spotify.desktopOnly")
-  }),
-  spotifyLogin: async () => {
-    throw new Error(translator()("spotify.desktopOnly"));
-  },
-  spotifyLogout: async () => ({ ok: true }),
-  spotifyPlayback: async () => null,
-  spotifyApplySync: async (_state: any) => ({ ok: false })
+  openScreenSettings: async () => ({ ok: true })
 };
 
 // Electron provides the native bridge before the renderer loads. Keep it

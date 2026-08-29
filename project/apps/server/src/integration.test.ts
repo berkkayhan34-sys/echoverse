@@ -328,6 +328,74 @@ describe("server HTTP and Socket.IO boundaries", () => {
     );
   });
 
+  it("supports offline requests, duplicate protection, cancellation, and later acceptance", async () => {
+    const requester = await registerClient(await connectClient(), "frq");
+    const targetEmail = `friend-target-${Date.now()}-${fixtureSequence++}@example.test`;
+    const targetPassword = "secret123";
+    const target = await connectClient();
+    const targetRegistration = await emitWithAck(target, "auth:register", {
+      email: targetEmail,
+      username: `friendtarget${fixtureSequence}`,
+      password: targetPassword
+    });
+    expect(targetRegistration.ok).toBe(true);
+    const targetAccount = targetRegistration.account as { id: string };
+
+    target.close();
+    expect(
+      await emitWithAck(requester.socket, "friends:request", { targetId: targetAccount.id })
+    ).toEqual({ ok: true });
+    expect(
+      await emitWithAck(requester.socket, "friends:request", { targetId: targetAccount.id })
+    ).toEqual({ ok: false, error: tr("server.friendshipExists") });
+
+    const pendingSearch = await emitWithAck(requester.socket, "friends:search", {
+      query: "friendtarget"
+    });
+    expect(pendingSearch.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: targetAccount.id, relationship: "pending_outgoing" })
+      ])
+    );
+
+    const reconnectedTarget = await connectClient();
+    expect(
+      await emitWithAck(reconnectedTarget, "auth:login", {
+        email: targetEmail,
+        password: targetPassword
+      })
+    ).toMatchObject({ ok: true });
+    const incoming = await emitWithAck(reconnectedTarget, "friends:list", null);
+    const pendingId = (incoming.incoming as Array<{ friendshipId: string }>)[0]?.friendshipId;
+    expect(pendingId).toEqual(expect.any(String));
+
+    expect(
+      await emitWithAck(requester.socket, "friends:cancel", { friendshipId: pendingId })
+    ).toEqual({ ok: true });
+    expect(await emitWithAck(requester.socket, "friends:list", null)).toMatchObject({
+      outgoing: []
+    });
+    expect(await emitWithAck(reconnectedTarget, "friends:list", null)).toMatchObject({
+      incoming: []
+    });
+
+    expect(
+      await emitWithAck(requester.socket, "friends:request", { targetId: targetAccount.id })
+    ).toEqual({ ok: true });
+    const secondIncoming = await emitWithAck(reconnectedTarget, "friends:list", null);
+    const secondPendingId = (secondIncoming.incoming as Array<{ friendshipId: string }>)[0]
+      ?.friendshipId;
+    expect(
+      await emitWithAck(reconnectedTarget, "friends:respond", {
+        friendshipId: secondPendingId,
+        accept: true
+      })
+    ).toEqual({ ok: true });
+    expect(await emitWithAck(requester.socket, "friends:list", null)).toMatchObject({
+      accepted: [expect.objectContaining({ id: targetAccount.id })]
+    });
+  });
+
   it("blocks cross-user direct-message access before persistence", async () => {
     const sender = await connectClient();
     const recipient = await connectClient();

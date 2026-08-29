@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Guild, GuildRole, SpotifyPartyState, User } from "../../domain/types.js";
+import type { Guild, GuildRole, User } from "../../domain/types.js";
 
 export type GuildHandlerDependencies = {
   socket: any;
   io: any;
   users: Map<string, User>;
   guilds: Map<string, Guild>;
-  spotifyParties: Map<string, SpotifyPartyState>;
   areFriends(a: string, b: string): Promise<boolean>;
   accountPresence: Map<string, string>;
   roomFor(guildId: string): string;
@@ -44,7 +43,6 @@ export function registerGuildHandlers({
   io,
   users,
   guilds,
-  spotifyParties,
   areFriends,
   accountPresence,
   roomFor,
@@ -269,8 +267,6 @@ export function registerGuildHandlers({
       username: user.username,
       avatarData: user.avatarData
     });
-    const party = spotifyParties.get(safeGuild);
-    if (party?.active) socket.emit("spotify:party-state", party);
     broadcastPresence(roomId);
     callback?.({ ok: true, guildId: safeGuild });
   });

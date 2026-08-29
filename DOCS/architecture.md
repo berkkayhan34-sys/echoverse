@@ -56,7 +56,6 @@ handler file:
 - chat and message history;
 - friends and direct messages;
 - calls and WebRTC signaling;
-- Spotify integration;
 - persistence and migrations;
 - HTTP/Socket.IO transport composition.
 

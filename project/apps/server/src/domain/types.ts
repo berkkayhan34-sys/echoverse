@@ -36,20 +36,6 @@ export type Guild = {
 
 export type GuildRole = "owner" | "admin" | "moderator" | "member";
 
-export type SpotifyPartyState = {
-  guildId: string;
-  leaderSocketId: string;
-  leaderUsername: string;
-  active: boolean;
-  trackUri?: string;
-  trackName?: string;
-  artistName?: string;
-  albumImage?: string;
-  positionMs?: number;
-  isPlaying?: boolean;
-  updatedAt?: number;
-};
-
 export type CallSession = {
   callId: string;
   callerAccountId: string;

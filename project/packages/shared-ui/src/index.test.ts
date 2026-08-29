@@ -399,6 +399,7 @@ describe("shared chat UI", () => {
       onSearch: vi.fn(),
       onSendFriendRequest: vi.fn(),
       onRespondFriendRequest: onRespond,
+      onCancelFriendRequest: vi.fn(),
       onOpenDm,
       onCallFriend: onCall,
       onRemoveFriend: onRemove
@@ -506,13 +507,6 @@ describe("shared chat UI", () => {
       speakingPeers: {},
       peerMuted: {},
       peerVolumes: {},
-      spotifyConfigured: false,
-      spotifyConnected: false,
-      spotifyName: "",
-      spotifyParty: null,
-      spotifyLeader: false,
-      spotifyFollowing: false,
-      spotifyMessage: "",
       account: { id: "account-1", email: "ada@example.com", username: "Ada" },
       username: "Ada",
       appVersion: "1.7.5",
@@ -525,15 +519,6 @@ describe("shared chat UI", () => {
         lobby: "Lobby",
         self: " (you)",
         muteOnlyYou: "Mute for you only",
-        spotifyTogether: "Spotify Together",
-        spotifyClientRequired: "Spotify Client ID required.",
-        spotifyConnect: "Connect Spotify",
-        spotifyConnected: "Spotify connected",
-        spotifyStartParty: "Start party",
-        spotifyStopParty: "Stop party",
-        spotifyFollowing: "Listening in sync",
-        spotifyListenTogether: "Listen together",
-        spotifyLogout: "Sign out of Spotify",
         changeAvatar: "Change profile photo",
         voiceConnected: (version) => `Voice connected · v${version}`,
         microphone: "Microphone",
@@ -544,11 +529,6 @@ describe("shared chat UI", () => {
       onCreateGuild,
       onTogglePeerMute,
       onPeerVolumeChange,
-      onSpotifyLogin: vi.fn(),
-      onStartSpotifyParty: vi.fn(),
-      onStopSpotifyParty: vi.fn(),
-      onFollowSpotifyParty: vi.fn(),
-      onSpotifyLogout: vi.fn(),
       onChangeAvatar: vi.fn(),
       onToggleMute: vi.fn(),
       onLogout: vi.fn()
@@ -570,7 +550,6 @@ describe("shared chat UI", () => {
     expect(onCreateGuild).toHaveBeenCalledOnce();
     expect(onTogglePeerMute).toHaveBeenCalledWith("socket-2");
     expect(onPeerVolumeChange).toHaveBeenCalledWith("socket-2", 150);
-    expect(textContent(element)).toContain("Spotify Together");
   });
 });
 
@@ -1111,6 +1090,7 @@ describe("shared server chrome", () => {
       onSearchFriends: vi.fn(),
       onSendFriendRequest: vi.fn(),
       onRespondFriendRequest: vi.fn(),
+      onCancelFriendRequest: vi.fn(),
       onOpenDm: vi.fn(),
       onCallFriend: vi.fn(),
       onRemoveFriend: vi.fn(),

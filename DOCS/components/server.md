@@ -8,7 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 HTTP and Socket.IO composition for the modular monolith. The entrypoint keeps
 process wiring, transport middleware, shared socket lifecycle, and cross-feature
 composition. Feature behavior is organized under `src/features`:
-`identity`, `guilds`, `chat`, `friends`, `calls`, and `spotify`. Persistence
+`identity`, `guilds`, `chat`, `friends`, `calls`, and persistence.
 selection and migration lifecycle are owned by `src/persistence/runtime.ts`;
 boundary validation remains under `src/domain` and migrations under `db/migrations`.
 

@@ -212,6 +212,7 @@ export const socketEventPayloadSchemas = {
   "friends:list": optionalEmptyPayloadSchema,
   "friends:request": z.object({ targetId: identifierSchema }).strict(),
   "friends:respond": z.object({ friendshipId: identifierSchema, accept: z.boolean() }).strict(),
+  "friends:cancel": z.object({ friendshipId: identifierSchema }).strict(),
   "friends:remove": z.object({ targetId: identifierSchema }).strict(),
   "friends:block": z.object({ targetId: identifierSchema }).strict(),
   "friends:unblock": z.object({ targetId: identifierSchema }).strict(),
@@ -258,25 +259,6 @@ export const socketEventPayloadSchemas = {
   "voice:sync-request": optionalEmptyPayloadSchema,
   "leave-room": optionalEmptyPayloadSchema,
   "chat-message": chatMessageSchema,
-  "spotify:party-start": z.object({ guildId: identifierSchema }).strict(),
-  "spotify:party-stop": z.object({ guildId: identifierSchema }).strict(),
-  "spotify:sync": z
-    .object({
-      guildId: identifierSchema,
-      state: z
-        .object({
-          trackUri: z.string().max(512).optional(),
-          trackName: z.string().max(512).optional(),
-          artistName: z.string().max(512).optional(),
-          albumImage: z.union([z.literal(""), z.string().url().max(2048)]).optional(),
-          positionMs: z.number().finite().min(0).max(86_400_000).optional(),
-          isPlaying: z.boolean().optional(),
-          timestamp: z.number().int().min(0).max(9_999_999_999_999).optional(),
-          updatedAt: z.number().int().min(0).max(9_999_999_999_999).optional()
-        })
-        .strict()
-    })
-    .strict(),
   "webrtc-offer": webrtcDescriptionSchema,
   "webrtc-answer": webrtcDescriptionSchema,
   "webrtc-ice": webrtcIceCandidateSchema,
@@ -306,6 +288,7 @@ export type FriendUser = {
   avatarData?: string | null;
   friendshipId?: string;
   status?: "online" | "idle" | "dnd" | "invisible" | "offline";
+  relationship?: "none" | "pending_incoming" | "pending_outgoing" | "friends" | "blocked";
 };
 export type DmMessage = {
   id: string;
@@ -349,18 +332,4 @@ export type Guild = {
   role?: GuildRole;
 };
 export type ScreenSource = { id: string; name: string; thumbnail?: string; appIcon?: string };
-export type SpotifyState = {
-  guildId?: string;
-  leaderSocketId?: string;
-  leaderUsername?: string;
-  active?: boolean;
-  trackUri?: string;
-  trackName?: string;
-  artistName?: string;
-  albumImage?: string;
-  positionMs?: number;
-  isPlaying?: boolean;
-  updatedAt?: number;
-};
-
 export * from "./localization.js";

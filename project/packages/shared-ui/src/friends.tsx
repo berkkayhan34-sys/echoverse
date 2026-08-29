@@ -17,6 +17,9 @@ export type FriendsModalLabels = {
   myFriends: string;
   noFriends: string;
   add: string;
+  pending?: string;
+  friends?: string;
+  cancel?: string;
   accept: string;
   decline: string;
   openDirectMessage: string;
@@ -38,6 +41,7 @@ export function FriendsModal({
   onSearch,
   onSendFriendRequest,
   onRespondFriendRequest,
+  onCancelFriendRequest,
   onOpenDm,
   onCallFriend,
   onRemoveFriend
@@ -54,6 +58,7 @@ export function FriendsModal({
   onSearch: () => void;
   onSendFriendRequest: (accountId: string) => void;
   onRespondFriendRequest: (friendshipId: string, accept: boolean) => void;
+  onCancelFriendRequest: (friendshipId: string) => void;
   onOpenDm: (friend: FriendUser) => void;
   onCallFriend: (friend: FriendUser) => void;
   onRemoveFriend: (accountId: string) => void;
@@ -96,7 +101,27 @@ export function FriendsModal({
                   </div>
                   <b>{friend.username}</b>
                 </div>
-                <button onClick={() => onSendFriendRequest(friend.id)}>＋ {labels.add}</button>
+                {friend.relationship === "friends" ? (
+                  <small className="friend-pending">
+                    {labels.friends || labels.pending || labels.add}
+                  </small>
+                ) : friend.relationship === "pending_outgoing" ? (
+                  <button
+                    className="secondary-small"
+                    disabled={!friend.friendshipId}
+                    onClick={() =>
+                      friend.friendshipId && onCancelFriendRequest(friend.friendshipId)
+                    }
+                  >
+                    {labels.cancel || labels.decline}
+                  </button>
+                ) : friend.relationship === "pending_incoming" ? (
+                  <small className="friend-pending">
+                    {labels.pending || labels.outgoingRequests}
+                  </small>
+                ) : (
+                  <button onClick={() => onSendFriendRequest(friend.id)}>＋ {labels.add}</button>
+                )}
               </div>
             ))}
           </div>
@@ -157,7 +182,17 @@ export function FriendsModal({
                   </div>
                   <b>{friend.username}</b>
                 </div>
-                <small className="friend-pending">{labels.outgoingRequests}</small>
+                <div className="friend-actions">
+                  <small className="friend-pending">{labels.outgoingRequests}</small>
+                  {friend.friendshipId && (
+                    <button
+                      aria-label={labels.cancel || labels.decline}
+                      onClick={() => onCancelFriendRequest(friend.friendshipId!)}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Account, FriendUser, Guild, PeerInfo, SpotifyState } from "@echoverse/contracts";
-import { useState } from "react";
+import type { Account, FriendUser, Guild, PeerInfo } from "@echoverse/contracts";
+import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
 
 export type WorkspaceSidebarLabels = {
@@ -16,15 +16,6 @@ export type WorkspaceSidebarLabels = {
   lobby: string;
   self: string;
   muteOnlyYou: string;
-  spotifyTogether: string;
-  spotifyClientRequired: string;
-  spotifyConnect: string;
-  spotifyConnected: string;
-  spotifyStartParty: string;
-  spotifyStopParty: string;
-  spotifyFollowing: string;
-  spotifyListenTogether: string;
-  spotifyLogout: string;
   changeAvatar: string;
   voiceConnected: (version: string) => string;
   microphone: string;
@@ -73,7 +64,9 @@ function MobileWorkspaceNavigation({
   brandIconSrc,
   labels
 }: MobileWorkspaceNavigationProps) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Start with the server/channel navigator visible so mobile users land in
+  // the same context-rich workspace as desktop users.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(true);
   const selectGuild = (guild: Guild) => {
     onSelectGuild(guild);
     setMobileMenuOpen(false);
@@ -220,6 +213,9 @@ function LobbyNameEditor({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
   const cancel = () => {
     setDraft(value);
     setEditing(false);
@@ -280,13 +276,6 @@ export function WorkspaceSidebar({
   speakingPeers,
   peerMuted,
   peerVolumes,
-  spotifyConfigured,
-  spotifyConnected,
-  spotifyName,
-  spotifyParty,
-  spotifyLeader,
-  spotifyFollowing,
-  spotifyMessage,
   account,
   username,
   appVersion,
@@ -304,11 +293,6 @@ export function WorkspaceSidebar({
   onCreateGuild,
   onTogglePeerMute,
   onPeerVolumeChange,
-  onSpotifyLogin,
-  onStartSpotifyParty,
-  onStopSpotifyParty,
-  onFollowSpotifyParty,
-  onSpotifyLogout,
   onChangeAvatar,
   onToggleMute,
   onLogout
@@ -322,13 +306,6 @@ export function WorkspaceSidebar({
   speakingPeers: Record<string, boolean>;
   peerMuted: Record<string, boolean>;
   peerVolumes: Record<string, number>;
-  spotifyConfigured: boolean;
-  spotifyConnected: boolean;
-  spotifyName: string;
-  spotifyParty: SpotifyState | null;
-  spotifyLeader: boolean;
-  spotifyFollowing: boolean;
-  spotifyMessage: string;
   account: Account | null;
   username: string;
   appVersion: string;
@@ -346,11 +323,6 @@ export function WorkspaceSidebar({
   onCreateGuild: () => void;
   onTogglePeerMute: (socketId: string) => void;
   onPeerVolumeChange: (socketId: string, volume: number) => void;
-  onSpotifyLogin: () => void;
-  onStartSpotifyParty: () => void;
-  onStopSpotifyParty: () => void;
-  onFollowSpotifyParty: () => void;
-  onSpotifyLogout: () => void;
   onChangeAvatar: (file?: File) => void;
   onToggleMute: () => void;
   onLogout: () => void;
@@ -427,8 +399,6 @@ export function WorkspaceSidebar({
               onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
             >
               🔊 {lobbyName || labels.lobby}
-              {!activeGuild ? " · " : ""}
-              {activeGuild && labels.joinVoice ? labels.joinVoice : ""}
             </button>
 
             {activeGuild && canManageGuild && onRenameLobby && (
@@ -492,60 +462,6 @@ export function WorkspaceSidebar({
               );
             })}
           </div>
-        </div>
-
-        <div className="spotify-panel">
-          <div className="spotify-head">
-            <b>{labels.spotifyTogether}</b>
-            <span className="spotify-dot" />
-          </div>
-
-          {!spotifyConfigured ? (
-            <small>{labels.spotifyClientRequired}</small>
-          ) : !spotifyConnected ? (
-            <button className="spotify-connect" onClick={onSpotifyLogin}>
-              {labels.spotifyConnect}
-            </button>
-          ) : (
-            <>
-              <small>{spotifyName || labels.spotifyConnected}</small>
-
-              {spotifyParty?.active && (
-                <div className="spotify-now">
-                  {spotifyParty.albumImage && <img src={spotifyParty.albumImage} alt="" />}
-                  <div>
-                    <b>{spotifyParty.trackName || labels.spotifyTogether}</b>
-                    <small>{spotifyParty.artistName || spotifyParty.leaderUsername}</small>
-                  </div>
-                </div>
-              )}
-
-              {!spotifyParty?.active ? (
-                <button className="spotify-action" onClick={onStartSpotifyParty}>
-                  ▶ {labels.spotifyStartParty}
-                </button>
-              ) : spotifyLeader ? (
-                <button className="spotify-stop" onClick={onStopSpotifyParty}>
-                  ■ {labels.spotifyStopParty}
-                </button>
-              ) : (
-                <button
-                  className={spotifyFollowing ? "spotify-following" : "spotify-action"}
-                  onClick={onFollowSpotifyParty}
-                >
-                  {spotifyFollowing
-                    ? `✓ ${labels.spotifyFollowing}`
-                    : `🎧 ${labels.spotifyListenTogether}`}
-                </button>
-              )}
-
-              <button className="spotify-logout" onClick={onSpotifyLogout}>
-                {labels.spotifyLogout}
-              </button>
-            </>
-          )}
-
-          {spotifyMessage && <div className="spotify-message">{spotifyMessage}</div>}
         </div>
 
         <div className="user-panel">
