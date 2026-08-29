@@ -453,6 +453,94 @@ describe("server HTTP and Socket.IO boundaries", () => {
     expect(invalidMime).toEqual({ ok: false, error: tr("server.invalidRequest") });
   });
 
+  it("persists group conversations, enforces membership, and fans out messages", async () => {
+    const owner = await registerClient(await connectClient(), "group-owner");
+    const first = await registerClient(await connectClient(), "group-first");
+    const second = await registerClient(await connectClient(), "group-second");
+    await establishFriendship(owner, first);
+    await establishFriendship(owner, second);
+
+    const created = await emitWithAck(owner.socket, "dm:group-create", {
+      memberIds: [first.accountId, second.accountId],
+      name: "Project room"
+    });
+    expect(created.ok).toBe(true);
+    const conversation = created.conversation as { id: string; members: unknown[] };
+    expect(conversation.members).toHaveLength(3);
+
+    const firstHistory = await emitWithAck(first.socket, "dm:history", {
+      conversationId: conversation.id
+    });
+    expect(firstHistory).toMatchObject({ ok: true, messages: [] });
+
+    const delivered = waitForEvent<any>(second.socket, "dm:message");
+    const sent = await emitWithAck(owner.socket, "dm:send", {
+      conversationId: conversation.id,
+      body: "hello group"
+    });
+    expect(sent).toMatchObject({ ok: true, message: { conversationId: conversation.id } });
+    await expect(delivered).resolves.toMatchObject({ body: "hello group" });
+  });
+
+  it("enforces group roles and starts a bounded group call", async () => {
+    const owner = await registerClient(await connectClient(), "role-owner");
+    const first = await registerClient(await connectClient(), "role-first");
+    const second = await registerClient(await connectClient(), "role-second");
+    await establishFriendship(owner, first);
+    await establishFriendship(owner, second);
+
+    const created = await emitWithAck(owner.socket, "dm:group-create", {
+      memberIds: [first.accountId, second.accountId]
+    });
+    expect(created.ok).toBe(true);
+    const conversationId = (created.conversation as { id: string }).id;
+
+    expect(
+      await emitWithAck(owner.socket, "dm:group-promote", {
+        conversationId,
+        accountId: first.accountId
+      })
+    ).toMatchObject({ ok: true });
+    expect(
+      await emitWithAck(first.socket, "dm:group-remove", {
+        conversationId,
+        accountId: second.accountId
+      })
+    ).toMatchObject({ ok: true });
+    expect(await emitWithAck(owner.socket, "dm:group-leave", { conversationId })).toEqual({
+      ok: false,
+      error: tr("server.group.owner_cannot_leave")
+    });
+
+    const incoming = waitForEvent<any>(first.socket, "call:incoming");
+    const started = await emitWithAck(owner.socket, "call:start", { conversationId });
+    expect(started).toMatchObject({ ok: true, groupCall: true });
+    await expect(incoming).resolves.toMatchObject({
+      callId: started.callId,
+      conversationId,
+      groupCall: true
+    });
+
+    const answered = waitForEvent<any>(owner.socket, "call:answered");
+    first.socket.emit("call:answer", {
+      callId: started.callId,
+      toSocketId: owner.socket.id,
+      accept: true
+    });
+    await expect(answered).resolves.toMatchObject({
+      callId: started.callId,
+      responderAccountId: first.accountId,
+      groupCall: true
+    });
+
+    const ended = waitForEvent<any>(first.socket, "call:ended");
+    owner.socket.emit("call:end", {
+      callId: started.callId,
+      toSocketId: first.socket.id
+    });
+    await expect(ended).resolves.toMatchObject({ callId: started.callId, groupCall: true });
+  });
+
   it("expires unanswered calls and notifies both participants", async () => {
     const caller = await registerClient(await connectClient(), "call-caller");
     const target = await registerClient(await connectClient(), "call-target");

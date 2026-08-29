@@ -167,6 +167,25 @@ const EMOJI_CATALOG = [
   "🌍"
 ] as const;
 
+const COMMON_EMOJI = [
+  "😀",
+  "😂",
+  "😍",
+  "😎",
+  "😭",
+  "😡",
+  "👍",
+  "👎",
+  "👏",
+  "🙏",
+  "🔥",
+  "✨",
+  "🎉",
+  "✅",
+  "❌",
+  "❤️"
+] as const;
+
 /** Renders shared guild history without owning transport state. */
 export function ChannelMessageList({
   messages,
@@ -249,19 +268,53 @@ export function ChatComposer({
           😊
         </summary>
         <div className="emoji-picker" role="dialog" aria-label={emojiLabel}>
-          {EMOJI_CATALOG.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              aria-label={emoji}
-              onClick={() => {
-                onAddEmoji(emoji);
-                (document.activeElement as HTMLElement | null)?.blur();
-              }}
-            >
-              {emoji}
-            </button>
-          ))}
+          <input
+            className="emoji-search"
+            onChange={(event) => {
+              const query = event.target.value.trim();
+              const buttons =
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  ".emoji-grid button"
+                );
+              buttons?.forEach((button) => {
+                button.hidden = Boolean(query) && !button.dataset.emoji?.includes(query);
+              });
+            }}
+            placeholder={emojiLabel}
+            aria-label={emojiLabel}
+          />
+          <div className="emoji-grid">
+            {[...new Set([...COMMON_EMOJI, ...EMOJI_CATALOG])].map((emoji) => (
+              <button
+                key={emoji}
+                data-emoji={emoji}
+                type="button"
+                aria-label={emoji}
+                onClick={() => {
+                  let recent: unknown[] = [];
+                  try {
+                    const stored = JSON.parse(
+                      localStorage.getItem("echoverse_recent_emoji") || "[]"
+                    );
+                    if (Array.isArray(stored)) recent = stored;
+                  } catch {}
+                  const next = [
+                    emoji,
+                    ...recent.filter(
+                      (item): item is string => typeof item === "string" && item !== emoji
+                    )
+                  ].slice(0, 24);
+                  try {
+                    localStorage.setItem("echoverse_recent_emoji", JSON.stringify(next));
+                  } catch {}
+                  onAddEmoji(emoji);
+                  (document.activeElement as HTMLElement | null)?.blur();
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
         </div>
       </details>
 

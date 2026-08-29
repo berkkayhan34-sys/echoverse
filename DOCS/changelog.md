@@ -7,6 +7,16 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.0
+
+- Acknowledge guild message sends and surface localized transport failures.
+- Add persistent, membership-authorized group DMs with owner/admin controls,
+  group message history, and group voice calls capped at ten participants.
+- Improve the shared emoji picker with common-first ordering, search, and
+  recent emoji memory across web and desktop.
+- Make packaged desktop startup resilient to updater timeouts and invalid
+  cached UI by falling back to the bundled renderer and recording diagnostics.
+
 ## 1.8.9
 
 - Harden channel and category authorization so persisted scope overrides are

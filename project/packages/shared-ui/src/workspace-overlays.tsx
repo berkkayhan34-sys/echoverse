@@ -3,7 +3,13 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { FriendUser, IncomingCall, PeerInfo, ScreenSource } from "@echoverse/contracts";
+import type {
+  DmConversation,
+  FriendUser,
+  IncomingCall,
+  PeerInfo,
+  ScreenSource
+} from "@echoverse/contracts";
 import { CallAlerts, type CallAlertLabels } from "./calls.js";
 import { CreateGuildDialog, type CreateGuildDialogLabels } from "./guild-dialog.js";
 import { FriendsModal, type FriendsModalLabels } from "./friends.js";
@@ -47,6 +53,7 @@ export function WorkspaceOverlays({
   incomingRequests,
   outgoingRequests,
   friendSearchResults,
+  conversations,
   unreadDm,
   friendSearch,
   incomingCall,
@@ -81,6 +88,12 @@ export function WorkspaceOverlays({
   onOpenDm,
   onCallFriend,
   onRemoveFriend,
+  onOpenConversation,
+  onCreateGroup,
+  currentAccountId,
+  onGroupPromote,
+  onGroupRemove,
+  onGroupLeave,
   onAnswerCall,
   onEndCall,
   onCloseScreenPicker,
@@ -115,6 +128,7 @@ export function WorkspaceOverlays({
   incomingRequests: FriendUser[];
   outgoingRequests: FriendUser[];
   friendSearchResults: FriendUser[];
+  conversations?: DmConversation[];
   unreadDm: Record<string, number>;
   friendSearch: string;
   incomingCall: IncomingCall | null;
@@ -149,6 +163,12 @@ export function WorkspaceOverlays({
   onOpenDm: (friend: FriendUser) => void;
   onCallFriend: (friend: FriendUser) => void;
   onRemoveFriend: (accountId: string) => void;
+  onOpenConversation?: (conversation: DmConversation) => void;
+  onCreateGroup?: (memberIds: string[]) => void;
+  currentAccountId?: string;
+  onGroupPromote?: (conversationId: string, accountId: string) => void;
+  onGroupRemove?: (conversationId: string, accountId: string) => void;
+  onGroupLeave?: (conversationId: string) => void;
   onAnswerCall: (accepted: boolean) => void | Promise<void>;
   onEndCall: () => void | Promise<void>;
   onCloseScreenPicker: () => void;
@@ -205,6 +225,7 @@ export function WorkspaceOverlays({
           incomingRequests={incomingRequests}
           outgoingRequests={outgoingRequests}
           friendSearchResults={friendSearchResults}
+          conversations={conversations}
           unreadDm={unreadDm}
           searchQuery={friendSearch}
           labels={labels.friends}
@@ -217,6 +238,12 @@ export function WorkspaceOverlays({
           onOpenDm={onOpenDm}
           onCallFriend={onCallFriend}
           onRemoveFriend={onRemoveFriend}
+          onOpenConversation={onOpenConversation}
+          onCreateGroup={onCreateGroup}
+          currentAccountId={currentAccountId}
+          onGroupPromote={onGroupPromote}
+          onGroupRemove={onGroupRemove}
+          onGroupLeave={onGroupLeave}
         />
       )}
 

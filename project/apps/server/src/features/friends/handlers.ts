@@ -23,6 +23,21 @@ export type FriendHandlerDependencies = {
   accountById(id: string): Promise<Account | null>;
   findUsersByUsername(query: string, selfId: string, locale: Locale): Promise<unknown[]>;
   listFriendState(accountId: string): Promise<unknown>;
+  listConversations(accountId: string): Promise<unknown>;
+  conversationFor(accountId: string, conversationId: string): Promise<any>;
+  conversationMembers(conversationId: string): Promise<any[]>;
+  createGroupConversation(createdBy: string, memberIds: string[], name?: string): Promise<any>;
+  loadConversationHistory(conversationId: string): Promise<StoredDm[]>;
+  mutateGroupMember(
+    actorId: string,
+    conversationId: string,
+    targetId: string,
+    action: "add" | "remove" | "promote"
+  ): Promise<{ ok: boolean; error?: string }>;
+  leaveGroupConversation(
+    accountId: string,
+    conversationId: string
+  ): Promise<{ ok: boolean; error?: string }>;
   friendshipBetween(a: string, b: string): Promise<any>;
   friendshipKey(a: string, b: string): string;
   areFriends(a: string, b: string): Promise<boolean>;
@@ -60,6 +75,13 @@ export function registerFriendHandlers({
   accountById,
   findUsersByUsername,
   listFriendState,
+  listConversations,
+  conversationFor,
+  conversationMembers,
+  createGroupConversation,
+  loadConversationHistory,
+  mutateGroupMember,
+  leaveGroupConversation,
   friendshipBetween,
   friendshipKey,
   areFriends,
@@ -82,6 +104,25 @@ export function registerFriendHandlers({
       code === "23505" ||
       code === "SQLITE_CONSTRAINT_UNIQUE" ||
       /unique|duplicate/i.test(String(error))
+    );
+  }
+
+  async function emitConversation(conversationId: string, event: string, payload: unknown) {
+    for (const member of await conversationMembers(conversationId)) {
+      emitToAccount(member.accountId, event, payload);
+    }
+  }
+
+  async function decorateGroupMessages(messages: StoredDm[]) {
+    return Promise.all(
+      messages.map(async (message) => {
+        const sender = await accountById(message.senderId);
+        return {
+          ...message,
+          senderUsername: sender?.username || "",
+          senderAvatarData: sender?.avatarData || null
+        };
+      })
     );
   }
 
@@ -375,9 +416,140 @@ export function registerFriendHandlers({
     callback?.({ ok: true });
   });
 
-  onValidatedSocketEvent(socket, "dm:history", async ({ friendId }, callback) => {
+  onValidatedSocketEvent(socket, "dm:conversations", async (_payload, callback) => {
+    const account = socket.data.account;
+    if (!account)
+      return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+    callback?.({ ok: true, conversations: await listConversations(account.id) });
+  });
+
+  onValidatedSocketEvent(socket, "dm:group-create", async ({ memberIds, name }, callback) => {
+    const account = socket.data.account;
+    if (!account || memberIds.includes(account.id)) {
+      callback?.({ ok: false, error: socketError(socket, "server.groupCreateFailed") });
+      return;
+    }
+    for (const memberId of memberIds) {
+      if (!(await areFriends(account.id, memberId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.groupMemberNotFriend") });
+        return;
+      }
+    }
+    try {
+      const conversation = await createGroupConversation(account.id, memberIds, name);
+      const members = await conversationMembers(conversation.id);
+      const payload = { ...conversation, kind: "group", members };
+      await emitConversation(conversation.id, "dm:conversation-created", payload);
+      callback?.({ ok: true, conversation: payload });
+    } catch (error) {
+      callback?.({
+        ok: false,
+        error: socketError(
+          socket,
+          String(error).includes("group_size") ? "server.groupTooLarge" : "server.groupCreateFailed"
+        )
+      });
+    }
+  });
+
+  onValidatedSocketEvent(
+    socket,
+    "dm:group-add",
+    async ({ conversationId, accountId }, callback) => {
+      const actor = socket.data.account;
+      if (!actor)
+        return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      if (!(await accountById(accountId)))
+        return callback?.({ ok: false, error: socketError(socket, "server.group.invalid_member") });
+      const result = await mutateGroupMember(actor.id, conversationId, accountId, "add");
+      if (!result.ok)
+        return callback?.({
+          ok: false,
+          error: socketError(socket, `server.group.${result.error}`)
+        });
+      const members = await conversationMembers(conversationId);
+      await emitConversation(conversationId, "dm:conversation-updated", {
+        conversationId,
+        members
+      });
+      callback?.({ ok: true, members });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "dm:group-remove",
+    async ({ conversationId, accountId }, callback) => {
+      const actor = socket.data.account;
+      if (!actor)
+        return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      const result = await mutateGroupMember(actor.id, conversationId, accountId, "remove");
+      if (!result.ok)
+        return callback?.({
+          ok: false,
+          error: socketError(socket, `server.group.${result.error}`)
+        });
+      const members = await conversationMembers(conversationId);
+      await emitConversation(conversationId, "dm:conversation-updated", {
+        conversationId,
+        members
+      });
+      emitToAccount(accountId, "dm:conversation-removed", { conversationId });
+      callback?.({ ok: true });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "dm:group-promote",
+    async ({ conversationId, accountId }, callback) => {
+      const actor = socket.data.account;
+      if (!actor)
+        return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      const result = await mutateGroupMember(actor.id, conversationId, accountId, "promote");
+      if (!result.ok)
+        return callback?.({
+          ok: false,
+          error: socketError(socket, `server.group.${result.error}`)
+        });
+      const members = await conversationMembers(conversationId);
+      await emitConversation(conversationId, "dm:conversation-updated", {
+        conversationId,
+        members
+      });
+      callback?.({ ok: true, members });
+    }
+  );
+
+  onValidatedSocketEvent(socket, "dm:group-leave", async ({ conversationId }, callback) => {
+    const account = socket.data.account;
+    if (!account)
+      return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+    const result = await leaveGroupConversation(account.id, conversationId);
+    if (!result.ok)
+      return callback?.({ ok: false, error: socketError(socket, `server.group.${result.error}`) });
+    await emitConversation(conversationId, "dm:conversation-updated", {
+      conversationId,
+      members: await conversationMembers(conversationId)
+    });
+    socket.emit("dm:conversation-removed", { conversationId });
+    callback?.({ ok: true });
+  });
+
+  onValidatedSocketEvent(socket, "dm:history", async ({ friendId, conversationId }, callback) => {
     const user = users.get(socket.id);
     const friend = String(friendId || "");
+    if (conversationId) {
+      if (!user?.accountId || !(await conversationFor(user.accountId, conversationId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
+        return;
+      }
+      callback?.({
+        ok: true,
+        messages: await decorateGroupMessages(await loadConversationHistory(conversationId))
+      });
+      return;
+    }
     if (!user?.accountId || !(await areFriends(user.accountId, friend))) {
       callback?.({ ok: false, error: socketError(socket, "server.notFriends") });
       return;
@@ -389,7 +561,7 @@ export function registerFriendHandlers({
   onValidatedSocketEvent(
     socket,
     "dm:send",
-    async ({ friendId, body, replyToId, attachment }, callback) => {
+    async ({ friendId, conversationId, body, replyToId, attachment }, callback) => {
       if (!allowSocketEvent(socket.id, "dm:send", 30)) {
         callback?.({ ok: false, error: socketError(socket, "server.messageRateLimited") });
         return;
@@ -402,7 +574,11 @@ export function registerFriendHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
         return;
       }
-      if (!(await areFriends(user.accountId, friend))) {
+      if (conversationId && !(await conversationFor(user.accountId, conversationId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
+        return;
+      }
+      if (!conversationId && !(await areFriends(user.accountId, friend))) {
         callback?.({ ok: false, error: socketError(socket, "server.notFriends") });
         return;
       }
@@ -417,7 +593,8 @@ export function registerFriendHandlers({
         return;
       }
 
-      const message = await storeDm(user.accountId, friend, clean, {
+      const message = await storeDm(user.accountId, friend || conversationId!, clean, {
+        conversationId: conversationId || null,
         replyToId: replyToId ? String(replyToId) : null,
         attachmentName: checkedAttachment.value?.name || null,
         attachmentMime: checkedAttachment.value?.mime || null,
@@ -428,7 +605,8 @@ export function registerFriendHandlers({
         senderUsername: user.username,
         senderAvatarData: user.avatarData
       };
-      emitDmPair(message, "dm:message", payload);
+      if (conversationId) await emitConversation(conversationId, "dm:message", payload);
+      else emitDmPair(message, "dm:message", payload);
       callback?.({ ok: true, message: payload });
     }
   );
@@ -437,11 +615,16 @@ export function registerFriendHandlers({
     const account = socket.data.account;
     const message = await dmById(String(messageId || ""));
     const clean = sanitizeText(body);
+    const canAccessMessage = message?.conversationId
+      ? await conversationFor(account?.id || "", message.conversationId)
+      : account && message
+        ? await areFriends(account.id, message.recipientId)
+        : false;
     if (
       !account ||
       !message ||
       message.senderId !== account.id ||
-      !(await areFriends(account.id, message.recipientId)) ||
+      !canAccessMessage ||
       message.deletedAt ||
       !clean
     ) {
@@ -462,18 +645,25 @@ export function registerFriendHandlers({
       message.body = clean;
       message.editedAt = editedAt;
     }
-    emitDmPair(message, "dm:updated", message);
+    if (message.conversationId)
+      await emitConversation(message.conversationId, "dm:updated", message);
+    else emitDmPair(message, "dm:updated", message);
     callback?.({ ok: true, message });
   });
 
   onValidatedSocketEvent(socket, "dm:delete", async ({ messageId }, callback) => {
     const account = socket.data.account;
     const message = await dmById(String(messageId || ""));
+    const canAccessMessage = message?.conversationId
+      ? await conversationFor(account?.id || "", message.conversationId)
+      : account && message
+        ? await areFriends(account.id, message.recipientId)
+        : false;
     if (
       !account ||
       !message ||
       message.senderId !== account.id ||
-      !(await areFriends(account.id, message.recipientId)) ||
+      !canAccessMessage ||
       message.deletedAt
     ) {
       callback?.({ ok: false, error: socketError(socket, "server.messageDeleteFailed") });
@@ -501,13 +691,34 @@ export function registerFriendHandlers({
       message.attachmentMime = null;
       message.attachmentData = null;
     }
-    emitDmPair(message, "dm:deleted", { messageId: message.id, deletedAt });
+    if (message.conversationId) {
+      await emitConversation(message.conversationId, "dm:deleted", {
+        messageId: message.id,
+        deletedAt
+      });
+    } else {
+      emitDmPair(message, "dm:deleted", { messageId: message.id, deletedAt });
+    }
     callback?.({ ok: true });
   });
 
-  onValidatedSocketEvent(socket, "dm:typing", async ({ friendId, typing }) => {
+  onValidatedSocketEvent(socket, "dm:typing", async ({ friendId, conversationId, typing }) => {
     const account = socket.data.account;
-    if (!account || !friendId || !(await areFriends(account.id, friendId))) return;
+    if (!account) return;
+    if (conversationId) {
+      if (!(await conversationFor(account.id, conversationId))) return;
+      for (const member of await conversationMembers(conversationId)) {
+        if (member.accountId !== account.id) {
+          emitToAccount(member.accountId, "dm:typing", {
+            accountId: account.id,
+            typing: !!typing,
+            conversationId
+          });
+        }
+      }
+      return;
+    }
+    if (!friendId || !(await areFriends(account.id, friendId))) return;
     for (const peer of io.sockets.sockets.values()) {
       if (peer.data.account?.id === friendId) {
         peer.emit("dm:typing", { accountId: account.id, typing: !!typing });
@@ -533,13 +744,21 @@ export function registerFriendHandlers({
       callback?.({ ok: false, error: socketError(socket, "server.reactionFailed") });
       return;
     }
-    const otherAccountId = account.id === message.senderId ? message.recipientId : message.senderId;
-    if (
-      (account.id !== message.senderId && account.id !== message.recipientId) ||
-      !(await areFriends(account.id, otherAccountId))
-    ) {
-      callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
-      return;
+    if (message.conversationId) {
+      if (!(await conversationFor(account.id, message.conversationId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+        return;
+      }
+    } else {
+      const otherAccountId =
+        account.id === message.senderId ? message.recipientId : message.senderId;
+      if (
+        (account.id !== message.senderId && account.id !== message.recipientId) ||
+        !(await areFriends(account.id, otherAccountId))
+      ) {
+        callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+        return;
+      }
     }
 
     const reactions = { ...(message.reactions || {}) };
@@ -559,7 +778,14 @@ export function registerFriendHandlers({
         message.id
       ]);
     }
-    emitDmPair(message, "dm:reaction", { messageId: message.id, reactions });
+    if (message.conversationId) {
+      await emitConversation(message.conversationId, "dm:reaction", {
+        messageId: message.id,
+        reactions
+      });
+    } else {
+      emitDmPair(message, "dm:reaction", { messageId: message.id, reactions });
+    }
     callback?.({ ok: true, reactions });
   });
 }

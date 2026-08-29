@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { FriendUser } from "@echoverse/contracts";
+import type { DmConversation, FriendUser } from "@echoverse/contracts";
 import { displayInitials } from "./text.js";
 
 export type FriendsModalLabels = {
@@ -25,6 +25,12 @@ export type FriendsModalLabels = {
   openDirectMessage: string;
   call: string;
   remove: string;
+  groups?: string;
+  createGroup?: string;
+  openGroup?: string;
+  promoteGroupAdmin?: string;
+  removeFromGroup?: string;
+  leaveGroup?: string;
 };
 
 /** Shared friends, request, and direct-message entrypoint modal. */
@@ -33,6 +39,7 @@ export function FriendsModal({
   incomingRequests,
   outgoingRequests,
   friendSearchResults,
+  conversations,
   unreadDm,
   searchQuery,
   labels,
@@ -44,12 +51,19 @@ export function FriendsModal({
   onCancelFriendRequest,
   onOpenDm,
   onCallFriend,
-  onRemoveFriend
+  onRemoveFriend,
+  onOpenConversation,
+  onCreateGroup,
+  currentAccountId,
+  onGroupPromote,
+  onGroupRemove,
+  onGroupLeave
 }: {
   friends: FriendUser[];
   incomingRequests: FriendUser[];
   outgoingRequests: FriendUser[];
   friendSearchResults: FriendUser[];
+  conversations?: DmConversation[];
   unreadDm: Record<string, number>;
   searchQuery: string;
   labels: FriendsModalLabels;
@@ -62,6 +76,12 @@ export function FriendsModal({
   onOpenDm: (friend: FriendUser) => void;
   onCallFriend: (friend: FriendUser) => void;
   onRemoveFriend: (accountId: string) => void;
+  onOpenConversation?: (conversation: DmConversation) => void;
+  onCreateGroup?: (memberIds: string[]) => void;
+  currentAccountId?: string;
+  onGroupPromote?: (conversationId: string, accountId: string) => void;
+  onGroupRemove?: (conversationId: string, accountId: string) => void;
+  onGroupLeave?: (conversationId: string) => void;
 }) {
   return (
     <div className="modal-backdrop">
@@ -71,6 +91,78 @@ export function FriendsModal({
           <button aria-label={labels.close} onClick={onClose}>
             ✕
           </button>
+        </div>
+
+        <div className="friend-section group-dm-section">
+          <div className="section-heading-row">
+            <h3>{labels.groups || labels.myFriends}</h3>
+            <button
+              className="secondary-small"
+              onClick={() => {
+                const selected = Array.from(
+                  document.querySelectorAll<HTMLInputElement>(".group-member-checkbox:checked")
+                ).map((input) => input.value);
+                if (selected.length) onCreateGroup?.(selected);
+              }}
+            >
+              {labels.createGroup || labels.add}
+            </button>
+          </div>
+          {(conversations || []).map((conversation) => {
+            const actor = conversation.members.find(
+              (member) => member.accountId === currentAccountId
+            );
+            const canManage = actor && (actor.role === "owner" || actor.role === "admin");
+            return (
+              <div className="friend-row group-conversation-row" key={conversation.id}>
+                <button
+                  className="group-conversation-open"
+                  onClick={() => onOpenConversation?.(conversation)}
+                >
+                  <b>
+                    {conversation.name ||
+                      conversation.members.map((member) => member.username).join(", ")}
+                  </b>
+                  <span>{labels.openGroup || labels.openDirectMessage}</span>
+                </button>
+                <div className="group-member-actions">
+                  {conversation.members
+                    .filter(
+                      (member) => member.accountId !== currentAccountId && member.role !== "owner"
+                    )
+                    .map((member) => (
+                      <span className="group-member-action" key={member.accountId}>
+                        <small>{member.username}</small>
+                        {canManage && onGroupPromote && member.role !== "admin" && (
+                          <button
+                            className="secondary-small"
+                            onClick={() => onGroupPromote(conversation.id, member.accountId)}
+                          >
+                            {labels.promoteGroupAdmin || "Admin"}
+                          </button>
+                        )}
+                        {canManage && onGroupRemove && (
+                          <button
+                            className="secondary-small"
+                            onClick={() => onGroupRemove(conversation.id, member.accountId)}
+                          >
+                            {labels.removeFromGroup || labels.remove}
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  {onGroupLeave && actor?.role !== "owner" && (
+                    <button
+                      className="secondary-small"
+                      onClick={() => onGroupLeave(conversation.id)}
+                    >
+                      {labels.leaveGroup || labels.remove}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="friend-search-row">
@@ -216,6 +308,12 @@ export function FriendsModal({
               </div>
 
               <div className="friend-actions">
+                <input
+                  type="checkbox"
+                  className="group-member-checkbox"
+                  value={friend.id}
+                  aria-label={labels.createGroup || labels.add}
+                />
                 <button
                   className="dm-open-button"
                   aria-label={labels.openDirectMessage}

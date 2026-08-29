@@ -82,10 +82,19 @@ export type CallSession = {
   targetSocketId: string;
 };
 
+export type GroupCallSession = {
+  callId: string;
+  conversationId: string;
+  callerAccountId: string;
+  memberAccountIds: Set<string>;
+  acceptedAccountIds: Set<string>;
+};
+
 export type StoredDm = {
   id: string;
   senderId: string;
   recipientId: string;
+  conversationId?: string | null;
   body: string;
   createdAt: string;
   replyToId?: string | null;

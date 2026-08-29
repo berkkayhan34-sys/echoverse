@@ -13,6 +13,7 @@ export type DirectMessageHeaderLabels = {
   calling: string;
   call: string;
   endCall: string;
+  addParticipant?: string;
 };
 
 /** Shared direct-message header; confirmation and transport commands stay in the renderer. */
@@ -25,7 +26,8 @@ export function DirectMessageHeader({
   onBack,
   onSearchQueryChange,
   onBlock,
-  onCall
+  onCall,
+  onAddParticipant
 }: {
   peer: FriendUser;
   statusLabel: string;
@@ -36,6 +38,7 @@ export function DirectMessageHeader({
   onSearchQueryChange: (value: string) => void;
   onBlock: () => void;
   onCall: () => void;
+  onAddParticipant?: () => void;
 }) {
   return (
     <header className="dm-page-header">
@@ -80,6 +83,11 @@ export function DirectMessageHeader({
               ? `☎ ${labels.endCall}`
               : `📞 ${labels.call}`}
         </button>
+        {callState !== "idle" && onAddParticipant && labels.addParticipant && (
+          <button className="dm-add-participant-button" onClick={onAddParticipant}>
+            👥 {labels.addParticipant}
+          </button>
+        )}
       </div>
     </header>
   );

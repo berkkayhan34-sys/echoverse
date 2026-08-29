@@ -219,18 +219,26 @@ export const socketEventPayloadSchemas = {
   "friends:remove": z.object({ targetId: identifierSchema }).strict(),
   "friends:block": z.object({ targetId: identifierSchema }).strict(),
   "friends:unblock": z.object({ targetId: identifierSchema }).strict(),
-  "dm:history": z.object({ friendId: identifierSchema }).strict(),
+  "dm:history": z
+    .object({ friendId: identifierSchema.optional(), conversationId: identifierSchema.optional() })
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:send": z
     .object({
-      friendId: identifierSchema,
+      friendId: identifierSchema.optional(),
+      conversationId: identifierSchema.optional(),
       body: z.string().max(2500),
       replyToId: identifierSchema.nullable().optional(),
       attachment: attachmentSchema.nullable().optional()
     })
-    .strict(),
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:edit": z.object({ messageId: identifierSchema, body: z.string().max(2500) }).strict(),
   "dm:delete": z.object({ messageId: identifierSchema }).strict(),
-  "call:start": z.object({ friendId: identifierSchema }).strict(),
+  "call:start": z
+    .object({ friendId: identifierSchema.optional(), conversationId: identifierSchema.optional() })
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "call:answer": z
     .object({ callId: identifierSchema, toSocketId: identifierSchema, accept: z.boolean() })
     .strict(),
@@ -368,11 +376,35 @@ export const socketEventPayloadSchemas = {
   "webrtc-ice": webrtcIceCandidateSchema,
   "presence:set": z.object({ status: z.enum(["online", "idle", "dnd", "invisible"]) }).strict(),
   "presence:get": z.object({ accountIds: z.array(identifierSchema).max(100) }).strict(),
-  "dm:typing": z.object({ friendId: identifierSchema, typing: z.boolean() }).strict(),
+  "dm:typing": z
+    .object({
+      friendId: identifierSchema.optional(),
+      conversationId: identifierSchema.optional(),
+      typing: z.boolean()
+    })
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:read": z.object({ friendId: identifierSchema }).strict(),
   "dm:react": z
     .object({ messageId: identifierSchema, emoji: z.string().trim().min(1).max(12) })
-    .strict()
+    .strict(),
+  "dm:conversations": optionalEmptyPayloadSchema,
+  "dm:group-create": z
+    .object({
+      memberIds: z.array(identifierSchema).min(1).max(9),
+      name: z.string().trim().max(80).optional()
+    })
+    .strict(),
+  "dm:group-add": z
+    .object({ conversationId: identifierSchema, accountId: identifierSchema })
+    .strict(),
+  "dm:group-remove": z
+    .object({ conversationId: identifierSchema, accountId: identifierSchema })
+    .strict(),
+  "dm:group-promote": z
+    .object({ conversationId: identifierSchema, accountId: identifierSchema })
+    .strict(),
+  "dm:group-leave": z.object({ conversationId: identifierSchema }).strict()
 } as const;
 
 export type AuthCredentials = z.infer<typeof authCredentialsSchema>;
@@ -398,6 +430,7 @@ export type DmMessage = {
   id: string;
   senderId: string;
   recipientId: string;
+  conversationId?: string | null;
   body: string;
   createdAt: string;
   senderUsername?: string;
@@ -410,12 +443,28 @@ export type DmMessage = {
   reactions?: Record<string, string[]>;
   deletedAt?: string | null;
 };
+export type DmConversationMember = {
+  accountId: string;
+  username: string;
+  avatarData?: string | null;
+  role: "owner" | "admin" | "member";
+};
+export type DmConversation = {
+  id: string;
+  kind: "direct" | "group";
+  name?: string | null;
+  createdBy: string;
+  createdAt: string;
+  members: DmConversationMember[];
+};
 export type IncomingCall = {
   callId: string;
   fromAccountId: string;
   fromSocketId: string;
   fromUsername: string;
   fromAvatarData?: string | null;
+  conversationId?: string;
+  groupCall?: boolean;
 };
 export type ChatMessage = {
   id: string;

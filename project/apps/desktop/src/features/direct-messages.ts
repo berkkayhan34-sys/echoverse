@@ -11,6 +11,7 @@ type Attachment = { name: string; mime: string; data: string };
 export type DirectMessagesFeatureDeps = {
   getSocket: () => Socket | null;
   getFriend: () => FriendUser | null;
+  getConversationId?: () => string | null;
   getAccount: () => Account | null;
   getText: () => string;
   getEditing: () => DmMessage | null;
@@ -52,10 +53,20 @@ export function createDirectMessagesFeature(deps: DirectMessagesFeatureDeps) {
     deps.setText("");
     deps.setAttachment(null);
     deps.setReply(null);
-    socket.emit("dm:typing", { friendId: friend.id, typing: false });
-    socket.emit("dm:send", { friendId: friend.id, body, replyToId, attachment }, (result: any) => {
-      if (!result?.ok) deps.setError(result?.error || deps.translate("chat.sendFailed"));
-    });
+    const conversationId = deps.getConversationId?.() || null;
+    socket.emit(
+      "dm:typing",
+      conversationId ? { conversationId, typing: false } : { friendId: friend.id, typing: false }
+    );
+    socket.emit(
+      "dm:send",
+      conversationId
+        ? { conversationId, body, replyToId, attachment }
+        : { friendId: friend.id, body, replyToId, attachment },
+      (result: any) => {
+        if (!result?.ok) deps.setError(result?.error || deps.translate("chat.sendFailed"));
+      }
+    );
   }
 
   function editDm(message: DmMessage) {
@@ -81,7 +92,11 @@ export function createDirectMessagesFeature(deps: DirectMessagesFeatureDeps) {
     const friend = deps.getFriend();
     if (!friend || !socket) return;
 
-    socket.emit("dm:typing", { friendId: friend.id, typing });
+    const conversationId = deps.getConversationId?.() || null;
+    socket.emit(
+      "dm:typing",
+      conversationId ? { conversationId, typing } : { friendId: friend.id, typing }
+    );
     const previousTimer = deps.getTypingTimer();
     if (previousTimer !== null) {
       window.clearTimeout(previousTimer);
@@ -90,7 +105,12 @@ export function createDirectMessagesFeature(deps: DirectMessagesFeatureDeps) {
 
     if (typing) {
       const timer = window.setTimeout(() => {
-        socket.emit("dm:typing", { friendId: friend.id, typing: false });
+        socket.emit(
+          "dm:typing",
+          conversationId
+            ? { conversationId, typing: false }
+            : { friendId: friend.id, typing: false }
+        );
         deps.setTypingTimer(null);
       }, 1400);
       deps.setTypingTimer(timer);

@@ -79,17 +79,26 @@ export function registerChatHandlers({
       })
     );
   }
-  onValidatedSocketEvent(socket, "chat-message", async (payload) => {
+  onValidatedSocketEvent(socket, "chat-message", async (payload, callback) => {
     const user = users.get(socket.id);
     const parsed = chatMessageSchema.safeParse(payload);
     if (!parsed.success) return;
     const { guildId, text } = parsed.data;
     const channelId = parsed.data.channelId || `${guildId}:general`;
-    if (!user || user.activeGuildId !== guildId || !isMember(guildId, user.accountId)) return;
-    if (!canAccessChannel(guildId, user.accountId, "message:send", channelId)) return;
+    if (!user || user.activeGuildId !== guildId || !isMember(guildId, user.accountId)) {
+      callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+      return;
+    }
+    if (!canAccessChannel(guildId, user.accountId, "message:send", channelId)) {
+      callback?.({ ok: false, error: socketError(socket, "server.messageSendFailed") });
+      return;
+    }
 
     const safeText = sanitizeText(text);
-    if (!safeText) return;
+    if (!safeText) {
+      callback?.({ ok: false, error: socketError(socket, "server.emptyMessage") });
+      return;
+    }
 
     const stored = await guildChat.store({
       guildId,
@@ -111,6 +120,7 @@ export function registerChatHandlers({
     };
 
     io.to(`guild:${guildId}:text`).emit("chat-message", message);
+    callback?.({ ok: true, message });
 
     const botText = utilityBotResponse(
       safeText.toLowerCase(),

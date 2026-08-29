@@ -9,7 +9,7 @@ import {
   webrtcIceCandidateSchema
 } from "@echoverse/contracts";
 import crypto from "node:crypto";
-import type { CallSession, User } from "../../domain/types.js";
+import type { CallSession, GroupCallSession, User } from "../../domain/types.js";
 
 const MAX_PENDING_CALLS = 1_024;
 
@@ -21,6 +21,9 @@ export type CallHandlerDependencies = {
   users: Map<string, User>;
   pendingCalls: Map<string, CallSession & { timer: ReturnType<typeof setTimeout> }>;
   activeCalls: Map<string, CallSession>;
+  activeGroupCalls: Map<string, GroupCallSession>;
+  conversationFor(accountId: string, conversationId: string): Promise<any>;
+  conversationMembers(conversationId: string): Promise<any[]>;
   socketForAccount(accountId: string): User | undefined;
   areFriends(a: string, b: string): Promise<boolean>;
   allowSocketEvent(socketId: string, event: string, limit: number): boolean;
@@ -38,14 +41,58 @@ export function registerCallHandlers({
   users,
   pendingCalls,
   activeCalls,
+  activeGroupCalls,
+  conversationFor,
+  conversationMembers,
   socketForAccount,
   areFriends,
   allowSocketEvent,
   socketError,
   onValidatedSocketEvent
 }: CallHandlerDependencies) {
-  onValidatedSocketEvent(socket, "call:start", async ({ friendId }, callback) => {
+  onValidatedSocketEvent(socket, "call:start", async ({ friendId, conversationId }, callback) => {
     const user = users.get(socket.id);
+    if (conversationId) {
+      if (!user?.accountId || !(await conversationFor(user.accountId, conversationId))) {
+        callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
+        return;
+      }
+      const members = await conversationMembers(conversationId);
+      if (members.length > 10) {
+        callback?.({ ok: false, error: socketError(socket, "server.groupTooLarge") });
+        return;
+      }
+      if ([...activeGroupCalls.values()].some((call) => call.conversationId === conversationId)) {
+        callback?.({ ok: false, error: socketError(socket, "call.alreadyActive") });
+        return;
+      }
+      const callId = crypto.randomUUID();
+      const memberAccountIds = new Set(members.map((member: any) => String(member.accountId)));
+      const group: GroupCallSession = {
+        callId,
+        conversationId,
+        callerAccountId: user.accountId,
+        memberAccountIds,
+        acceptedAccountIds: new Set([user.accountId])
+      };
+      activeGroupCalls.set(callId, group);
+      for (const member of members) {
+        if (member.accountId === user.accountId) continue;
+        const target = socketForAccount(member.accountId);
+        if (!target) continue;
+        io.to(target.socketId).emit("call:incoming", {
+          callId,
+          fromAccountId: user.accountId,
+          fromSocketId: socket.id,
+          fromUsername: user.username,
+          fromAvatarData: user.avatarData,
+          conversationId,
+          groupCall: true
+        });
+      }
+      callback?.({ ok: true, callId, groupCall: true });
+      return;
+    }
     const friend = String(friendId || "");
 
     if (!user?.accountId || !(await areFriends(user.accountId, friend))) {
@@ -118,6 +165,27 @@ export function registerCallHandlers({
     const user = users.get(socket.id);
     if (!user?.accountId) return;
 
+    const group = activeGroupCalls.get(String(callId));
+    if (group) {
+      if (!group.memberAccountIds.has(user.accountId)) return;
+      if (accept) group.acceptedAccountIds.add(user.accountId);
+      const responder = {
+        callId: group.callId,
+        accept: !!accept,
+        responderSocketId: socket.id,
+        responderAccountId: user.accountId,
+        responderUsername: user.username,
+        responderAvatarData: user.avatarData,
+        conversationId: group.conversationId,
+        groupCall: true
+      };
+      for (const accountId of group.acceptedAccountIds) {
+        const target = socketForAccount(accountId);
+        if (target) io.to(target.socketId).emit("call:answered", responder);
+      }
+      return;
+    }
+
     const pending = pendingCalls.get(String(callId));
     if (
       !pending ||
@@ -148,6 +216,26 @@ export function registerCallHandlers({
     const active = activeCalls.get(id);
     const call = pending || active;
     const user = users.get(socket.id);
+    const group = activeGroupCalls.get(id);
+    if (group) {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !group.memberAccountIds.has(user.accountId)) return;
+      const target = users.get(String(toSocketId));
+      if (
+        !target?.accountId ||
+        target.accountId === user.accountId ||
+        !group.acceptedAccountIds.has(target.accountId)
+      )
+        return;
+      group.acceptedAccountIds.delete(user.accountId);
+      io.to(String(toSocketId)).emit("call:ended", {
+        callId,
+        groupCall: true,
+        peerSocketId: socket.id
+      });
+      if (group.acceptedAccountIds.size === 0) activeGroupCalls.delete(id);
+      return;
+    }
     if (
       !call ||
       !user?.accountId ||
@@ -200,12 +288,23 @@ export function registerCallHandlers({
     );
     if (call) return await areFriends(call.callerAccountId, call.targetAccountId);
 
+    const sender = users.get(fromSocketId);
+    const recipient = users.get(toSocketId);
+    const group = [...activeGroupCalls.values()].find(
+      (candidate) =>
+        !!sender?.accountId &&
+        !!recipient?.accountId &&
+        candidate.acceptedAccountIds.has(sender.accountId) &&
+        candidate.acceptedAccountIds.has(recipient.accountId)
+    );
+    if (group) {
+      return true;
+    }
+
     // Guild voice uses the same WebRTC signaling transport as private calls,
     // but its authorization boundary is the shared lobby rather than a
     // friendship record. Only authenticated sockets currently in the exact
     // same voice room may exchange guild signaling messages.
-    const sender = users.get(fromSocketId);
-    const recipient = users.get(toSocketId);
     return Boolean(sender?.roomId && sender.roomId === recipient?.roomId);
   }
 
@@ -221,6 +320,10 @@ export function registerCallHandlers({
       const otherSocketId =
         call.callerSocketId === socketId ? call.targetSocketId : call.callerSocketId;
       io.to(otherSocketId).emit("call:ended", { callId });
+    }
+    for (const [callId, group] of activeGroupCalls) {
+      if (!group.memberAccountIds.has(users.get(socketId)?.accountId || "")) continue;
+      activeGroupCalls.delete(callId);
     }
   }
 

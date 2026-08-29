@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.9`, with protocol major version 2.
+The shipped baseline is product version `1.9.0`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -299,6 +299,22 @@ depends_on: [ARCH-002, SEC-001]
 autocomplete, content/attachment policy, message requests, spam quarantine,
 mute/archive, group DMs, and notification controls.
 
+The 1.9.0 slice is tracked as the following stable sub-items and is evidenced
+without claiming the parent parity item is complete:
+
+- `CHAT-001.1` — guild send acknowledgements and localized failure feedback;
+  covered by the server integration and client transport checks.
+- `CHAT-001.2` — persistent group DM conversations, membership checks, group
+  history, and fan-out messaging; owner/admin membership changes are included.
+- `CHAT-001.3` — group-call signaling for accepted conversation members, with
+  a ten-person cap and call-only disconnect semantics.
+
+Still deferred under `CHAT-001`: search/pins/threads/mentions, message-request
+and spam workflows, attachment policy UI, and notification controls. The
+group-call UI supports converting an active one-to-one call while creating a
+group; in-place participant renegotiation without that conversion remains a
+follow-up item.
+
 ### emoji-and-rich-media
 
 ```yaml
@@ -314,6 +330,11 @@ depends_on: [CHAT-001, MOD-001]
 [ ] Version the Unicode catalog and accessibility/search model, then evaluate
 custom server emoji, GIFs, stickers, previews, licensing, upload limits,
 sanitization, and cross-platform rendering.
+
+`MEDIA-001.1` (1.9.0): the shared picker now presents common emoji first,
+supports local search, remembers the most recent selections, and is reused by
+web and desktop. Full Unicode catalog versioning and rich-media uploads remain
+deferred.
 
 ### scalable-voice-and-presence
 
@@ -331,6 +352,11 @@ depends_on: [ARCH-002, SEC-001]
 [ ] Implement the bounded P2P voice path and provider-neutral SFU boundary,
 persistent voice-room semantics, stage/stream permissions,
 reconnect/background lifecycle, device diagnostics, and quality telemetry.
+
+`VOICE-001.1` (1.9.0): group DM voice signaling is available through the
+existing bounded P2P transport, membership authorization, ten-member limit,
+and per-participant leave behavior. SFU scaling, background lifecycle,
+quality telemetry, and in-place participant renegotiation remain deferred.
 
 ### mobile-and-platform-delivery
 
@@ -373,6 +399,12 @@ Acceptance requires signature/path/size/hash/fallback tests, `webRevision`
 cache-identity coverage, web workflow manifest evidence, desktop/web production
 builds, and a packaged startup smoke test proving that an unavailable or invalid
 UI update still opens the known-good renderer.
+
+`PLATFORM-002.1` (1.9.0): packaged startup now bounds update waiting to 30
+seconds, logs failures, catches UI-cache preparation errors, and retries the
+bundled renderer when a cached entrypoint fails. The Windows NSIS artifact was
+installed silently and launched successfully; macOS and cross-platform update
+acceptance remain deferred to the parent gate.
 
 ### reliability-and-public-release-gate
 

@@ -19,12 +19,28 @@ export type MemoryFriendship = {
 export type FriendshipRelationship =
   "none" | "pending_incoming" | "pending_outgoing" | "friends" | "blocked";
 
+export type MemoryDmConversationMember = {
+  accountId: string;
+  role: "owner" | "admin" | "member";
+  joinedAt: string;
+  leftAt?: string | null;
+};
+
+export type MemoryDmConversation = {
+  id: string;
+  name: string | null;
+  createdBy: string;
+  createdAt: string;
+  members: Map<string, MemoryDmConversationMember>;
+};
+
 export type FriendServiceDependencies = {
   pool: PersistenceDatabase | null;
   sqliteDatabase: PersistenceDatabase | null;
   memoryAccounts: Map<string, Account>;
   memoryFriendships: Map<string, MemoryFriendship>;
   memoryDmMessages: StoredDm[];
+  memoryDmConversations: Map<string, MemoryDmConversation>;
   publicUserById(id: string): Promise<{
     id: string;
     username: string;
@@ -38,6 +54,7 @@ export function createFriendService({
   memoryAccounts,
   memoryFriendships,
   memoryDmMessages,
+  memoryDmConversations,
   publicUserById
 }: FriendServiceDependencies) {
   function friendshipKey(a: string, b: string) {
@@ -254,6 +271,7 @@ export function createFriendService({
     recipientId: string,
     body: string,
     options: {
+      conversationId?: string | null;
       replyToId?: string | null;
       attachmentName?: string | null;
       attachmentMime?: string | null;
@@ -264,6 +282,7 @@ export function createFriendService({
       id: crypto.randomUUID(),
       senderId,
       recipientId,
+      conversationId: options.conversationId || null,
       body,
       createdAt: new Date().toISOString(),
       replyToId: options.replyToId || null,
@@ -283,14 +302,15 @@ export function createFriendService({
     await pool.query(
       `INSERT INTO echoverse_dm_messages
         (
-          id, sender_id, recipient_id, body, created_at,
+          id, sender_id, recipient_id, conversation_id, body, created_at,
           reply_to_id, attachment_name, attachment_mime, attachment_data, reactions
         )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
       [
         message.id,
         senderId,
         recipientId,
+        message.conversationId,
         body,
         message.createdAt,
         message.replyToId,
@@ -317,12 +337,12 @@ export function createFriendService({
 
     const result = await pool.query(
       `SELECT
-         id, sender_id, recipient_id, body, created_at,
+         id, sender_id, recipient_id, conversation_id, body, created_at,
          reply_to_id, edited_at, deleted_at,
          attachment_name, attachment_mime, attachment_data, reactions
        FROM (
          SELECT
-           id, sender_id, recipient_id, body, created_at,
+           id, sender_id, recipient_id, conversation_id, body, created_at,
            reply_to_id, edited_at, deleted_at,
            attachment_name, attachment_mime, attachment_data, reactions
          FROM echoverse_dm_messages
@@ -341,6 +361,7 @@ export function createFriendService({
       id: row.id,
       senderId: row.sender_id,
       recipientId: row.recipient_id,
+      conversationId: row.conversation_id || null,
       body: row.deleted_at ? "" : row.body,
       createdAt: row.created_at?.toISOString?.() || String(row.created_at),
       replyToId: row.reply_to_id || null,
@@ -353,12 +374,258 @@ export function createFriendService({
     }));
   }
 
+  async function createGroupConversation(createdBy: string, memberIds: string[], name?: string) {
+    const uniqueMembers = [...new Set([createdBy, ...memberIds])];
+    if (uniqueMembers.length < 2 || uniqueMembers.length > 10) throw new Error("group_size");
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const title = name?.trim() || null;
+    if (!pool) {
+      const members = new Map<string, MemoryDmConversationMember>();
+      uniqueMembers.forEach((accountId, index) =>
+        members.set(accountId, {
+          accountId,
+          role: index === 0 ? "owner" : "member",
+          joinedAt: createdAt,
+          leftAt: null
+        })
+      );
+      const conversation = { id, name: title, createdBy, createdAt, members };
+      memoryDmConversations.set(id, conversation);
+      return conversation;
+    }
+    await pool.query(
+      `INSERT INTO echoverse_dm_conversations (id,kind,name,created_by,created_at)
+       VALUES ($1,'group',$2,$3,$4)`,
+      [id, title, createdBy, createdAt]
+    );
+    try {
+      await pool.query(
+        `INSERT INTO echoverse_dm_members (conversation_id,account_id,role,joined_at)
+         SELECT $1, id, CASE WHEN id=$2 THEN 'owner' ELSE 'member' END, $3
+         FROM echoverse_users WHERE id = ANY($4::text[])`,
+        [id, createdBy, createdAt, uniqueMembers]
+      );
+    } catch (error) {
+      await pool.query("DELETE FROM echoverse_dm_conversations WHERE id=$1", [id]);
+      throw error;
+    }
+    return { id, name: title, createdBy, createdAt };
+  }
+
+  async function conversationFor(accountId: string, conversationId: string) {
+    if (!pool) {
+      const conversation = memoryDmConversations.get(conversationId);
+      const member = conversation?.members.get(accountId);
+      return conversation && member && !member.leftAt ? conversation : null;
+    }
+    const result = await pool.query(
+      `SELECT c.id,c.name,c.created_by,c.created_at
+       FROM echoverse_dm_conversations c
+       JOIN echoverse_dm_members m ON m.conversation_id=c.id
+       WHERE c.id=$1 AND m.account_id=$2 AND m.left_at IS NULL`,
+      [conversationId, accountId]
+    );
+    return result.rows[0] || null;
+  }
+
+  async function conversationMembers(conversationId: string) {
+    if (!pool) {
+      const conversation = memoryDmConversations.get(conversationId);
+      if (!conversation) return [];
+      return Promise.all(
+        [...conversation.members.values()]
+          .filter((member) => !member.leftAt)
+          .map(async (member) => ({
+            ...member,
+            ...(await publicUserById(member.accountId))
+          }))
+      );
+    }
+    const result = await pool.query(
+      `SELECT m.account_id,m.role,u.username,u.avatar_data
+       FROM echoverse_dm_members m JOIN echoverse_users u ON u.id=m.account_id
+       WHERE m.conversation_id=$1 AND m.left_at IS NULL ORDER BY m.joined_at`,
+      [conversationId]
+    );
+    return result.rows.map((row) => ({
+      accountId: row.account_id,
+      username: row.username,
+      avatarData: row.avatar_data || null,
+      role: row.role
+    }));
+  }
+
+  async function listConversations(accountId: string) {
+    if (!pool) {
+      const conversations = [...memoryDmConversations.values()]
+        .filter((conversation) => {
+          const member = conversation.members.get(accountId);
+          return member && !member.leftAt;
+        })
+        .map(async (conversation) => ({
+          id: conversation.id,
+          kind: "group" as const,
+          name: conversation.name,
+          createdBy: conversation.createdBy,
+          createdAt: conversation.createdAt,
+          members: await conversationMembers(conversation.id)
+        }));
+      return Promise.all(conversations);
+    }
+    const result = await pool.query(
+      `SELECT c.id,c.name,c.created_by,c.created_at,
+              m.account_id,m.role,u.username,u.avatar_data
+       FROM echoverse_dm_conversations c
+       JOIN echoverse_dm_members mine ON mine.conversation_id=c.id AND mine.account_id=$1 AND mine.left_at IS NULL
+       JOIN echoverse_dm_members m ON m.conversation_id=c.id AND m.left_at IS NULL
+       JOIN echoverse_users u ON u.id=m.account_id
+       ORDER BY c.created_at ASC`,
+      [accountId]
+    );
+    const conversations = new Map<string, any>();
+    for (const row of result.rows) {
+      const item = conversations.get(row.id) || {
+        id: row.id,
+        kind: "group",
+        name: row.name || null,
+        createdBy: row.created_by,
+        createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+        members: []
+      };
+      item.members.push({
+        accountId: row.account_id,
+        username: row.username,
+        avatarData: row.avatar_data || null,
+        role: row.role
+      });
+      conversations.set(row.id, item);
+    }
+    return [...conversations.values()];
+  }
+
+  async function loadConversationHistory(conversationId: string) {
+    if (!pool)
+      return memoryDmMessages
+        .filter((message) => message.conversationId === conversationId)
+        .slice(-200);
+    const result = await pool.query(
+      `SELECT id,sender_id,recipient_id,conversation_id,body,created_at,reply_to_id,edited_at,deleted_at,
+              attachment_name,attachment_mime,attachment_data,reactions
+       FROM echoverse_dm_messages WHERE conversation_id=$1 ORDER BY created_at ASC LIMIT 200`,
+      [conversationId]
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      senderId: row.sender_id,
+      recipientId: row.recipient_id,
+      conversationId: row.conversation_id,
+      body: row.deleted_at ? "" : row.body,
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+      replyToId: row.reply_to_id || null,
+      editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+      deletedAt: row.deleted_at?.toISOString?.() || row.deleted_at || null,
+      attachmentName: row.deleted_at ? null : row.attachment_name || null,
+      attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
+      attachmentData: row.deleted_at ? null : row.attachment_data || null,
+      reactions: parseReactions(row.reactions)
+    }));
+  }
+
+  async function mutateGroupMember(
+    actorId: string,
+    conversationId: string,
+    targetId: string,
+    action: "add" | "remove" | "promote"
+  ) {
+    const conversation = await conversationFor(actorId, conversationId);
+    if (!conversation) return { ok: false, error: "not_member" };
+    const members = await conversationMembers(conversationId);
+    const actor = members.find((member: any) => member.accountId === actorId);
+    if (!actor || !["owner", "admin"].includes(actor.role))
+      return { ok: false, error: "not_admin" };
+    const target = members.find((member: any) => member.accountId === targetId);
+    if (target?.role === "owner" || (action === "add" && target))
+      return { ok: false, error: "invalid_member" };
+    if (!pool) {
+      const memory = memoryDmConversations.get(conversationId);
+      if (!memory) return { ok: false, error: "not_found" };
+      if (action === "add") {
+        if (members.length >= 10) return { ok: false, error: "group_full" };
+        memory.members.set(targetId, {
+          accountId: targetId,
+          role: "member",
+          joinedAt: new Date().toISOString(),
+          leftAt: null
+        });
+      } else if (action === "remove") {
+        const target = memory.members.get(targetId);
+        if (!target || target.role === "owner") return { ok: false, error: "invalid_member" };
+        target.leftAt = new Date().toISOString();
+      } else {
+        const target = memory.members.get(targetId);
+        if (!target || target.leftAt) return { ok: false, error: "invalid_member" };
+        target.role = "admin";
+      }
+      return { ok: true };
+    }
+    if (action === "add") {
+      if (members.length >= 10) return { ok: false, error: "group_full" };
+      await pool.query(
+        `INSERT INTO echoverse_dm_members (conversation_id,account_id,role)
+         VALUES ($1,$2,'member') ON CONFLICT (conversation_id,account_id)
+         DO UPDATE SET left_at=NULL, role='member'`,
+        [conversationId, targetId]
+      );
+    } else if (action === "remove") {
+      const result = await pool.query(
+        `UPDATE echoverse_dm_members SET left_at=NOW()
+         WHERE conversation_id=$1 AND account_id=$2 AND role <> 'owner' AND left_at IS NULL`,
+        [conversationId, targetId]
+      );
+      if (!result.rowCount) return { ok: false, error: "invalid_member" };
+    } else {
+      const result = await pool.query(
+        `UPDATE echoverse_dm_members SET role='admin'
+         WHERE conversation_id=$1 AND account_id=$2 AND role <> 'owner' AND left_at IS NULL`,
+        [conversationId, targetId]
+      );
+      if (!result.rowCount) return { ok: false, error: "invalid_member" };
+    }
+    return { ok: true };
+  }
+
+  async function leaveGroupConversation(accountId: string, conversationId: string) {
+    if (!pool) {
+      const conversation = memoryDmConversations.get(conversationId);
+      const member = conversation?.members.get(accountId);
+      if (!member || member.leftAt) return { ok: false, error: "not_member" };
+      if (member.role === "owner") return { ok: false, error: "owner_cannot_leave" };
+      member.leftAt = new Date().toISOString();
+      return { ok: true };
+    }
+    const member = await conversationFor(accountId, conversationId);
+    if (!member) return { ok: false, error: "not_member" };
+    const role = await pool.query(
+      `SELECT role FROM echoverse_dm_members
+       WHERE conversation_id=$1 AND account_id=$2 AND left_at IS NULL`,
+      [conversationId, accountId]
+    );
+    if (role.rows[0]?.role === "owner") return { ok: false, error: "owner_cannot_leave" };
+    const result = await pool.query(
+      `UPDATE echoverse_dm_members SET left_at=NOW()
+       WHERE conversation_id=$1 AND account_id=$2 AND role <> 'owner' AND left_at IS NULL`,
+      [conversationId, accountId]
+    );
+    return result.rowCount ? { ok: true } : { ok: false, error: "not_member" };
+  }
+
   async function dmById(messageId: string): Promise<StoredDm | null> {
     if (!pool) return memoryDmMessages.find((message) => message.id === messageId) || null;
 
     const result = await pool.query(
       `SELECT
-        id, sender_id, recipient_id, body, created_at,
+        id, sender_id, recipient_id, conversation_id, body, created_at,
         reply_to_id, edited_at, deleted_at,
         attachment_name, attachment_mime, attachment_data, reactions
        FROM echoverse_dm_messages
@@ -373,6 +640,7 @@ export function createFriendService({
       id: row.id,
       senderId: row.sender_id,
       recipientId: row.recipient_id,
+      conversationId: row.conversation_id || null,
       body: row.deleted_at ? "" : row.body,
       createdAt: row.created_at?.toISOString?.() || String(row.created_at),
       replyToId: row.reply_to_id || null,
@@ -405,13 +673,20 @@ export function createFriendService({
 
   return {
     areFriends,
+    conversationFor,
+    conversationMembers,
+    createGroupConversation,
     dmById,
     findUsersByUsername,
     friendshipBetween,
     friendshipKey,
     relationshipFor,
     listFriendState,
+    listConversations,
+    loadConversationHistory,
     loadDmHistory,
+    leaveGroupConversation,
+    mutateGroupMember,
     parseReactions,
     storeDm,
     validateAttachment

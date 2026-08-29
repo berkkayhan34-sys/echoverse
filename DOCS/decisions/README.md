@@ -29,4 +29,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0019: separate desktop shell and web revision tracks](0019-desktop-shell-and-web-revision-versioning.md)
 - [ADR-0020: remove Spotify Together](0020-remove-spotify-together.md)
 - [ADR-0021: Discord parity execution profile](0021-discord-parity-execution-profile.md)
+- [ADR-0022: Persistent group DM and call semantics](0022-group-dm-and-call-semantics.md)
 - [Unresolved decisions](unresolved.md)

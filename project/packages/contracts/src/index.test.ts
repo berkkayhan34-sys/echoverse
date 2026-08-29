@@ -221,7 +221,13 @@ describe("protocol contracts", () => {
       "presence:get",
       "dm:typing",
       "dm:read",
-      "dm:react"
+      "dm:react",
+      "dm:conversations",
+      "dm:group-create",
+      "dm:group-add",
+      "dm:group-remove",
+      "dm:group-promote",
+      "dm:group-leave"
     ];
 
     expect(Object.keys(socketEventPayloadSchemas).sort()).toEqual(expectedEvents.sort());

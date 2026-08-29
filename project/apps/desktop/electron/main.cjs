@@ -88,7 +88,9 @@ let isQuitting = false;
 let selectedDisplaySourceId = null;
 let updaterSetupDone = false;
 let updateInstallRequested = false;
-const STARTUP_UPDATE_TIMEOUT_MS = 300_000;
+// Startup updates are best-effort. A slow or unavailable release service must
+// never make a healthy bundled application appear to do nothing.
+const STARTUP_UPDATE_TIMEOUT_MS = 30_000;
 let updaterState = {
   phase: "idle",
   status: "",
@@ -666,6 +668,8 @@ function createWindow() {
 
   setupScreenCapture();
 
+  let rendererFallbackAttempted = false;
+
   if (process.argv.includes("--dev")) {
     mainWindow.loadURL("http://localhost:5173");
   } else {
@@ -676,6 +680,25 @@ function createWindow() {
   }
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.once("did-fail-load", (_event, errorCode, errorDescription) => {
+    if (errorCode === -3) return;
+    logUpdater("renderer_load_failed", `code=${errorCode} description=${errorDescription}`);
+    if (rendererFallbackAttempted || process.argv.includes("--dev")) {
+      mainWindow?.show();
+      return;
+    }
+    rendererFallbackAttempted = true;
+    const bundledDirectory = path.join(__dirname, "..", "dist");
+    activeUi = {
+      directory: bundledDirectory,
+      entrypoint: path.join(bundledDirectory, "index.html"),
+      version: null,
+      webRevision: null,
+      source: "bundled"
+    };
+    logUpdater("renderer_fallback_bundled");
+    void mainWindow?.loadFile(activeUi.entrypoint);
+  });
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (process.argv.includes("--dev") && url.startsWith("http://localhost:5173")) return;
     if (!process.argv.includes("--dev") && url.startsWith("file://")) {
@@ -819,7 +842,22 @@ app.whenReady().then(async () => {
   const startupUpdate = await runStartupUpdateGate();
   if (startupUpdate.installing) return;
 
-  await prepareStartupUi();
+  try {
+    await prepareStartupUi();
+  } catch (error) {
+    // A malformed/stale cached UI must not prevent the shell from opening.
+    // prepareUiUpdate already returns a bundled fallback for expected errors;
+    // this guard handles unexpected filesystem/runtime failures as well.
+    logUpdater("ui_prepare_failed", error instanceof Error ? error.message : "unknown");
+    const bundledDirectory = path.join(__dirname, "..", "dist");
+    activeUi = {
+      directory: bundledDirectory,
+      entrypoint: path.join(bundledDirectory, "index.html"),
+      version: null,
+      webRevision: null,
+      source: "bundled"
+    };
+  }
   createSplash();
   createTray();
   createWindow();

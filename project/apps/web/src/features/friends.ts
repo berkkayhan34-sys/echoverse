@@ -21,6 +21,7 @@ export type FriendsFeatureDeps = {
   setFriendSearch: (value: string) => void;
   setFriendSearchResults: StateSetter<FriendUser[]>;
   setActiveFriend: (friend: FriendUser | null) => void;
+  setActiveConversationId?: (value: string | null) => void;
   setViewMode: (mode: "server" | "dm") => void;
   setShowFriends: (visible: boolean) => void;
   setDmMessages: StateSetter<DmMessage[]>;
@@ -132,6 +133,7 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     }
 
     deps.setActiveFriend(friend);
+    deps.setActiveConversationId?.(null);
     deps.setViewMode("dm");
     deps.setShowFriends(false);
     deps.setDmMessages([]);

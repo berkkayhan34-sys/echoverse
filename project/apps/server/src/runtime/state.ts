@@ -6,6 +6,7 @@
 import type {
   Account,
   CallSession,
+  GroupCallSession,
   Guild,
   GuildChannel,
   GuildCategory,
@@ -53,6 +54,7 @@ export const pendingCalls = new Map<
   }
 >();
 export const activeCalls = new Map<string, CallSession>();
+export const activeGroupCalls = new Map<string, GroupCallSession>();
 export const memoryAccounts = new Map<string, Account>();
 export const memoryFriendships = new Map<
   string,
@@ -65,6 +67,10 @@ export const memoryFriendships = new Map<
   }
 >();
 export const memoryDmMessages: StoredDm[] = [];
+export const memoryDmConversations = new Map<
+  string,
+  import("../features/friends/service.js").MemoryDmConversation
+>();
 export const memoryGuildMessages: StoredGuildMessage[] = [];
 export const accountPresence = new Map<string, string>();
 export const dmReadAt = new Map<string, number>();

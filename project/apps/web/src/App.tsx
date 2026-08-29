@@ -40,6 +40,7 @@ import { createFriendsFeature } from "./features/friends";
 import type {
   Account,
   ChatMessage,
+  DmConversation,
   DmMessage,
   FriendUser,
   Guild,
@@ -167,11 +168,13 @@ export default function App() {
 
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
+  const [dmConversations, setDmConversations] = useState<DmConversation[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState<FriendUser[]>([]);
   const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
+  const [activeDmConversationId, setActiveDmConversationId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"server" | "dm">("server");
   const [callState, setCallState] = useState<"idle" | "calling" | "ringing" | "connected">("idle");
   const [, setRingbackPlaying] = useState(false);
@@ -208,6 +211,10 @@ export default function App() {
   }, [t]);
 
   useEffect(() => {
+    activeDmConversationRef.current = activeDmConversationId;
+  }, [activeDmConversationId]);
+
+  useEffect(() => {
     document.documentElement.lang = locale;
     writeClientLocale(localStorage, locale);
   }, [locale]);
@@ -239,6 +246,8 @@ export default function App() {
   const ringStartTimer = useRef<number | null>(null);
   const ringbackStartTimer = useRef<number | null>(null);
   const activeDmFriendRef = useRef<FriendUser | null>(null);
+  const activeDmConversationRef = useRef<string | null>(null);
+  const privateCallPeerIds = useRef<Set<string>>(new Set());
   const accountRef = useRef<Account | null>(null);
   const viewModeRef = useRef<"server" | "dm">("server");
   const dmThreadRef = useRef<HTMLDivElement | null>(null);
@@ -269,6 +278,7 @@ export default function App() {
     setFriendSearch,
     setFriendSearchResults,
     setActiveFriend: setActiveDmFriend,
+    setActiveConversationId: setActiveDmConversationId,
     setViewMode,
     setShowFriends,
     setDmMessages,
@@ -291,6 +301,7 @@ export default function App() {
   const directMessagesFeature = createDirectMessagesFeature({
     getSocket: () => socket,
     getFriend: () => activeDmFriendRef.current,
+    getConversationId: () => activeDmConversationId,
     getAccount: () => accountRef.current,
     getText: () => dmText,
     getEditing: () => editingDm,
@@ -309,6 +320,69 @@ export default function App() {
     confirmDelete: (message) => window.confirm(message)
   });
   const { sendDm, editDm, deleteDm, sendTyping, reactDm } = directMessagesFeature;
+
+  function loadDmConversations() {
+    socket?.emit("dm:conversations", {}, (result: any) => {
+      if (result?.ok) setDmConversations(result.conversations || []);
+    });
+  }
+
+  function openDmConversation(conversation: DmConversation) {
+    const members = conversation.members.filter((member) => member.accountId !== account?.id);
+    const peer: FriendUser = {
+      id: conversation.id,
+      username:
+        conversation.name ||
+        members.map((member) => member.username).join(", ") ||
+        t("friends.list"),
+      avatarData: members[0]?.avatarData || null
+    };
+    setActiveDmConversationId(conversation.id);
+    setActiveDmFriend(peer);
+    setViewMode("dm");
+    setShowFriends(false);
+    setDmMessages([]);
+    socket?.emit("dm:history", { conversationId: conversation.id }, (result: any) => {
+      if (result?.ok) setDmMessages(result.messages || []);
+      else setError(result?.error || t("error.requestFailed"));
+    });
+  }
+
+  function createDmGroup(memberIds: string[]) {
+    const activeOneToOneCall =
+      callState !== "idle" && !activeDmConversationId && activeDmFriend !== null;
+    const previousCallPeer = activeDmFriend;
+    const activePeerId =
+      activeDmConversationId || !activeDmFriend || activeDmFriend.id === account?.id
+        ? null
+        : activeDmFriend.id;
+    const groupMemberIds = [...new Set(activePeerId ? [activePeerId, ...memberIds] : memberIds)];
+    if (activeOneToOneCall) stopPrivateCall(true);
+    socket?.emit("dm:group-create", { memberIds: groupMemberIds }, (result: any) => {
+      if (!result?.ok) return setError(result?.error || t("server.groupCreateFailed"));
+      setDmConversations((current) => [...current, result.conversation]);
+      openDmConversation(result.conversation);
+      if (activeOneToOneCall && previousCallPeer) {
+        const groupPeer = result.conversation.members.find(
+          (member: { accountId: string }) => member.accountId !== account?.id
+        );
+        if (groupPeer) {
+          void callFriend(
+            {
+              id: result.conversation.id,
+              username: result.conversation.name || previousCallPeer.username,
+              avatarData: groupPeer.avatarData || previousCallPeer.avatarData
+            },
+            result.conversation.id
+          );
+        }
+      }
+    });
+  }
+
+  function addParticipantToCall() {
+    setShowFriends(true);
+  }
 
   const audioDevicesFeature = createAudioDevicesFeature({
     localStream,
@@ -497,6 +571,7 @@ export default function App() {
       setAccount(result.account);
       setIdentified(true);
       loadFriends(s);
+      loadDmConversations();
       refreshAudioDevices();
 
       const guild = activeGuildRef.current;
@@ -565,6 +640,25 @@ export default function App() {
 
     s.on("friends:changed", () => {
       loadFriends(s);
+      loadDmConversations();
+    });
+    s.on("dm:conversation-created", (conversation: DmConversation) => {
+      setDmConversations((current) =>
+        current.some((item) => item.id === conversation.id) ? current : [...current, conversation]
+      );
+    });
+    s.on("dm:conversation-updated", ({ conversationId, members }: any) => {
+      setDmConversations((current) =>
+        current.map((item) => (item.id === conversationId ? { ...item, members } : item))
+      );
+    });
+    s.on("dm:conversation-removed", ({ conversationId }: any) => {
+      setDmConversations((current) => current.filter((item) => item.id !== conversationId));
+      if (activeDmConversationId === conversationId) {
+        setActiveDmConversationId(null);
+        setActiveDmFriend(null);
+        setViewMode("server");
+      }
     });
     s.on("presence:changed", ({ accountId, status }: any) => {
       setFriends((prev) => updateFriendPresence(prev, accountId, status));
@@ -610,7 +704,9 @@ export default function App() {
       const isOpenConversation =
         viewModeRef.current === "dm" &&
         !!currentFriend &&
-        (msg.senderId === currentFriend.id || msg.recipientId === currentFriend.id);
+        (activeDmConversationRef.current
+          ? msg.conversationId === activeDmConversationRef.current
+          : msg.senderId === currentFriend.id || msg.recipientId === currentFriend.id);
 
       if (isOpenConversation) {
         setDmMessages((prev) => appendDmMessage(prev, msg));
@@ -644,6 +740,7 @@ export default function App() {
       };
 
       setActiveDmFriend(caller);
+      setActiveDmConversationId(call.conversationId || null);
       setViewMode("dm");
       setIncomingCall(call);
       setCallState("ringing");
@@ -661,6 +758,7 @@ export default function App() {
       stopRingback();
 
       if (!result.accept) {
+        if (result.groupCall) return;
         setCallState("idle");
         setPrivateCallPeer(null);
         setPrivateCallSocketId("");
@@ -673,13 +771,28 @@ export default function App() {
         return;
       }
 
+      if (result.groupCall) {
+        setCallState("connected");
+        if (result.responderSocketId && result.responderSocketId !== s.id) {
+          privateCallPeerIds.current.add(result.responderSocketId);
+          await createPeer(s, result.responderSocketId, true);
+        }
+        return;
+      }
+      privateCallPeerIds.current.add(result.responderSocketId);
       setPrivateCallSocketId(result.responderSocketId);
       setCallState("connected");
       playEvSound("connected", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
       await createPeer(s, result.responderSocketId, true);
     });
 
-    s.on("call:ended", () => {
+    s.on("call:ended", (result: any) => {
+      if (result?.groupCall && result.peerSocketId) {
+        privateCallPeerIds.current.delete(result.peerSocketId);
+        removePeer(result.peerSocketId);
+        if (privateCallPeerIds.current.size === 0) stopPrivateCall(false);
+        return;
+      }
       stopPrivateCall(false);
     });
 
@@ -1085,12 +1198,14 @@ export default function App() {
     await ensureMicrophone();
   }
 
-  async function callFriend(friend: FriendUser) {
+  async function callFriend(friend: FriendUser, conversationIdOverride?: string) {
     if (!socket) return;
-    if (callState !== "idle" || privateCallPeer || incomingCall) {
+    if (!conversationIdOverride && (callState !== "idle" || privateCallPeer || incomingCall)) {
       setError(t("call.alreadyActive"));
       return;
     }
+
+    const targetConversationId = conversationIdOverride || activeDmConversationId;
 
     await prepareForPrivateCall();
 
@@ -1100,19 +1215,23 @@ export default function App() {
     setRinging(true);
     startRingback();
 
-    socket.emit("call:start", { friendId: friend.id }, (result: any) => {
-      if (!result?.ok) {
-        stopRingback();
-        setCallState("idle");
-        setRinging(false);
-        setPrivateCallPeer(null);
-        setError(result?.error || t("call.startFailed"));
-        return;
-      }
+    socket.emit(
+      "call:start",
+      targetConversationId ? { conversationId: targetConversationId } : { friendId: friend.id },
+      (result: any) => {
+        if (!result?.ok) {
+          stopRingback();
+          setCallState("idle");
+          setRinging(false);
+          setPrivateCallPeer(null);
+          setError(result?.error || t("call.startFailed"));
+          return;
+        }
 
-      setPrivateCallId(result.callId);
-      setPrivateCallSocketId(result.targetSocketId);
-    });
+        setPrivateCallId(result.callId);
+        if (!result.groupCall) setPrivateCallSocketId(result.targetSocketId);
+      }
+    );
   }
 
   async function answerIncomingCall(accept: boolean) {
@@ -1134,6 +1253,7 @@ export default function App() {
         username: incomingCall.fromUsername,
         avatarData: incomingCall.fromAvatarData
       });
+      privateCallPeerIds.current.add(incomingCall.fromSocketId);
       setPrivateCallSocketId(incomingCall.fromSocketId);
       setPrivateCallId(incomingCall.callId);
       await createPeer(socket, incomingCall.fromSocketId, false);
@@ -1144,16 +1264,16 @@ export default function App() {
   }
 
   function stopPrivateCall(sendEvent = true) {
-    if (sendEvent && socket && privateCallSocketId) {
-      socket.emit("call:end", {
-        toSocketId: privateCallSocketId,
-        callId: privateCallId
-      });
+    const peerIds = new Set(privateCallPeerIds.current);
+    if (privateCallSocketId) peerIds.add(privateCallSocketId);
+    if (sendEvent && socket) {
+      for (const peerSocketId of peerIds) {
+        socket.emit("call:end", { toSocketId: peerSocketId, callId: privateCallId });
+      }
     }
 
-    if (privateCallSocketId) {
-      removePeer(privateCallSocketId);
-    }
+    for (const peerSocketId of peerIds) removePeer(peerSocketId);
+    privateCallPeerIds.current.clear();
 
     setPrivateCallPeer(null);
     setPrivateCallSocketId("");
@@ -1691,11 +1811,17 @@ export default function App() {
     const value = text.trim();
     if (!value) return;
 
-    socket.emit("chat-message", {
-      guildId: activeGuild.id,
-      ...(activeChannelId ? { channelId: activeChannelId } : {}),
-      text: value
-    });
+    socket.emit(
+      "chat-message",
+      {
+        guildId: activeGuild.id,
+        ...(activeChannelId ? { channelId: activeChannelId } : {}),
+        text: value
+      },
+      (result: any) => {
+        if (!result?.ok) setError(result?.error || t("chat.sendFailed"));
+      }
+    );
 
     setText("");
   }
@@ -2220,7 +2346,8 @@ export default function App() {
                 searchPlaceholder: t("chat.searchPlaceholder"),
                 calling: t("call.ringing"),
                 call: t("friends.call"),
-                endCall: t("call.end")
+                endCall: t("call.end"),
+                addParticipant: t("friends.addParticipant")
               },
               call: {
                 incoming: t("call.incoming"),
@@ -2294,6 +2421,7 @@ export default function App() {
                 callFriend(activeDmFriend);
               }
             }}
+            onAddParticipant={activeDmConversationId ? undefined : addParticipantToCall}
             onToggleMute={toggleMute}
             onToggleDeafen={toggleDeafen}
             onTogglePushToTalk={() => setPushToTalk((value) => !value)}
@@ -2431,6 +2559,7 @@ export default function App() {
         incomingRequests={incomingRequests}
         outgoingRequests={outgoingRequests}
         friendSearchResults={friendSearchResults}
+        conversations={dmConversations}
         unreadDm={unreadDm}
         friendSearch={friendSearch}
         incomingCall={incomingCall}
@@ -2495,7 +2624,13 @@ export default function App() {
             decline: t("common.reject"),
             openDirectMessage: t("friends.openDm"),
             call: t("friends.call"),
-            remove: t("common.remove")
+            remove: t("common.remove"),
+            groups: t("friends.groups"),
+            createGroup: t("friends.createGroup"),
+            openGroup: t("friends.openGroup"),
+            promoteGroupAdmin: t("friends.promoteGroupAdmin"),
+            removeFromGroup: t("friends.removeFromGroup"),
+            leaveGroup: t("friends.leaveGroup")
           },
           calls: {
             incomingPrivateCall: t("ui.incomingPrivateCall"),
@@ -2557,6 +2692,32 @@ export default function App() {
         onOpenDm={openDm}
         onCallFriend={callFriend}
         onRemoveFriend={removeFriend}
+        onOpenConversation={openDmConversation}
+        onCreateGroup={createDmGroup}
+        currentAccountId={account?.id}
+        onGroupPromote={(conversationId, accountId) => {
+          socket?.emit("dm:group-promote", { conversationId, accountId }, (result: any) => {
+            if (!result?.ok) return setError(result?.error || t("error.requestFailed"));
+            loadDmConversations();
+          });
+        }}
+        onGroupRemove={(conversationId, accountId) => {
+          socket?.emit("dm:group-remove", { conversationId, accountId }, (result: any) => {
+            if (!result?.ok) return setError(result?.error || t("error.requestFailed"));
+            loadDmConversations();
+          });
+        }}
+        onGroupLeave={(conversationId) => {
+          socket?.emit("dm:group-leave", { conversationId }, (result: any) => {
+            if (!result?.ok) return setError(result?.error || t("error.requestFailed"));
+            loadDmConversations();
+            if (activeDmConversationId === conversationId) {
+              setActiveDmConversationId(null);
+              setActiveDmFriend(null);
+              setViewMode("server");
+            }
+          });
+        }}
         onAnswerCall={answerIncomingCall}
         onEndCall={() => stopPrivateCall(true)}
         onCloseScreenPicker={() => setShowScreenPicker(false)}

@@ -16,6 +16,7 @@ export type DirectMessageViewLabels = {
     calling: string;
     call: string;
     endCall: string;
+    addParticipant?: string;
   };
   call: {
     incoming: string;
@@ -89,6 +90,7 @@ export function DirectMessageView({
   onSearchQueryChange,
   onBlock,
   onCall,
+  onAddParticipant,
   onToggleMute,
   onToggleDeafen,
   onTogglePushToTalk,
@@ -134,6 +136,7 @@ export function DirectMessageView({
   onSearchQueryChange: (value: string) => void;
   onBlock: () => void;
   onCall: () => void;
+  onAddParticipant?: () => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
   onTogglePushToTalk: () => void;
@@ -164,6 +167,7 @@ export function DirectMessageView({
         onSearchQueryChange={onSearchQueryChange}
         onBlock={onBlock}
         onCall={onCall}
+        onAddParticipant={onAddParticipant}
       />
 
       {callState !== "idle" && (
