@@ -688,6 +688,63 @@ describe("server HTTP and Socket.IO boundaries", () => {
     });
   });
 
+  it("exposes persistent channels, role-protected moderation, and guild chat history", async () => {
+    const owner = await registerClient(await connectClient(), "model-owner");
+    const member = await registerClient(await connectClient(), "model-member");
+    const created = (await emitWithAck(owner.socket, "guild:create", {
+      name: "Model Guild"
+    })) as any;
+    expect(created.ok).toBe(true);
+    await emitWithAck(member.socket, "guild:join-code", { code: created.invite.token });
+    expect(
+      await emitWithAck(owner.socket, "guild:channels", { guildId: created.guild.id })
+    ).toMatchObject({
+      ok: true,
+      channels: expect.arrayContaining([
+        expect.objectContaining({ type: "text" }),
+        expect.objectContaining({ type: "voice" })
+      ])
+    });
+    expect(
+      await emitWithAck(owner.socket, "guild:create-channel", {
+        guildId: created.guild.id,
+        name: "announcements",
+        type: "text"
+      })
+    ).toMatchObject({ ok: true, channel: expect.objectContaining({ name: "announcements" }) });
+    await emitWithAck(owner.socket, "guild:select", { guildId: created.guild.id });
+    const message = waitForEvent<any>(owner.socket, "chat-message");
+    owner.socket.emit("chat-message", {
+      guildId: created.guild.id,
+      channelId: `${created.guild.id}:general`,
+      text: "persist me"
+    });
+    await expect(message).resolves.toMatchObject({
+      text: "persist me",
+      channelId: `${created.guild.id}:general`
+    });
+    expect(
+      await emitWithAck(owner.socket, "chat-history", {
+        guildId: created.guild.id,
+        channelId: `${created.guild.id}:general`
+      })
+    ).toMatchObject({
+      ok: true,
+      messages: expect.arrayContaining([expect.objectContaining({ body: "persist me" })])
+    });
+    expect(
+      await emitWithAck(owner.socket, "guild:moderate-member", {
+        guildId: created.guild.id,
+        accountId: member.accountId,
+        action: "kick",
+        reason: "test"
+      })
+    ).toEqual({ ok: true });
+    expect(
+      await emitWithAck(member.socket, "guild:channels", { guildId: created.guild.id })
+    ).toMatchObject({ ok: false });
+  });
+
   it("enforces the per-socket authentication rate limit", async () => {
     const client = await connectClient();
     const responses: AckResponse[] = [];

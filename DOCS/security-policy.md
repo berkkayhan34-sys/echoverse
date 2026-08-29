@@ -66,6 +66,13 @@ revocation, HTTP cookie endpoints, and a narrow Electron secure-storage IPC
 bridge. A process restart invalidates active sessions; durable multi-instance
 session storage remains a later persistence concern.
 
+Guild authorization uses the server-side `GuildPermission` evaluator. Roles
+inherit the member baseline; moderator, admin, and owner capabilities are
+explicit, and an actor cannot modify an equal or higher role. Channel access,
+message management, invite creation, and moderation are checked for every
+Socket.IO command. Kick, ban, timeout, and unban actions are persisted with
+privacy-safe audit metadata; the owner cannot be removed by these actions.
+
 ### Input and resource limits
 
 Boundary schemas must constrain strings, arrays, identifiers, attachments,

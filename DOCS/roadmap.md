@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.6`, with protocol major version 2.
+The shipped baseline is product version `1.8.7`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -219,14 +219,14 @@ machine-facing identifiers.
 id: ARCH-001
 type: product_and_protocol_foundation
 sequence: 100
-status: incomplete
-evidence: null
+status: complete
+evidence: evidence/ARCH-001.md
 blocks_roadmap: true
 decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [FEATURE-001, AUDIT-003]
 ```
 
-[ ] Freeze the Discord + TeamSpeak hybrid product contract: server/guild
+[x] Freeze the Discord + TeamSpeak hybrid product contract: server/guild
 ownership, persistent voice rooms, text channels, DMs, identities, presence,
 message/media boundaries, compatibility guarantees, and non-goals.
 
@@ -236,14 +236,14 @@ message/media boundaries, compatibility guarantees, and non-goals.
 id: ARCH-002
 type: domain_model
 sequence: 200
-status: incomplete
-evidence: null
+status: in_progress
+evidence: evidence/ARCH-002.md
 blocks_roadmap: true
 decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-001]
 ```
 
-[ ] Design and migrate categories, text channels, persistent voice rooms,
+[-] Design and migrate categories, text channels, persistent voice rooms,
 optional stage/forum spaces, ordering, archive/delete rules, and backward
 compatibility for the current general/music/lobby surface. The compatibility
 slice includes a durable lobby display name that owners and admins can rename
@@ -257,7 +257,7 @@ id: SEC-001
 type: authorization
 sequence: 300
 status: incomplete
-evidence: null
+evidence: evidence/SEC-001.md
 blocks_roadmap: true
 decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-002]
@@ -274,7 +274,7 @@ id: MOD-001
 type: moderation_and_governance
 sequence: 400
 status: incomplete
-evidence: null
+evidence: evidence/MOD-001.md
 blocks_roadmap: true
 depends_on: [SEC-001]
 ```
@@ -290,7 +290,7 @@ id: CHAT-001
 type: messaging_and_social
 sequence: 500
 status: incomplete
-evidence: null
+evidence: evidence/CHAT-001.md
 blocks_roadmap: true
 depends_on: [ARCH-002, SEC-001]
 ```

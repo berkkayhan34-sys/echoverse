@@ -4,8 +4,16 @@
  */
 
 import crypto from "node:crypto";
-import type { Account, Guild, GuildRole, User } from "../../domain/types.js";
+import type {
+  Account,
+  Guild,
+  GuildChannel,
+  GuildChannelType,
+  GuildRole,
+  User
+} from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
+import { roleCan } from "./permissions.js";
 
 export type GuildServiceDependencies = {
   io: any;
@@ -13,6 +21,23 @@ export type GuildServiceDependencies = {
   guilds: Map<string, Guild>;
   guildMembers: Map<string, Set<string>>;
   guildRoles?: Map<string, Map<string, GuildRole>>;
+  guildChannels?: Map<string, GuildChannel[]>;
+  guildModeration?: Map<
+    string,
+    Map<string, { action: "ban" | "timeout"; expiresAt?: string | null; reason?: string | null }>
+  >;
+  guildAuditEvents?: Map<
+    string,
+    Array<{
+      id: string;
+      guildId: string;
+      actorId: string;
+      action: string;
+      targetId?: string | null;
+      metadata: string;
+      createdAt: string;
+    }>
+  >;
   guildInvites?: Map<
     string,
     { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
@@ -33,7 +58,10 @@ export function createGuildService({
   guildMembers,
   guildRoles: providedGuildRoles,
   guildInvites: providedGuildInvites,
-  users
+  users,
+  guildChannels: providedGuildChannels,
+  guildModeration: providedGuildModeration,
+  guildAuditEvents: providedAuditEvents
 }: GuildServiceDependencies) {
   const guildRoles = providedGuildRoles ?? new Map<string, Map<string, GuildRole>>();
   const guildInvites =
@@ -41,6 +69,27 @@ export function createGuildService({
     new Map<
       string,
       { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
+    >();
+  const guildChannels = providedGuildChannels ?? new Map<string, GuildChannel[]>();
+  const guildModeration =
+    providedGuildModeration ??
+    new Map<
+      string,
+      Map<string, { action: "ban" | "timeout"; expiresAt?: string | null; reason?: string | null }>
+    >();
+  const guildAuditEvents =
+    providedAuditEvents ??
+    new Map<
+      string,
+      Array<{
+        id: string;
+        guildId: string;
+        actorId: string;
+        action: string;
+        targetId?: string | null;
+        metadata: string;
+        createdAt: string;
+      }>
     >();
   function toGuild(row: Record<string, any>): Guild {
     const createdAt = row.created_at?.toISOString?.() || String(row.created_at);
@@ -52,6 +101,56 @@ export function createGuildService({
       ownerId: String(row.owner_id),
       createdAt
     };
+  }
+
+  function toChannel(row: Record<string, any>): GuildChannel {
+    return {
+      id: String(row.id),
+      guildId: String(row.guild_id),
+      name: String(row.name),
+      type: String(row.channel_type) as GuildChannelType,
+      categoryId: row.category_id ? String(row.category_id) : null,
+      position: Number(row.position || 0),
+      archived: Boolean(row.archived),
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+    };
+  }
+
+  async function ensureDefaultChannels(guildId: string) {
+    if (guildChannels.has(guildId) && guildChannels.get(guildId)!.length) return;
+    const createdAt = new Date().toISOString();
+    const defaults: GuildChannel[] = [
+      {
+        id: `${guildId}:general`,
+        guildId,
+        name: "general",
+        type: "text",
+        categoryId: null,
+        position: 0,
+        archived: false,
+        createdAt
+      },
+      {
+        id: `${guildId}:lobby`,
+        guildId,
+        name: "Lobby",
+        type: "voice",
+        categoryId: null,
+        position: 1,
+        archived: false,
+        createdAt
+      }
+    ];
+    if (pool) {
+      for (const channel of defaults) {
+        await pool.query(
+          `INSERT INTO echoverse_guild_channels (id, guild_id, name, channel_type, position, archived, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+          [channel.id, guildId, channel.name, channel.type, channel.position, 0, channel.createdAt]
+        );
+      }
+    }
+    guildChannels.set(guildId, defaults);
   }
 
   async function loadGuilds() {
@@ -74,6 +173,30 @@ export function createGuildService({
       roles.set(accountId, String(row.role) as GuildRole);
       guildRoles.set(guildId, roles);
     }
+    const channelResult = await pool.query(
+      "SELECT id, guild_id, category_id, name, channel_type, position, archived, created_at FROM echoverse_guild_channels ORDER BY guild_id, position, id"
+    );
+    for (const row of channelResult.rows) {
+      const channel = toChannel(row);
+      const channels = guildChannels.get(channel.guildId) || [];
+      channels.push(channel);
+      guildChannels.set(channel.guildId, channels);
+    }
+    for (const guild of guilds.values()) await ensureDefaultChannels(guild.id);
+    const moderationResult = await pool.query(
+      "SELECT guild_id, account_id, action, expires_at, reason FROM echoverse_guild_moderation WHERE action IN ('ban','timeout') ORDER BY created_at"
+    );
+    for (const row of moderationResult.rows) {
+      const expiresAt = row.expires_at?.toISOString?.() || row.expires_at || null;
+      if (expiresAt && Date.parse(String(expiresAt)) <= Date.now()) continue;
+      const entries = guildModeration.get(String(row.guild_id)) || new Map();
+      entries.set(String(row.account_id), {
+        action: String(row.action) as "ban" | "timeout",
+        expiresAt,
+        reason: row.reason || null
+      });
+      guildModeration.set(String(row.guild_id), entries);
+    }
   }
 
   function roleFor(guildId: string, accountId?: string): GuildRole | undefined {
@@ -86,14 +209,25 @@ export function createGuildService({
   }
 
   function isMember(guildId: string, accountId?: string) {
+    if (accountId && moderationFor(guildId, accountId)?.action === "ban") return false;
     return Boolean(
       accountId && (isPublicMainGuild(guildId) || guildMembers.get(guildId)?.has(accountId))
     );
   }
 
   function canManage(guildId: string, accountId?: string) {
-    const role = roleFor(guildId, accountId);
-    return role === "owner" || role === "admin";
+    return roleCan(roleFor(guildId, accountId), "guild:manage");
+  }
+
+  function hasPermission(
+    guildId: string,
+    accountId: string | undefined,
+    permission: Parameters<typeof roleCan>[1]
+  ) {
+    if (!isMember(guildId, accountId)) return false;
+    const restriction = accountId ? moderationFor(guildId, accountId) : null;
+    if (restriction?.action === "timeout" && permission !== "guild:moderate") return false;
+    return roleCan(roleFor(guildId, accountId), permission);
   }
 
   function guildList(accountId?: string) {
@@ -249,7 +383,72 @@ export function createGuildService({
 
     guilds.set(guild.id, guild);
     setMembership(guild.id, ownerId, "owner");
+    await ensureDefaultChannels(guild.id);
     return guild;
+  }
+
+  function listChannels(guildId: string) {
+    return [...(guildChannels.get(guildId) || [])].filter((channel) => !channel.archived);
+  }
+
+  async function createChannel(
+    guildId: string,
+    name: string,
+    type: GuildChannelType,
+    categoryId?: string | null
+  ) {
+    const channels = guildChannels.get(guildId) || [];
+    const channel: GuildChannel = {
+      id: crypto.randomBytes(8).toString("hex"),
+      guildId,
+      name,
+      type,
+      categoryId: categoryId || null,
+      position: channels.length,
+      archived: false,
+      createdAt: new Date().toISOString()
+    };
+    if (pool) {
+      await pool.query(
+        `INSERT INTO echoverse_guild_channels (id, guild_id, category_id, name, channel_type, position, archived, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          channel.id,
+          guildId,
+          channel.categoryId,
+          channel.name,
+          channel.type,
+          channel.position,
+          0,
+          channel.createdAt
+        ]
+      );
+    }
+    guildChannels.set(guildId, [...channels, channel]);
+    return channel;
+  }
+
+  async function updateChannel(
+    guildId: string,
+    channelId: string,
+    updates: { name?: string; archived?: boolean }
+  ) {
+    const channel = guildChannels.get(guildId)?.find((candidate) => candidate.id === channelId);
+    if (!channel) return null;
+    const updated = { ...channel, ...updates };
+    if (pool) {
+      await pool.query(
+        "UPDATE echoverse_guild_channels SET name=$1, archived=$2 WHERE id=$3 AND guild_id=$4",
+        [updated.name, updated.archived ? 1 : 0, channelId, guildId]
+      );
+    }
+    guildChannels.set(
+      guildId,
+      (guildChannels.get(guildId) || []).map((candidate) =>
+        candidate.id === channelId ? updated : candidate
+      )
+    );
+    return updated;
   }
 
   function hashInvite(token: string) {
@@ -356,6 +555,91 @@ export function createGuildService({
     return true;
   }
 
+  function moderationFor(guildId: string, accountId: string) {
+    const entry = guildModeration.get(guildId)?.get(accountId);
+    if (!entry) return null;
+    if (entry.expiresAt && Date.parse(entry.expiresAt) <= Date.now()) {
+      guildModeration.get(guildId)?.delete(accountId);
+      return null;
+    }
+    return entry;
+  }
+
+  async function moderateMember(
+    guildId: string,
+    actorId: string,
+    accountId: string,
+    action: "kick" | "ban" | "timeout" | "unban",
+    durationMinutes?: number,
+    reason?: string
+  ) {
+    if (!guilds.has(guildId) || accountId === guilds.get(guildId)?.ownerId) return false;
+    if (action === "kick" || action === "ban") {
+      if (pool)
+        await pool.query(
+          "DELETE FROM echoverse_guild_members WHERE guild_id=$1 AND account_id=$2",
+          [guildId, accountId]
+        );
+      guildMembers.get(guildId)?.delete(accountId);
+      guildRoles.get(guildId)?.delete(accountId);
+    }
+    if (action === "ban" || action === "timeout") {
+      const expiresAt = durationMinutes
+        ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+        : null;
+      const entries = guildModeration.get(guildId) || new Map();
+      entries.set(accountId, { action, expiresAt, reason: reason || null });
+      guildModeration.set(guildId, entries);
+      if (pool)
+        await pool.query(
+          "INSERT INTO echoverse_guild_moderation (guild_id,account_id,action,expires_at,reason) VALUES ($1,$2,$3,$4,$5)",
+          [guildId, accountId, action, expiresAt, reason || null]
+        );
+    } else if (action === "unban") {
+      guildModeration.get(guildId)?.delete(accountId);
+      if (pool)
+        await pool.query(
+          "INSERT INTO echoverse_guild_moderation (guild_id,account_id,action,reason) VALUES ($1,$2,'unban',$3)",
+          [guildId, accountId, reason || null]
+        );
+    }
+    const event = {
+      id: crypto.randomUUID(),
+      guildId,
+      actorId,
+      action,
+      targetId: accountId,
+      metadata: JSON.stringify({ reason: reason || null }),
+      createdAt: new Date().toISOString()
+    };
+    const audit = guildAuditEvents.get(guildId) || [];
+    audit.push(event);
+    guildAuditEvents.set(guildId, audit.slice(-500));
+    if (pool)
+      await pool.query(
+        "INSERT INTO echoverse_guild_audit_events (id,guild_id,actor_id,action,target_id,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [event.id, guildId, actorId, action, accountId, event.metadata, event.createdAt]
+      );
+    return true;
+  }
+
+  async function auditFor(guildId: string, limit = 100) {
+    if (!pool) return (guildAuditEvents.get(guildId) || []).slice(-limit);
+    const result = await pool.query(
+      "SELECT id,guild_id,actor_id,action,target_id,metadata,created_at FROM echoverse_guild_audit_events WHERE guild_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2",
+      [guildId, limit]
+    );
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      guildId: String(row.guild_id),
+      actorId: String(row.actor_id),
+      action: String(row.action),
+      targetId: row.target_id ? String(row.target_id) : null,
+      metadata: String(row.metadata || "{}"),
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+    }));
+  }
+
   function leaveCurrentRoom(socket: any, user: User) {
     if (!user.roomId) return;
     const oldRoom = user.roomId;
@@ -388,6 +672,14 @@ export function createGuildService({
     sendLobbyState,
     setRole,
     revokeInvite,
-    renameLobby
+    renameLobby,
+    createChannel,
+    ensureDefaultChannels,
+    guildChannels: listChannels,
+    updateChannel,
+    hasPermission,
+    moderateMember,
+    auditFor,
+    moderationFor
   };
 }

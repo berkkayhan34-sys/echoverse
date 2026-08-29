@@ -25,6 +25,19 @@ share migration IDs and the account, friendship, and direct-message schema.
 Guild persistence also stores the lobby display name; the `guild:rename-lobby`
 event is server-authorized for owners and admins and broadcasts the updated
 guild only to its members.
+
+Channel and guild-message state is durable in both adapters through migration
+`008_spaces_channels_messages.sql`. `guild:channels`, `guild:create-channel`,
+and `guild:update-channel` expose ordered text/voice/stage/forum channels while
+retaining the legacy general/lobby aliases. `chat-message` now persists guild
+messages; `chat-history`, `chat-search`, edit/delete, pin, and reaction events
+are membership- and permission-checked before broadcast.
+
+`guild:moderate-member` supports kick, ban, timeout, and unban with owner
+protection, bounded duration, and privacy-safe audit records returned through
+`guild:audit`. The permission evaluator lives in
+`src/features/guilds/permissions.ts`; client visibility is not an authority
+boundary.
 SQLite backups can be restored as the local rollback path; hosted PostgreSQL
 restore remains an operator-controlled deployment action.
 

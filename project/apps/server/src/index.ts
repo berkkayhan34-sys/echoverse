@@ -18,6 +18,7 @@ import { createPersistenceRuntime } from "./persistence/runtime.js";
 import { sanitizeName, sanitizeText } from "./domain/validation.js";
 import type { Account, StoredDm, User } from "./domain/types.js";
 import { registerChatHandlers } from "./features/chat/handlers.js";
+import { createGuildChatService } from "./features/chat/guild-service.js";
 import { createAccountService } from "./features/identity/accounts.js";
 import { registerIdentityHandlers } from "./features/identity/handlers.js";
 import { registerIdentityHttpRoutes } from "./features/identity/http.js";
@@ -40,9 +41,13 @@ import {
   guilds,
   guildMembers,
   guildRoles,
+  guildChannels,
+  guildModeration,
+  guildAuditEvents,
   guildInvites,
   memoryAccounts,
   memoryDmMessages,
+  memoryGuildMessages,
   memoryFriendships,
   pendingCalls,
   users
@@ -252,9 +257,13 @@ const guildService = createGuildService({
   guilds,
   guildMembers,
   guildRoles,
+  guildChannels,
   guildInvites,
-  users
+  users,
+  guildModeration,
+  guildAuditEvents
 });
+const guildChat = createGuildChatService(pool, memoryGuildMessages);
 const {
   broadcastPresence,
   canManage,
@@ -275,7 +284,15 @@ const {
   sendLobbyState,
   setRole,
   revokeInvite,
-  renameLobby
+  renameLobby,
+  createChannel,
+  ensureDefaultChannels,
+  guildChannels: listGuildChannels,
+  updateChannel,
+  hasPermission,
+  moderateMember,
+  auditFor,
+  moderationFor
 } = guildService;
 
 guilds.set("echoverse", {
@@ -284,6 +301,7 @@ guilds.set("echoverse", {
   createdBy: "system",
   createdAt: new Date().toISOString()
 });
+void ensureDefaultChannels("echoverse");
 
 function verifyToken(token: string) {
   return sessionManager.verifyAccess(token)?.userId || "";
@@ -453,7 +471,19 @@ io.on("connection", (socket) => {
     onValidatedSocketEvent
   });
 
-  registerChatHandlers({ socket, io, users, resolveRequestLocale, onValidatedSocketEvent });
+  registerChatHandlers({
+    socket,
+    io,
+    users,
+    guildChat,
+    isMember,
+    listChannels: listGuildChannels,
+    hasPermission,
+    socketError,
+    accountById,
+    resolveRequestLocale,
+    onValidatedSocketEvent
+  });
 
   const { endCallsForSocket } = registerCallHandlers({
     socket,
@@ -487,6 +517,12 @@ io.on("connection", (socket) => {
     setRole,
     revokeInvite,
     renameLobby,
+    createChannel,
+    updateChannel,
+    listChannels: listGuildChannels,
+    hasPermission,
+    moderateMember,
+    auditFor,
     getPresence,
     sendLobbyState,
     leaveCurrentRoom,

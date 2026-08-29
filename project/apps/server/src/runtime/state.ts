@@ -3,12 +3,38 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Account, CallSession, Guild, GuildRole, StoredDm, User } from "../domain/types.js";
+import type {
+  Account,
+  CallSession,
+  Guild,
+  GuildChannel,
+  GuildRole,
+  StoredDm,
+  StoredGuildMessage,
+  User
+} from "../domain/types.js";
 
 export const users = new Map<string, User>();
 export const guilds = new Map<string, Guild>();
 export const guildMembers = new Map<string, Set<string>>();
 export const guildRoles = new Map<string, Map<string, GuildRole>>();
+export const guildChannels = new Map<string, GuildChannel[]>();
+export const guildModeration = new Map<
+  string,
+  Map<string, { action: "ban" | "timeout"; expiresAt?: string | null; reason?: string | null }>
+>();
+export const guildAuditEvents = new Map<
+  string,
+  Array<{
+    id: string;
+    guildId: string;
+    actorId: string;
+    action: string;
+    targetId?: string | null;
+    metadata: string;
+    createdAt: string;
+  }>
+>();
 export const guildInvites = new Map<
   string,
   { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
@@ -32,5 +58,6 @@ export const memoryFriendships = new Map<
   }
 >();
 export const memoryDmMessages: StoredDm[] = [];
+export const memoryGuildMessages: StoredGuildMessage[] = [];
 export const accountPresence = new Map<string, string>();
 export const dmReadAt = new Map<string, number>();

@@ -36,6 +36,35 @@ export type Guild = {
 
 export type GuildRole = "owner" | "admin" | "moderator" | "member";
 
+export type GuildChannelType = "text" | "voice" | "stage" | "forum";
+
+export type GuildChannel = {
+  id: string;
+  guildId: string;
+  name: string;
+  type: GuildChannelType;
+  categoryId?: string | null;
+  position: number;
+  archived: boolean;
+  createdAt: string;
+};
+
+export type GuildModerationAction = "kick" | "ban" | "timeout" | "unban";
+
+export type StoredGuildMessage = {
+  id: string;
+  guildId: string;
+  channelId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  replyToId?: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  pinned?: boolean;
+  reactions?: Record<string, string[]>;
+};
+
 export type CallSession = {
   callId: string;
   callerAccountId: string;

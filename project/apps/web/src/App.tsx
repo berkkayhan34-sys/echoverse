@@ -43,6 +43,7 @@ import type {
   DmMessage,
   FriendUser,
   Guild,
+  GuildChannel,
   IncomingCall,
   PeerInfo,
   ScreenSource,
@@ -106,6 +107,8 @@ export default function App() {
   const [identified, setIdentified] = useState(false);
   const [joined, setJoined] = useState(false);
   const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
+  const [activeChannelId, setActiveChannelId] = useState("");
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [presence, setPresence] = useState<PeerInfo[]>([]);
@@ -540,6 +543,13 @@ export default function App() {
       );
       setActiveGuild((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
     });
+    s.on(
+      "guild:channels",
+      ({ guildId, channels }: { guildId: string; channels: GuildChannel[] }) => {
+        if (guildId === activeGuildRef.current?.id)
+          setGuildChannels(Array.isArray(channels) ? channels : []);
+      }
+    );
 
     s.on("friends:changed", () => {
       loadFriends(s);
@@ -1470,10 +1480,13 @@ export default function App() {
     if (joined) await leaveVoice();
 
     setActiveGuild(guild);
+    activeGuildRef.current = guild;
     setViewMode("server");
     setActiveDmFriend(null);
     setMessages([]);
     setPresence([]);
+    setGuildChannels([]);
+    setActiveChannelId(`${guild.id}:general`);
 
     lobbyStateReadyRef.current = false;
     lobbyMembersRef.current = [];
@@ -1667,6 +1680,7 @@ export default function App() {
 
     socket.emit("chat-message", {
       guildId: activeGuild.id,
+      ...(activeChannelId ? { channelId: activeChannelId } : {}),
       text: value
     });
 
@@ -2010,6 +2024,7 @@ export default function App() {
     return (
       <GuildPicker
         guilds={guilds}
+        channels={guildChannels}
         platformLabel={isDesktopShell ? undefined : t("platform.web")}
         labels={{
           title: t("guild.list"),
@@ -2038,6 +2053,30 @@ export default function App() {
         onCreateGuild={createGuild}
         onJoinGuildByCode={joinGuildByCode}
         onSelectGuild={joinGuild}
+        onSelectChannel={(channel) => {
+          setActiveChannelId(channel.id);
+          setMessages([]);
+          if (activeGuild)
+            socket?.emit(
+              "chat-history",
+              { guildId: activeGuild.id, channelId: channel.id },
+              (result: any) => {
+                if (result?.ok)
+                  setMessages(
+                    result.messages.map((message: any) => ({
+                      id: message.id,
+                      guildId: message.guildId,
+                      channelId: message.channelId,
+                      userId: message.senderId,
+                      username: message.username,
+                      avatarData: message.avatarData,
+                      text: message.text || message.body,
+                      createdAt: message.createdAt
+                    }))
+                  );
+              }
+            );
+        }}
       />
     );
   }

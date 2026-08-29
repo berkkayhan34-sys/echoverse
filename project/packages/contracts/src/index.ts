@@ -129,9 +129,13 @@ export const attachmentSchema = attachmentShape.superRefine((value, context) => 
 
 export const attachmentMetadataSchema = attachmentShape.pick({ name: true, mime: true }).strict();
 
+const identifierSchema = z.string().trim().min(1).max(128);
+
 export const chatMessageSchema = z.object({
   guildId: z.string().min(1).max(80),
-  text: z.string().trim().min(1).max(2500)
+  text: z.string().trim().min(1).max(2500),
+  channelId: z.string().trim().min(1).max(128).optional(),
+  replyToId: identifierSchema.nullable().optional()
 });
 
 const peerSocketIdSchema = z.string().trim().min(1).max(128);
@@ -177,7 +181,6 @@ export const webrtcIceCandidateEventSchema = z
   })
   .strict();
 
-const identifierSchema = z.string().trim().min(1).max(128);
 const optionalEmptyPayloadSchema = z.union([z.undefined(), z.null(), z.object({}).strict()]);
 
 export const socketEventPayloadSchemas = {
@@ -253,12 +256,74 @@ export const socketEventPayloadSchemas = {
   "guild:rename-lobby": z
     .object({ guildId: identifierSchema, name: z.string().trim().min(1).max(32) })
     .strict(),
+  "guild:channels": z.object({ guildId: identifierSchema }).strict(),
+  "guild:create-channel": z
+    .object({
+      guildId: identifierSchema,
+      name: z.string().trim().min(1).max(64),
+      type: z.enum(["text", "voice", "stage", "forum"]),
+      categoryId: identifierSchema.nullable().optional()
+    })
+    .strict(),
+  "guild:update-channel": z
+    .object({
+      guildId: identifierSchema,
+      channelId: identifierSchema,
+      name: z.string().trim().min(1).max(64).optional(),
+      archived: z.boolean().optional()
+    })
+    .strict(),
+  "guild:moderate-member": z
+    .object({
+      guildId: identifierSchema,
+      accountId: identifierSchema,
+      action: z.enum(["kick", "ban", "timeout", "unban"]),
+      durationMinutes: z.number().int().min(1).max(43_200).optional(),
+      reason: z.string().trim().max(500).optional()
+    })
+    .strict(),
+  "guild:audit": z
+    .object({ guildId: identifierSchema, limit: z.number().int().min(1).max(100).optional() })
+    .strict(),
   "guild:leave": z.object({ guildId: identifierSchema }).strict(),
   "guild:select": z.object({ guildId: identifierSchema }).strict(),
   "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
   "voice:sync-request": optionalEmptyPayloadSchema,
   "leave-room": optionalEmptyPayloadSchema,
   "chat-message": chatMessageSchema,
+  "chat-history": z
+    .object({
+      guildId: identifierSchema,
+      channelId: identifierSchema,
+      limit: z.number().int().min(1).max(100).optional()
+    })
+    .strict(),
+  "chat-search": z
+    .object({
+      guildId: identifierSchema,
+      channelId: identifierSchema,
+      query: z.string().trim().min(1).max(100),
+      limit: z.number().int().min(1).max(100).optional()
+    })
+    .strict(),
+  "chat-edit": z
+    .object({
+      guildId: identifierSchema,
+      messageId: identifierSchema,
+      body: z.string().trim().min(1).max(2500)
+    })
+    .strict(),
+  "chat-delete": z.object({ guildId: identifierSchema, messageId: identifierSchema }).strict(),
+  "chat-pin": z
+    .object({ guildId: identifierSchema, messageId: identifierSchema, pinned: z.boolean() })
+    .strict(),
+  "chat-react": z
+    .object({
+      guildId: identifierSchema,
+      messageId: identifierSchema,
+      emoji: z.string().trim().min(1).max(12)
+    })
+    .strict(),
   "webrtc-offer": webrtcDescriptionSchema,
   "webrtc-answer": webrtcDescriptionSchema,
   "webrtc-ice": webrtcIceCandidateSchema,
@@ -322,6 +387,17 @@ export type ChatMessage = {
   bot?: boolean;
 };
 export type GuildRole = "owner" | "admin" | "moderator" | "member";
+export type GuildChannelType = "text" | "voice" | "stage" | "forum";
+export type GuildChannel = {
+  id: string;
+  guildId: string;
+  name: string;
+  type: GuildChannelType;
+  categoryId?: string | null;
+  position: number;
+  archived: boolean;
+  createdAt: string;
+};
 export type Guild = {
   id: string;
   name: string;

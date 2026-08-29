@@ -7,9 +7,18 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+- Add the first Discord/TeamSpeak parity foundation: durable text and voice
+  channels, server-side role permissions, moderation/audit actions, and
+  persisted guild chat history with search, edits, pins, and reactions.
+
 - Repair guild voice WebRTC signaling so members in the same lobby can hear
   one another while outsiders remain blocked; private-call authorization is
   unchanged.
+
+## 1.8.7
+
+- Ship the parity foundation and channel/messaging protocol additions in the
+  first release after the 1.8.6 web-cache split.
 
 ## 1.8.6
 

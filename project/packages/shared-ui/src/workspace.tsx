@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Account, FriendUser, Guild, PeerInfo } from "@echoverse/contracts";
+import type { Account, FriendUser, Guild, GuildChannel, PeerInfo } from "@echoverse/contracts";
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
 
@@ -310,9 +310,12 @@ export function WorkspaceSidebar({
   onPeerVolumeChange,
   onChangeAvatar,
   onToggleMute,
-  onLogout
+  onLogout,
+  channels,
+  onSelectChannel
 }: {
   guilds: Guild[];
+  channels?: GuildChannel[];
   activeGuild: Guild | null;
   presence: PeerInfo[];
   socketId?: string;
@@ -342,6 +345,7 @@ export function WorkspaceSidebar({
   onChangeAvatar: (file?: File) => void;
   onToggleMute: () => void;
   onLogout: () => void;
+  onSelectChannel?: (channel: GuildChannel) => void;
 }) {
   return (
     <>
@@ -414,33 +418,56 @@ export function WorkspaceSidebar({
 
         <div className="channel-group">
           <div className="channel-title">{labels.textChannels}</div>
-          <button className="channel active"># {labels.general}</button>
-          <button className="channel"># {labels.music}</button>
+          {(channels?.length
+            ? channels.filter((channel) => channel.type === "text")
+            : [{ id: "legacy-general", name: labels.general, type: "text" as const }]
+          ).map((channel, index) => (
+            <button
+              key={channel.id}
+              className={`channel ${index === 0 ? "active" : ""}`}
+              onClick={() => onSelectChannel?.(channel as GuildChannel)}
+            >
+              # {channel.name}
+            </button>
+          ))}
         </div>
 
         <div className="channel-group">
           <div className="channel-title">{labels.voiceChannels}</div>
-          <div className="lobby-channel-row">
-            <button
-              className={`channel voice ${onJoinVoice ? "" : "active"}`}
-              disabled={!activeGuild || !onJoinVoice}
-              onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
-            >
-              🔊 {lobbyName || labels.lobby}
-            </button>
-
-            {activeGuild && canManageGuild && onRenameLobby && (
-              <LobbyNameEditor
-                key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
-                value={lobbyName || labels.lobby}
-                renameLabel={labels.renameLobby || "Rename lobby"}
-                placeholder={labels.lobbyNamePlaceholder || labels.lobby}
-                saveLabel={labels.save || "Save"}
-                cancelLabel={labels.cancel || "Cancel"}
-                onSave={(name) => onRenameLobby(activeGuild, name)}
-              />
-            )}
-          </div>
+          {(channels?.length
+            ? channels.filter((channel) => ["voice", "stage"].includes(channel.type))
+            : [{ id: "legacy-lobby", name: lobbyName || labels.lobby, type: "voice" as const }]
+          ).map((channel) => (
+            <div className="lobby-channel-row" key={channel.id}>
+              <button
+                className={`channel voice ${onJoinVoice ? "" : "active"}`}
+                disabled={!activeGuild || !onJoinVoice}
+                onClick={() => {
+                  if (activeGuild) {
+                    onSelectChannel?.(channel as GuildChannel);
+                    onJoinVoice?.(activeGuild);
+                  }
+                }}
+              >
+                🔊 {channel.name}
+              </button>
+              {activeGuild &&
+                channel.type === "voice" &&
+                channel.id.endsWith(":lobby") &&
+                canManageGuild &&
+                onRenameLobby && (
+                  <LobbyNameEditor
+                    key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
+                    value={lobbyName || labels.lobby}
+                    renameLabel={labels.renameLobby || "Rename lobby"}
+                    placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                    saveLabel={labels.save || "Save"}
+                    cancelLabel={labels.cancel || "Cancel"}
+                    onSave={(name) => onRenameLobby(activeGuild, name)}
+                  />
+                )}
+            </div>
+          ))}
 
           <div className="voice-users">
             {presence.map((peer) => {

@@ -63,6 +63,28 @@ Each feature owns input schemas, authorization rules, domain operations, and
 focused tests. Transport adapters translate external requests into feature
 commands; they do not contain persistence policy or hidden authorization.
 
+## Discord + TeamSpeak product contract (ARCH-001)
+
+The current contract combines Discord-style membership, text, DM, moderation,
+and social surfaces with TeamSpeak-style persistent voice rooms. A guild owns
+its categories and channels; membership is explicit for private guilds and the
+`echoverse` guild is public and auto-enrolled. Voice entry is always an
+explicit user action. Messages and attachments are server-validated and
+authorization is evaluated on every event. The protocol keeps legacy
+`guild:<id>:text` and `guild:<id>:lobby` rooms as compatibility aliases while
+clients migrate to channel IDs. Provider-specific SFU, native mobile binaries,
+and automatic voice joining are non-goals for this phase.
+
+## Channel and space model (ARCH-002)
+
+`echoverse_guild_categories` and `echoverse_guild_channels` are the durable
+ordering boundary for text, voice, stage, and forum channels. Existing guilds
+receive deterministic `general` and `Lobby` channels; the legacy lobby display
+name remains persisted on the guild and is kept synchronized with the default
+voice channel. Archived channels are hidden from active lists but retained for
+message and audit integrity. Channel mutations are server-authorized and
+broadcast as `guild:channels`.
+
 ## Client boundaries
 
 The web and desktop clients share protocol contracts and browser-safe client
