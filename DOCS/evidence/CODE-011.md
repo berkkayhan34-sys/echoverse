@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: FEATURE-002
 status: complete
 date: 2026-08-29
-revision: f1ab9e8a75022df471b72214ad2349f0145c3b11 (pre-release)
+revision: 0c8f6076ded420b4c738094e7ae7e8cc810fb7be (v1.8.6)
 ```
 
 ## Scope
@@ -28,16 +28,16 @@ revision: f1ab9e8a75022df471b72214ad2349f0145c3b11 (pre-release)
 
 ## Validation
 
-| Check                                                           | Result  | Evidence                                                                                                                                                                       |
-| --------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm test -- --run`                                             | pass    | 20 test files and 101 tests passed.                                                                                                                                            |
-| `npm run typecheck`                                             | pass    | All workspace packages type-checked successfully.                                                                                                                              |
-| `npm run build`                                                 | pass    | Web, desktop, server, and shared packages built successfully.                                                                                                                  |
-| `npm run format:check` and `git diff --check`                   | pass    | Formatting and whitespace gates passed.                                                                                                                                        |
-| `npm run lint`, `npm run localization:check`, roadmap validator | pass    | Lint, catalog parity, and roadmap checks passed.                                                                                                                               |
-| `npm run dependency:check` / `npm audit --audit-level=high`     | pass    | No high-or-critical dependency vulnerabilities reported.                                                                                                                       |
-| Integrated browser inspection                                   | partial | At 390x844, branded landing view rendered without horizontal overflow. Authenticated workspace interaction was not run because credential-entry confirmation was not provided. |
-| Render health and release workflow                              | pending | Must be rechecked after the `v1.8.6` tag deploys.                                                                                                                              |
+| Check                                                           | Result  | Evidence                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test -- --run`                                             | pass    | 20 test files and 101 tests passed.                                                                                                                                                                                                                                        |
+| `npm run typecheck`                                             | pass    | All workspace packages type-checked successfully.                                                                                                                                                                                                                          |
+| `npm run build`                                                 | pass    | Web, desktop, server, and shared packages built successfully.                                                                                                                                                                                                              |
+| `npm run format:check` and `git diff --check`                   | pass    | Formatting and whitespace gates passed.                                                                                                                                                                                                                                    |
+| `npm run lint`, `npm run localization:check`, roadmap validator | pass    | Lint, catalog parity, and roadmap checks passed.                                                                                                                                                                                                                           |
+| `npm run dependency:check` / `npm audit --audit-level=high`     | pass    | No high-or-critical dependency vulnerabilities reported.                                                                                                                                                                                                                   |
+| Integrated browser inspection                                   | partial | At 390x844, branded landing view rendered without horizontal overflow. Authenticated workspace interaction was not run because credential-entry confirmation was not provided.                                                                                             |
+| Render health and release workflow                              | pass    | Render `/health` returned HTTP 200 with version `1.8.6` and PostgreSQL; web manifest returned version `1.8.6` with revision `0c8f6076ded420b4c738094e7ae7e8cc810fb7be`; GitHub release workflow `33252109804` published all Windows/macOS installers and updater metadata. |
 
 ## Security notes
 
