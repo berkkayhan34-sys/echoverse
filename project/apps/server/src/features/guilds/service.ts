@@ -81,8 +81,14 @@ export function createGuildService({
     return guildRoles.get(guildId)?.get(accountId);
   }
 
+  function isPublicMainGuild(guildId: string) {
+    return guildId === MAIN_GUILD_ID && guilds.has(MAIN_GUILD_ID);
+  }
+
   function isMember(guildId: string, accountId?: string) {
-    return Boolean(accountId && guildMembers.get(guildId)?.has(accountId));
+    return Boolean(
+      accountId && (isPublicMainGuild(guildId) || guildMembers.get(guildId)?.has(accountId))
+    );
   }
 
   function canManage(guildId: string, accountId?: string) {
@@ -338,7 +344,7 @@ export function createGuildService({
   }
 
   async function leaveGuild(guildId: string, accountId: string) {
-    if (roleFor(guildId, accountId) === "owner") return false;
+    if (guildId === MAIN_GUILD_ID || roleFor(guildId, accountId) === "owner") return false;
     if (pool) {
       await pool.query(
         "DELETE FROM echoverse_guild_members WHERE guild_id = $1 AND account_id = $2",

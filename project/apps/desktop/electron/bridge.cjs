@@ -9,6 +9,7 @@
  */
 function createEchoVerseBridge(ipcRenderer) {
   return {
+    isDesktop: true,
     setLocale: (locale) => ipcRenderer.invoke("echoverse:set-locale", locale),
     getConfig: () => ipcRenderer.invoke("echoverse:getConfig"),
     authSession: {
@@ -40,7 +41,8 @@ function createEchoVerseBridge(ipcRenderer) {
     checkForUpdates: () => ipcRenderer.invoke("update:check"),
     getVersion: () => ipcRenderer.invoke("echoverse:getVersion"),
     getUiVersion: () => ipcRenderer.invoke("ui:get-version"),
-    notify: (payload) => ipcRenderer.invoke("echoverse:notify", payload)
+    notify: (payload) => ipcRenderer.invoke("echoverse:notify", payload),
+    copyText: (value) => ipcRenderer.invoke("clipboard:write", value)
   };
 }
 

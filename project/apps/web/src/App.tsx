@@ -91,6 +91,7 @@ export default function App() {
     readClientLocale(localStorage, navigator.language)
   );
   const t = useMemo(() => createTranslator(locale), [locale]);
+  const isDesktopShell = Boolean(window.echoverse?.isDesktop);
   const translatorRef = useRef(t);
   const [socket, setSocket] = useState<Socket | null>(null);
   const refreshingSessionRef = useRef(false);
@@ -207,11 +208,11 @@ export default function App() {
   }, [locale]);
 
   useEffect(() => {
-    document.title = t("app.webTitle");
+    document.title = isDesktopShell ? t("app.name") : t("app.webTitle");
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute("content", t("app.description"));
-  }, [t]);
+  }, [t, isDesktopShell]);
 
   function changeLocale(nextLocale: string) {
     setLocale(resolveClientLocale(nextLocale));
@@ -527,7 +528,12 @@ export default function App() {
       stopAllMedia();
     });
 
-    s.on("guild:list", (list: Guild[]) => setGuilds(list));
+    s.on("guild:list", (list: Guild[]) => {
+      setGuilds(list);
+      setActiveGuild((current) =>
+        current && list.some((guild) => guild.id === current.id) ? current : null
+      );
+    });
     s.on("guild:updated", (updated: Guild) => {
       setGuilds((prev) =>
         prev.map((guild) => (guild.id === updated.id ? { ...guild, ...updated } : guild))
@@ -1479,6 +1485,25 @@ export default function App() {
     setJoined(false);
   }
 
+  function leaveGuild(guild: Guild) {
+    if (!socket || guild.id === "echoverse" || guild.role === "owner") return;
+    if (!window.confirm(t("guild.leaveConfirm", { guild: guild.name }))) return;
+
+    socket.emit("guild:leave", { guildId: guild.id }, async (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.operationFailed"));
+        return;
+      }
+      if (activeGuildRef.current?.id === guild.id) {
+        if (joined) await leaveVoice();
+        setActiveGuild(null);
+        setMessages([]);
+        setPresence([]);
+        setViewMode("server");
+      }
+    });
+  }
+
   function joinVoiceGuild(guild: Guild) {
     if (!socket) return;
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
@@ -1528,6 +1553,12 @@ export default function App() {
   async function copyInvite() {
     if (!inviteToken) return;
     try {
+      const nativeResult = await window.echoverse?.copyText?.(inviteToken);
+      if (nativeResult?.ok) {
+        setInviteCopied(true);
+        setError("");
+        return;
+      }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(inviteToken);
       } else {
@@ -1889,10 +1920,14 @@ export default function App() {
   if (!identified) {
     return (
       <div className="welcome-page">
-        <div className="platform-badge">{t("platform.web")}</div>
+        {!isDesktopShell && <div className="platform-badge">{t("platform.web")}</div>}
         <div className="welcome-card auth-card">
-          <div className="logo-orb">{t("app.name").slice(0, 1)}</div>
-          <h1>{t("app.name")}</h1>
+          <img className="auth-app-icon" src="./branding/echoverse-icon.png" alt="" />
+          <img
+            className="echoverse-wordmark"
+            src="./branding/echoverse-wordmark.png"
+            alt={t("app.name")}
+          />
           <p>{t("app.tagline")}</p>
 
           <div className={`server-state ${connected ? "online" : "offline"}`}>
@@ -1975,7 +2010,7 @@ export default function App() {
     return (
       <GuildPicker
         guilds={guilds}
-        platformLabel={t("platform.web")}
+        platformLabel={isDesktopShell ? undefined : t("platform.web")}
         labels={{
           title: t("guild.list"),
           choose: t("guild.choose"),
@@ -2009,7 +2044,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="platform-badge">{t("platform.web")}</div>
+      {!isDesktopShell && <div className="platform-badge">{t("platform.web")}</div>}
       {connectionMessage && (
         <div className="connection-status-banner">
           <span className="connection-dot" />
@@ -2050,6 +2085,7 @@ export default function App() {
           close: t("common.close"),
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
+          leaveGuild: t("guild.leave"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),
@@ -2070,6 +2106,7 @@ export default function App() {
           setShowFriends(true);
         }}
         onCreateInvite={createGuildInvite}
+        onLeaveGuild={leaveGuild}
         onCreateGuild={() => {
           setJoined(false);
           setShowCreate(true);

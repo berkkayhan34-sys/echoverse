@@ -27,6 +27,7 @@ export type WorkspaceSidebarLabels = {
   close?: string;
   joinVoice?: string;
   invite?: string;
+  leaveGuild?: string;
   renameLobby?: string;
   lobbyNamePlaceholder?: string;
   save?: string;
@@ -45,6 +46,7 @@ type MobileWorkspaceNavigationProps = {
   onOpenDms?: () => void;
   onOpenFriends?: () => void;
   onCreateGuild: () => void;
+  onLeaveGuild?: (guild: Guild) => void;
   brandIconSrc?: string;
   labels: WorkspaceSidebarLabels;
 };
@@ -61,6 +63,7 @@ function MobileWorkspaceNavigation({
   onOpenDms,
   onOpenFriends,
   onCreateGuild,
+  onLeaveGuild,
   brandIconSrc,
   labels
 }: MobileWorkspaceNavigationProps) {
@@ -113,15 +116,26 @@ function MobileWorkspaceNavigation({
 
           <div className="mobile-guild-list">
             {guilds.map((guild) => (
-              <button
-                key={guild.id}
-                className={`mobile-guild-row ${activeGuild?.id === guild.id ? "active" : ""}`}
-                onClick={() => selectGuild(guild)}
-              >
-                <span className="mobile-guild-icon">{displayInitials(guild.name)}</span>
-                <span>{guild.name}</span>
-                {guild.id === "echoverse" && <small>⌂</small>}
-              </button>
+              <div className="mobile-guild-entry" key={guild.id}>
+                <button
+                  className={`mobile-guild-row ${activeGuild?.id === guild.id ? "active" : ""}`}
+                  onClick={() => selectGuild(guild)}
+                >
+                  <span className="mobile-guild-icon">{displayInitials(guild.name)}</span>
+                  <span>{guild.name}</span>
+                  {guild.id === "echoverse" && <small>⌂</small>}
+                </button>
+                {onLeaveGuild && guild.id !== "echoverse" && guild.role !== "owner" && (
+                  <button
+                    className="mobile-guild-leave"
+                    aria-label={`${labels.leaveGuild || "Leave server"}: ${guild.name}`}
+                    title={labels.leaveGuild || "Leave server"}
+                    onClick={() => onLeaveGuild(guild)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             ))}
           </div>
 
@@ -291,6 +305,7 @@ export function WorkspaceSidebar({
   brandIconSrc,
   onCreateInvite,
   onCreateGuild,
+  onLeaveGuild,
   onTogglePeerMute,
   onPeerVolumeChange,
   onChangeAvatar,
@@ -321,6 +336,7 @@ export function WorkspaceSidebar({
   brandIconSrc?: string;
   onCreateInvite?: (guild: Guild) => void;
   onCreateGuild: () => void;
+  onLeaveGuild?: (guild: Guild) => void;
   onTogglePeerMute: (socketId: string) => void;
   onPeerVolumeChange: (socketId: string, volume: number) => void;
   onChangeAvatar: (file?: File) => void;
@@ -339,14 +355,25 @@ export function WorkspaceSidebar({
         </div>
 
         {guilds.map((guild) => (
-          <button
-            key={guild.id}
-            title={`${guild.name} • ${guild.id}`}
-            className={`server-circle ${activeGuild?.id === guild.id ? "active" : ""}`}
-            onClick={() => onSelectGuild(guild)}
-          >
-            {displayInitials(guild.name)}
-          </button>
+          <div className="server-entry" key={guild.id}>
+            <button
+              title={`${guild.name} • ${guild.id}`}
+              className={`server-circle ${activeGuild?.id === guild.id ? "active" : ""}`}
+              onClick={() => onSelectGuild(guild)}
+            >
+              {displayInitials(guild.name)}
+            </button>
+            {onLeaveGuild && guild.id !== "echoverse" && guild.role !== "owner" && (
+              <button
+                className="server-remove"
+                aria-label={`${labels.leaveGuild || "Leave server"}: ${guild.name}`}
+                title={labels.leaveGuild || "Leave server"}
+                onClick={() => onLeaveGuild(guild)}
+              >
+                ×
+              </button>
+            )}
+          </div>
         ))}
 
         <button
@@ -379,7 +406,8 @@ export function WorkspaceSidebar({
             onCreateInvite &&
             (activeGuild.role === "owner" || activeGuild.role === "admin") && (
               <button className="guild-invite-button" onClick={() => onCreateInvite(activeGuild)}>
-                + {labels.invite || "Invite"}
+                <span aria-hidden="true">↗</span>
+                {labels.invite || "Invite"}
               </button>
             )}
         </div>
@@ -508,6 +536,7 @@ export function WorkspaceSidebar({
         onOpenDms={onOpenDms}
         onOpenFriends={onOpenFriends}
         onCreateGuild={onCreateGuild}
+        onLeaveGuild={onLeaveGuild}
         brandIconSrc={brandIconSrc}
         labels={labels}
       />

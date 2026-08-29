@@ -604,7 +604,12 @@ export default function App() {
       stopAllMedia();
     });
 
-    s.on("guild:list", (list: Guild[]) => setGuilds(list));
+    s.on("guild:list", (list: Guild[]) => {
+      setGuilds(list);
+      setActiveGuild((current) =>
+        current && list.some((guild) => guild.id === current.id) ? current : null
+      );
+    });
     s.on("guild:updated", (updated: Guild) => {
       setGuilds((prev) =>
         prev.map((guild) => (guild.id === updated.id ? { ...guild, ...updated } : guild))
@@ -1606,6 +1611,25 @@ export default function App() {
     setJoined(false);
   }
 
+  function leaveGuild(guild: Guild) {
+    if (!socket || guild.id === "echoverse" || guild.role === "owner") return;
+    if (!window.confirm(t("guild.leaveConfirm", { guild: guild.name }))) return;
+
+    socket.emit("guild:leave", { guildId: guild.id }, async (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.operationFailed"));
+        return;
+      }
+      if (activeGuildRef.current?.id === guild.id) {
+        if (joined) await leaveVoice();
+        setActiveGuild(null);
+        setMessages([]);
+        setPresence([]);
+        setViewMode("server");
+      }
+    });
+  }
+
   function joinVoiceGuild(guild: Guild) {
     if (!socket) return;
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
@@ -1655,6 +1679,12 @@ export default function App() {
   async function copyInvite() {
     if (!inviteToken) return;
     try {
+      const nativeResult = await window.echoverse?.copyText?.(inviteToken);
+      if (nativeResult?.ok) {
+        setInviteCopied(true);
+        setError("");
+        return;
+      }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(inviteToken);
       } else {
@@ -2179,6 +2209,7 @@ export default function App() {
           close: t("common.close"),
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
+          leaveGuild: t("guild.leave"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),
@@ -2199,6 +2230,7 @@ export default function App() {
           setShowFriends(true);
         }}
         onCreateInvite={createGuildInvite}
+        onLeaveGuild={leaveGuild}
         onCreateGuild={() => {
           setJoined(false);
           setShowCreate(true);

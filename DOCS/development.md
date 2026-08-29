@@ -86,7 +86,9 @@ The public EchoVerse guild is reconciled at startup. Set
 account's normalized email before a hosted deployment. The value is an
 environment-only administration setting and must not be committed to source,
 logs, manifests, or examples. When it is unset, the server fails closed and
-does not grant an elevated role to an arbitrary account.
+does not grant an elevated role to an arbitrary account; the `echoverse` guild
+itself remains public and visible to authenticated accounts, even if a stale
+or missing membership row exists.
 
 ## Localization workflow
 

@@ -5,6 +5,18 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.8.6
+
+- Restore the EchoVerse icon and wordmark across browser and Electron-hosted
+  UI, and remove the `WEB` marker from the desktop shell.
+- Make the public EchoVerse main server visible to every authenticated account
+  even when old membership data is incomplete, while preserving configured
+  founder privileges.
+- Add a clear leave action for joined private servers and remove them from the
+  server rail after leaving.
+- Make invite-code copying reliable through the native desktop clipboard and a
+  validated browser fallback.
+
 ## 1.8.5
 
 - Repair the friend lifecycle so users can search offline accounts, cancel

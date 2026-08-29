@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.5`, with protocol major version 2.
+The shipped baseline is product version `1.8.6`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -107,6 +107,35 @@ mobile responsive, and mobile voice foundation in implementation order:
 
 Acceptance evidence is required for each child before this feature is marked
 complete. No unrelated product feature should be added to this child.
+
+### release-1-8-6-parity-and-branding
+
+```yaml
+id: FEATURE-002
+type: runtime_feature
+status: complete
+evidence: evidence/CODE-011.md
+blocks_roadmap: false
+decision: null
+```
+
+[x] Restore the branded shared renderer and complete guild lifecycle parity:
+
+1. Hide the web-only platform marker and web title when the renderer runs in
+   the Electron shell, while retaining them in a normal browser.
+2. Restore the EchoVerse icon and wordmark in the web authentication surface
+   and keep the same assets available to the desktop UI cache.
+3. Make the public `echoverse` guild visible and selectable for every
+   authenticated account even when a stale membership row is missing, without
+   granting an unconfigured account owner/admin privileges.
+4. Add an explicit leave action for non-owner private guilds; leaving removes
+   the guild from the user's server rail and is blocked for the public main
+   guild and guild owners.
+5. Route invite copying through the Electron native clipboard and retain a
+   validated browser fallback so generated invite codes can be copied on all
+   supported surfaces.
+
+Acceptance evidence is recorded in [`evidence/CODE-011.md`](evidence/CODE-011.md).
 
 ## Release/version rule
 

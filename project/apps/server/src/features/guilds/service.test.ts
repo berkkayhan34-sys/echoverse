@@ -89,4 +89,22 @@ describe("guild and presence service", () => {
     expect(service.roleFor("echoverse", "member")).toBe("member");
     expect(service.guildList("member")).toEqual([{ ...guilds.get("echoverse"), role: "member" }]);
   });
+
+  it("keeps the main guild public when membership rows are missing", async () => {
+    const guilds = new Map<string, Guild>([
+      ["echoverse", { id: "echoverse", name: "EchoVerse", createdBy: "system", createdAt: "now" }]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers: new Map(),
+      users: new Map()
+    });
+
+    expect(service.isMember("echoverse", "any-account")).toBe(true);
+    expect(service.guildList("any-account")).toEqual([
+      { ...guilds.get("echoverse"), role: undefined }
+    ]);
+    expect(await service.leaveGuild("echoverse", "any-account")).toBe(false);
+  });
 });

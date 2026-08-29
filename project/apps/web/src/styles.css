@@ -55,17 +55,6 @@ button {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
-.logo-orb {
-  width: 58px;
-  height: 58px;
-  border-radius: 19px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #7659ff, #00c8ff);
-  font-weight: 900;
-  font-size: 26px;
-}
-
 .welcome-card h1 {
   margin: 16px 0 2px;
   font-size: 32px;

@@ -19,6 +19,7 @@ describe("Electron preload bridge", () => {
     const bridge = createEchoVerseBridge(ipcRenderer);
 
     expect(Object.keys(bridge)).toEqual([
+      "isDesktop",
       "setLocale",
       "getConfig",
       "authSession",
@@ -34,7 +35,8 @@ describe("Electron preload bridge", () => {
       "checkForUpdates",
       "getVersion",
       "getUiVersion",
-      "notify"
+      "notify",
+      "copyText"
     ]);
     expect((bridge as { ipcRenderer?: unknown }).ipcRenderer).toBeUndefined();
 
@@ -42,6 +44,7 @@ describe("Electron preload bridge", () => {
     await bridge.authSession.clear();
     await bridge.selectScreenSource("screen-1");
     await bridge.notify({ title: "title", body: "body" });
+    await bridge.copyText("invite-token");
 
     expect(ipcRenderer.invoke).toHaveBeenCalledWith("echoverse:set-locale", "tr");
     expect(ipcRenderer.invoke).toHaveBeenCalledWith("auth:clear-session");
@@ -50,6 +53,7 @@ describe("Electron preload bridge", () => {
       title: "title",
       body: "body"
     });
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith("clipboard:write", "invite-token");
   });
 
   it("returns unsubscribe functions that remove the exact listener", () => {

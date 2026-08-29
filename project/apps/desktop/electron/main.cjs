@@ -10,7 +10,8 @@ const {
   Tray,
   Menu,
   nativeImage,
-  Notification
+  Notification,
+  clipboard
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const {
@@ -187,6 +188,14 @@ ipcMain.handle("echoverse:set-locale", (_evt, locale) => {
 ipcMain.handle("auth:get-session", () => loadAuthSession());
 ipcMain.handle("auth:set-session", (_evt, value) => saveAuthSession(value));
 ipcMain.handle("auth:clear-session", () => clearAuthSession());
+
+ipcMain.handle("clipboard:write", (_evt, value) => {
+  if (typeof value !== "string" || value.length === 0 || value.length > 512) {
+    return { ok: false };
+  }
+  clipboard.writeText(value);
+  return { ok: true };
+});
 
 ipcMain.handle("echoverse:notify", (_evt, payload) => {
   try {

@@ -3,6 +3,7 @@ export {};
 declare global {
   interface Window {
     echoverse?: {
+      isDesktop?: boolean;
       setLocale?: (locale: string) => Promise<{ ok: boolean }>;
       getConfig: () => Promise<{
         serverUrl: string;
@@ -59,6 +60,7 @@ declare global {
         body: string;
         icon?: string | null;
       }) => Promise<{ ok: boolean }>;
+      copyText?: (value: string) => Promise<{ ok: boolean }>;
     };
   }
 }

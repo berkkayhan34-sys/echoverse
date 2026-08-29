@@ -76,6 +76,8 @@
   "guild.inviteDescription": "Bu davet kodunu güvendiğin kişilerle paylaş.",
   "guild.copyInvite": "Davet kodunu kopyala",
   "guild.inviteCopyFailed": "Davet kodu kopyalanamadı. Kodu seçip elle kopyalayabilirsin.",
+  "guild.leave": "Sunucudan çık",
+  "guild.leaveConfirm": "{{guild}} sunucusundan çıkılsın mı? Yalnızca yeni bir davetle tekrar katılabilirsin.",
   "guild.self": " (sen)",
   "chat.searchPlaceholder": "Mesaj ara",
   "chat.messagePlaceholder": "Mesaj yaz",

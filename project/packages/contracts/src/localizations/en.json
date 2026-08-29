@@ -76,6 +76,8 @@
   "guild.inviteDescription": "Share this invite code with people you trust.",
   "guild.copyInvite": "Copy invite code",
   "guild.inviteCopyFailed": "Could not copy the invite code. Select and copy it manually.",
+  "guild.leave": "Leave server",
+  "guild.leaveConfirm": "Leave {{guild}}? You can rejoin only with a new invite.",
   "guild.self": " (you)",
   "chat.searchPlaceholder": "Search messages",
   "chat.messagePlaceholder": "Write a message",

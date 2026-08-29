@@ -129,6 +129,51 @@ select:focus {
   padding: 14px 9px;
 }
 
+.server-entry {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+}
+
+.server-remove,
+.mobile-guild-leave {
+  border: 1px solid var(--ev-border-strong);
+  background: var(--ev-danger-soft);
+  color: #ffc1c9;
+  cursor: pointer;
+}
+
+.server-remove {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 16px;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.server-entry:hover .server-remove,
+.server-entry:focus-within .server-remove {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.server-remove:hover,
+.mobile-guild-leave:hover {
+  background: var(--ev-danger);
+  color: white;
+}
+
 .server-logo,
 .server-circle {
   border-radius: var(--ev-radius-md);
@@ -292,6 +337,24 @@ select:focus {
   box-shadow: var(--ev-shadow-popover);
 }
 
+.auth-app-icon {
+  display: block;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 10px;
+  border-radius: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 24px rgba(87, 74, 255, 0.28));
+}
+
+.echoverse-wordmark {
+  display: block;
+  width: min(230px, 78%);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(113, 86, 255, 0.22));
+}
+
 .modal h2,
 .welcome-card h1 {
   color: var(--ev-text);
@@ -433,13 +496,23 @@ select:focus {
 }
 
 .guild-invite-button {
-  margin: 8px 10px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 10px 0 auto;
   border: 1px solid var(--ev-border);
-  border-radius: 8px;
-  background: var(--ev-primary-soft);
+  border-radius: var(--ev-radius-sm);
+  background: var(--ev-surface-hover);
   color: var(--ev-text);
-  padding: 6px 8px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
   cursor: pointer;
+}
+
+.guild-invite-button:hover {
+  border-color: var(--ev-primary);
+  background: var(--ev-primary-soft);
 }
 
 .lobby-name-editor {
@@ -768,6 +841,28 @@ select:focus {
   .mobile-action-row.add {
     color: var(--ev-success);
   }
+}
+
+.mobile-guild-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mobile-guild-entry .mobile-guild-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-guild-leave {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-left: 6px;
+  border-radius: var(--ev-radius-sm);
+  font-size: 18px;
+  line-height: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

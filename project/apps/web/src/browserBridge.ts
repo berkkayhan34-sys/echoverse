@@ -27,6 +27,7 @@ async function requestNotifications() {
 }
 
 const bridge = {
+  isDesktop: false,
   getConfig: async () => ({
     // Local web development must use the local backend described by DOCS/development.md.
     serverUrl: defaultServerUrl()
@@ -56,6 +57,18 @@ const bridge = {
       });
     }
     return { ok: true };
+  },
+
+  copyText: async (value: string) => {
+    if (typeof value !== "string" || value.length === 0 || value.length > 512) {
+      return { ok: false };
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
   },
 
   // Browser screen sharing uses the browser's native picker.

@@ -32,4 +32,7 @@ The `echoverse` main guild is reconciled idempotently at startup and during
 HTTP/socket authentication. `ECHO_VERSE_MAIN_OWNER_EMAIL` identifies the
 founder account from deployment configuration; existing accounts are backfilled
 as members and new accounts are enrolled without changing private-guild invite
-authorization. The value is never stored in source or logs.
+authorization. If historical membership rows are missing, the fixed main-guild
+identifier remains publicly readable/selectable while no account is promoted to
+owner/admin without the configured founder identity. The value is never stored
+in source or logs.
