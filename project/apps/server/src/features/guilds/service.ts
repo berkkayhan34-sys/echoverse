@@ -353,7 +353,6 @@ export function createGuildService({
   function leaveCurrentRoom(socket: any, user: User) {
     if (!user.roomId) return;
     const oldRoom = user.roomId;
-    const oldGuild = user.guildId;
     socket.leave(oldRoom);
     socket.to(oldRoom).emit("peer-left", { socketId: socket.id, username: user.username });
 

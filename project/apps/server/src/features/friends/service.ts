@@ -131,7 +131,7 @@ export function createFriendService({
       addresseeId?: string;
     } | null,
     selfId: string,
-    otherId: string
+    _otherId: string
   ): FriendshipRelationship {
     if (!friendship) return "none";
     const requesterId = friendship.requester_id ?? friendship.requesterId;
