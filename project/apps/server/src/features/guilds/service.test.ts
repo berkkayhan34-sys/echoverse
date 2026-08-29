@@ -107,4 +107,29 @@ describe("guild and presence service", () => {
     ]);
     expect(await service.leaveGuild("echoverse", "any-account")).toBe(false);
   });
+
+  it("does not persist channels for an in-memory guild missing from the database", async () => {
+    const queries: string[] = [];
+    const pool = {
+      query: vi.fn(async (sql: string) => {
+        queries.push(sql);
+        return { rows: [], rowCount: 0 };
+      })
+    };
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      pool,
+      guilds: new Map([
+        ["echoverse", { id: "echoverse", name: "EchoVerse", createdBy: "system", createdAt: "now" }]
+      ]),
+      guildMembers: new Map(),
+      users: new Map()
+    });
+
+    await service.loadGuilds();
+
+    expect(queries.some((sql) => sql.startsWith("INSERT INTO echoverse_guild_channels"))).toBe(
+      false
+    );
+  });
 });

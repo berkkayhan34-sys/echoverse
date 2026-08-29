@@ -182,7 +182,10 @@ export function createGuildService({
       channels.push(channel);
       guildChannels.set(channel.guildId, channels);
     }
-    for (const guild of guilds.values()) await ensureDefaultChannels(guild.id);
+    // Only database-backed guilds have a valid foreign-key target. The
+    // in-memory main-guild placeholder is reconciled later, after the founder
+    // row has been inserted by ensureMainGuildOwner.
+    for (const row of guildResult.rows) await ensureDefaultChannels(String(row.id));
     const moderationResult = await pool.query(
       "SELECT guild_id, account_id, action, expires_at, reason FROM echoverse_guild_moderation WHERE action IN ('ban','timeout') ORDER BY created_at"
     );
