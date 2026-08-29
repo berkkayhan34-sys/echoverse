@@ -64,6 +64,13 @@ export type GuildHandlerDependencies = {
   reportMember(guildId: string, reporterId: string, targetId: string, reason: string): Promise<any>;
   reportsFor(guildId: string, limit?: number): Promise<any[]>;
   hasPermission(guildId: string, accountId: string | undefined, permission: any): boolean;
+  hasScopedPermission(
+    guildId: string,
+    accountId: string | undefined,
+    permission: any,
+    channelId?: string,
+    categoryId?: string | null
+  ): boolean;
   moderateMember(
     guildId: string,
     actorId: string,
@@ -116,6 +123,7 @@ export function registerGuildHandlers({
   reportMember,
   reportsFor,
   hasPermission,
+  hasScopedPermission,
   moderateMember,
   auditFor,
   getPresence,
@@ -126,6 +134,30 @@ export function registerGuildHandlers({
   socketError,
   onValidatedSocketEvent
 }: GuildHandlerDependencies) {
+  function visibleChannels(guildId: string, accountId: string) {
+    return listChannels(guildId).filter((channel) =>
+      hasScopedPermission(guildId, accountId, "channel:view", channel.id, channel.categoryId)
+    );
+  }
+
+  function visibleCategories(guildId: string, accountId: string) {
+    return guildCategories(guildId).filter((category) =>
+      hasScopedPermission(guildId, accountId, "channel:view", undefined, category.id)
+    );
+  }
+
+  function broadcastChannelList(guildId: string) {
+    for (const peer of io.sockets.sockets.values()) {
+      const accountId = peer.data.account?.id;
+      if (!accountId || !isMember(guildId, accountId)) continue;
+      peer.emit("guild:channels", {
+        guildId,
+        channels: visibleChannels(guildId, accountId),
+        categories: visibleCategories(guildId, accountId)
+      });
+    }
+  }
+
   onValidatedSocketEvent(
     socket,
     "guild:create",
@@ -245,8 +277,8 @@ export function registerGuildHandlers({
       }
       callback?.({
         ok: true,
-        channels: listChannels(guildId),
-        categories: guildCategories(guildId)
+        channels: visibleChannels(guildId, user.accountId),
+        categories: visibleCategories(guildId, user.accountId)
       });
     }
   );
@@ -304,7 +336,7 @@ export function registerGuildHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
-      callback?.({ ok: true, categories: guildCategories(guildId) });
+      callback?.({ ok: true, categories: visibleCategories(guildId, user.accountId) });
     }
   );
 
@@ -335,7 +367,10 @@ export function registerGuildHandlers({
       callback: any
     ) => {
       const user = users.get(socket.id);
-      if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:manage")) {
+      if (
+        !user?.accountId ||
+        !hasScopedPermission(guildId, user.accountId, "channel:manage", undefined, categoryId)
+      ) {
         callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
         return;
       }
@@ -499,10 +534,7 @@ export function registerGuildHandlers({
         return;
       }
       const channel = await createChannel(guildId, sanitizeName(name, 64), type, categoryId);
-      for (const peer of io.sockets.sockets.values()) {
-        if (peer.data.account?.id && isMember(guildId, peer.data.account.id))
-          peer.emit("guild:channels", { guildId, channels: listChannels(guildId) });
-      }
+      broadcastChannelList(guildId);
       callback?.({ ok: true, channel });
     }
   );
@@ -520,7 +552,18 @@ export function registerGuildHandlers({
       callback: any
     ) => {
       const user = users.get(socket.id);
-      if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:manage")) {
+      const targetChannel = listChannels(guildId).find((entry) => entry.id === channelId);
+      if (
+        !user?.accountId ||
+        !targetChannel ||
+        !hasScopedPermission(
+          guildId,
+          user.accountId,
+          "channel:manage",
+          channelId,
+          targetChannel.categoryId
+        )
+      ) {
         callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
         return;
       }
@@ -532,10 +575,7 @@ export function registerGuildHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.channelNotFound") });
         return;
       }
-      for (const peer of io.sockets.sockets.values()) {
-        if (peer.data.account?.id && isMember(guildId, peer.data.account.id))
-          peer.emit("guild:channels", { guildId, channels: listChannels(guildId) });
-      }
+      broadcastChannelList(guildId);
       callback?.({ ok: true, channel });
     }
   );

@@ -16,8 +16,14 @@ export type ChatHandlerDependencies = {
   users: Map<string, User>;
   guildChat: ReturnType<typeof import("./guild-service.js").createGuildChatService>;
   isMember(guildId: string, accountId?: string): boolean;
-  listChannels(guildId: string): Array<{ id: string }>;
-  hasPermission(guildId: string, accountId: string | undefined, permission: any): boolean;
+  listChannels(guildId: string): Array<{ id: string; categoryId?: string | null }>;
+  hasScopedPermission(
+    guildId: string,
+    accountId: string | undefined,
+    permission: any,
+    channelId?: string,
+    categoryId?: string | null
+  ): boolean;
   socketError(socket: any, key: string): string;
   accountById(id: string): Promise<{ username: string; avatarData: string | null } | null>;
   resolveRequestLocale(value: unknown): Locale;
@@ -35,12 +41,28 @@ export function registerChatHandlers({
   guildChat,
   isMember,
   listChannels,
-  hasPermission,
+  hasScopedPermission,
   socketError,
   accountById,
   resolveRequestLocale,
   onValidatedSocketEvent
 }: ChatHandlerDependencies) {
+  function channelFor(guildId: string, channelId: string) {
+    return listChannels(guildId).find((channel) => channel.id === channelId);
+  }
+
+  function canAccessChannel(
+    guildId: string,
+    accountId: string | undefined,
+    permission: any,
+    channelId: string
+  ) {
+    const channel = channelFor(guildId, channelId);
+    return Boolean(
+      channel && hasScopedPermission(guildId, accountId, permission, channel.id, channel.categoryId)
+    );
+  }
+
   async function decorate(messages: any[]) {
     const accounts = new Map<string, { username: string; avatarData: string | null } | null>();
     return Promise.all(
@@ -64,11 +86,7 @@ export function registerChatHandlers({
     const { guildId, text } = parsed.data;
     const channelId = parsed.data.channelId || `${guildId}:general`;
     if (!user || user.activeGuildId !== guildId || !isMember(guildId, user.accountId)) return;
-    if (
-      !hasPermission(guildId, user.accountId, "message:send") ||
-      !listChannels(guildId).some((channel) => channel.id === channelId)
-    )
-      return;
+    if (!canAccessChannel(guildId, user.accountId, "message:send", channelId)) return;
 
     const safeText = sanitizeText(text);
     if (!safeText) return;
@@ -120,7 +138,7 @@ export function registerChatHandlers({
       if (
         !user?.accountId ||
         !isMember(guildId, user.accountId) ||
-        !listChannels(guildId).some((channel) => channel.id === channelId)
+        !canAccessChannel(guildId, user.accountId, "channel:view", channelId)
       ) {
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
@@ -134,7 +152,10 @@ export function registerChatHandlers({
     "chat-search",
     async ({ guildId, channelId, query, limit }, callback) => {
       const user = users.get(socket.id);
-      if (!user?.accountId || !isMember(guildId, user.accountId)) {
+      if (
+        !user?.accountId ||
+        !canAccessChannel(guildId, user.accountId, "channel:view", channelId)
+      ) {
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
@@ -153,7 +174,7 @@ export function registerChatHandlers({
       !message ||
       message.guildId !== guildId ||
       (message.senderId !== user.accountId &&
-        !hasPermission(guildId, user.accountId, "message:manage"))
+        !canAccessChannel(guildId, user.accountId, "message:manage", message.channelId))
     ) {
       callback?.({ ok: false, error: socketError(socket, "server.messageEditFailed") });
       return;
@@ -171,7 +192,7 @@ export function registerChatHandlers({
       !message ||
       message.guildId !== guildId ||
       (message.senderId !== user.accountId &&
-        !hasPermission(guildId, user.accountId, "message:manage"))
+        !canAccessChannel(guildId, user.accountId, "message:manage", message.channelId))
     ) {
       callback?.({ ok: false, error: socketError(socket, "server.messageDeleteFailed") });
       return;
@@ -194,7 +215,7 @@ export function registerChatHandlers({
       !user?.accountId ||
       !message ||
       message.guildId !== guildId ||
-      !hasPermission(guildId, user.accountId, "message:manage")
+      !canAccessChannel(guildId, user.accountId, "message:manage", message.channelId)
     ) {
       callback?.({ ok: false, error: socketError(socket, "server.messagePinFailed") });
       return;

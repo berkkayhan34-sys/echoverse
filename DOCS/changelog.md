@@ -7,6 +7,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.8.9
+
+- Harden channel and category authorization so persisted scope overrides are
+  enforced for chat history, message mutations, channel lists, and channel
+  administration.
+
 ## 1.8.8
 
 - Add persisted guild categories, channel/category ordering, archive state, and

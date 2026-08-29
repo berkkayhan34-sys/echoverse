@@ -163,4 +163,47 @@ describe("guild and presence service", () => {
       expect(await service.reportMember("guild", "member", "owner", `reason-${i}`)).not.toBeNull();
     expect(await service.reportMember("guild", "member", "owner", "blocked")).toBeNull();
   });
+
+  it("applies category permission denies to channel-scoped checks", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const guildMembers = new Map([["guild", new Set(["owner", "member"])]]);
+    const guildRoles = new Map([
+      [
+        "guild",
+        new Map([
+          ["owner", "owner" as const],
+          ["member", "member" as const]
+        ])
+      ]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      guildRoles,
+      users: new Map()
+    });
+    const category = await service.createCategory("guild", "Private");
+    const channel = await service.createChannel("guild", "private-chat", "text", category.id);
+
+    expect(
+      service.hasScopedPermission("guild", "member", "message:send", channel.id, category.id)
+    ).toBe(true);
+    await service.setPermissionOverride(
+      "guild",
+      "category",
+      category.id,
+      "member",
+      "message:send",
+      false
+    );
+    expect(
+      service.hasScopedPermission("guild", "member", "message:send", channel.id, category.id)
+    ).toBe(false);
+  });
 });
