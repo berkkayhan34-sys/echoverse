@@ -291,8 +291,7 @@ const {
   updateChannel,
   hasPermission,
   moderateMember,
-  auditFor,
-  moderationFor
+  auditFor
 } = guildService;
 
 guilds.set("echoverse", {

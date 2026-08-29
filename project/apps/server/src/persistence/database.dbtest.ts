@@ -60,7 +60,8 @@ describe("PostgreSQL persistence boundary", () => {
       "004_guild_access",
       "005_guild_lobby_name",
       "006_friendship_pair_integrity",
-      "007_normalize_legacy_lobby_names"
+      "007_normalize_legacy_lobby_names",
+      "008_spaces_channels_messages"
     ]);
   });
 
