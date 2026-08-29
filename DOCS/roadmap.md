@@ -70,7 +70,7 @@ acceptance, security, validation, documentation, and release gates.
 ```yaml
 id: FEATURE-001
 type: runtime_feature
-status: incomplete
+status: in_progress
 evidence: null
 blocks_roadmap: true
 decision: decisions/0013-guild-access-dm-mobile.md
