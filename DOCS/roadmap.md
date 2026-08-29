@@ -70,7 +70,7 @@ acceptance, security, validation, documentation, and release gates.
 ```yaml
 id: FEATURE-001
 type: runtime_feature
-status: in_progress
+status: incomplete
 evidence: null
 blocks_roadmap: true
 decision: decisions/0013-guild-access-dm-mobile.md
@@ -298,14 +298,14 @@ store distribution, and Windows/macOS packaging parity.
 id: PLATFORM-002
 type: desktop_ui_delivery
 sequence: 850
-status: in_progress
+status: incomplete
 evidence: null
 blocks_roadmap: true
 decision: decisions/0018-signed-remote-ui-cache.md
 depends_on: [PLATFORM-001]
 ```
 
-[-] Keep the Electron native shell stable while delivering the shared renderer
+[ ] Keep the Electron native shell stable while delivering the shared renderer
 through a signed, versioned UI manifest. Publish the manifest with the web
 assets, verify Ed25519 signatures and per-file SHA-512 digests in the packaged
 desktop client, atomically cache only compatible same-origin files, and fall
