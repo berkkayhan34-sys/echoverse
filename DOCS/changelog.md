@@ -7,6 +7,15 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.8.8
+
+- Add persisted guild categories, channel/category ordering, archive state, and
+  scope-aware permission overrides with deny-by-default evaluation.
+- Add authorized member listing, reporting, moderation rate limits, and audit
+  retention cleanup; expose shared role administration controls.
+- Improve the shared workspace server rail with a compact invite action, a
+  bottom-anchored account panel, and a protected-server leave workflow.
+
 ## 1.8.7
 
 - Ship the parity foundation and channel/messaging protocol additions in the

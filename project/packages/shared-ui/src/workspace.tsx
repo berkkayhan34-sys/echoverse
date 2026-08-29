@@ -3,7 +3,14 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { Account, FriendUser, Guild, GuildChannel, PeerInfo } from "@echoverse/contracts";
+import type {
+  Account,
+  FriendUser,
+  Guild,
+  GuildCategory,
+  GuildChannel,
+  PeerInfo
+} from "@echoverse/contracts";
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
 
@@ -28,6 +35,7 @@ export type WorkspaceSidebarLabels = {
   joinVoice?: string;
   invite?: string;
   leaveGuild?: string;
+  moreOptions: string;
   renameLobby?: string;
   lobbyNamePlaceholder?: string;
   save?: string;
@@ -67,6 +75,7 @@ function MobileWorkspaceNavigation({
   brandIconSrc,
   labels
 }: MobileWorkspaceNavigationProps) {
+  const [openGuildMenu, setOpenGuildMenu] = useState<string | null>(null);
   // Start with the server/channel navigator visible so mobile users land in
   // the same context-rich workspace as desktop users.
   const [mobileMenuOpen, setMobileMenuOpen] = useState(true);
@@ -126,14 +135,35 @@ function MobileWorkspaceNavigation({
                   {guild.id === "echoverse" && <small>⌂</small>}
                 </button>
                 {onLeaveGuild && guild.id !== "echoverse" && guild.role !== "owner" && (
-                  <button
-                    className="mobile-guild-leave"
-                    aria-label={`${labels.leaveGuild || "Leave server"}: ${guild.name}`}
-                    title={labels.leaveGuild || "Leave server"}
-                    onClick={() => onLeaveGuild(guild)}
-                  >
-                    ×
-                  </button>
+                  <div className="guild-options">
+                    <button
+                      className="guild-options-trigger"
+                      aria-label={`${labels.moreOptions}: ${guild.name}`}
+                      aria-haspopup="menu"
+                      aria-expanded={openGuildMenu === guild.id}
+                      title={labels.moreOptions}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenGuildMenu((current) => (current === guild.id ? null : guild.id));
+                      }}
+                    >
+                      ⋯
+                    </button>
+                    {openGuildMenu === guild.id && (
+                      <div className="guild-options-menu" role="menu">
+                        <button
+                          role="menuitem"
+                          className="guild-leave-action"
+                          onClick={() => {
+                            setOpenGuildMenu(null);
+                            onLeaveGuild(guild);
+                          }}
+                        >
+                          {labels.leaveGuild}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -312,10 +342,12 @@ export function WorkspaceSidebar({
   onToggleMute,
   onLogout,
   channels,
+  categories,
   onSelectChannel
 }: {
   guilds: Guild[];
   channels?: GuildChannel[];
+  categories?: GuildCategory[];
   activeGuild: Guild | null;
   presence: PeerInfo[];
   socketId?: string;
@@ -368,14 +400,28 @@ export function WorkspaceSidebar({
               {displayInitials(guild.name)}
             </button>
             {onLeaveGuild && guild.id !== "echoverse" && guild.role !== "owner" && (
-              <button
-                className="server-remove"
-                aria-label={`${labels.leaveGuild || "Leave server"}: ${guild.name}`}
-                title={labels.leaveGuild || "Leave server"}
-                onClick={() => onLeaveGuild(guild)}
-              >
-                ×
-              </button>
+              <details className="guild-options">
+                <summary
+                  className="guild-options-trigger"
+                  aria-label={`${labels.moreOptions}: ${guild.name}`}
+                  aria-haspopup="menu"
+                  title={labels.moreOptions}
+                >
+                  ⋯
+                </summary>
+                <div className="guild-options-menu" role="menu">
+                  <button
+                    role="menuitem"
+                    className="guild-leave-action"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      onLeaveGuild(guild);
+                    }}
+                  >
+                    {labels.leaveGuild}
+                  </button>
+                </div>
+              </details>
             )}
           </div>
         ))}
@@ -400,24 +446,33 @@ export function WorkspaceSidebar({
 
       <aside className="channels">
         <div className="guild-title">
-          <span>{activeGuild?.name}</span>
-          <small className="guild-code">
-            {activeGuild
-              ? `#${activeGuild.id}${activeGuild.role ? ` · ${activeGuild.role}` : ""}`
-              : ""}
-          </small>
+          <div className="guild-heading-copy">
+            <span>{activeGuild?.name}</span>
+            <small className="guild-code">
+              {activeGuild
+                ? `#${activeGuild.id}${activeGuild.role ? ` · ${activeGuild.role}` : ""}`
+                : ""}
+            </small>
+          </div>
           {activeGuild &&
             onCreateInvite &&
             (activeGuild.role === "owner" || activeGuild.role === "admin") && (
               <button className="guild-invite-button" onClick={() => onCreateInvite(activeGuild)}>
                 <span aria-hidden="true">↗</span>
-                {labels.invite || "Invite"}
+                <span>{labels.invite}</span>
               </button>
             )}
         </div>
 
         <div className="channel-group">
           <div className="channel-title">{labels.textChannels}</div>
+          {categories
+            ?.filter((category) => !category.archived)
+            .map((category) => (
+              <div className="channel-category-label" key={category.id}>
+                {category.name}
+              </div>
+            ))}
           {(channels?.length
             ? channels.filter((channel) => channel.type === "text")
             : [{ id: "legacy-general", name: labels.general, type: "text" as const }]

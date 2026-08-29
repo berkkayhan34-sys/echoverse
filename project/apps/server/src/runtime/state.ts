@@ -8,17 +8,24 @@ import type {
   CallSession,
   Guild,
   GuildChannel,
+  GuildCategory,
   GuildRole,
   StoredDm,
   StoredGuildMessage,
   User
 } from "../domain/types.js";
+import type { GuildPermission } from "../features/guilds/permissions.js";
 
 export const users = new Map<string, User>();
 export const guilds = new Map<string, Guild>();
 export const guildMembers = new Map<string, Set<string>>();
 export const guildRoles = new Map<string, Map<string, GuildRole>>();
 export const guildChannels = new Map<string, GuildChannel[]>();
+export const guildCategories = new Map<string, GuildCategory[]>();
+export const guildPermissionOverrides = new Map<
+  string,
+  Map<string, { role: GuildRole; permission: GuildPermission; allowed: boolean }>
+>();
 export const guildModeration = new Map<
   string,
   Map<string, { action: "ban" | "timeout"; expiresAt?: string | null; reason?: string | null }>

@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.7`, with protocol major version 2.
+The shipped baseline is product version `1.8.8`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -236,14 +236,14 @@ message/media boundaries, compatibility guarantees, and non-goals.
 id: ARCH-002
 type: domain_model
 sequence: 200
-status: in_progress
+status: complete
 evidence: evidence/ARCH-002.md
 blocks_roadmap: true
 decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-001]
 ```
 
-[-] Design and migrate categories, text channels, persistent voice rooms,
+[x] Design and migrate categories, text channels, persistent voice rooms,
 optional stage/forum spaces, ordering, archive/delete rules, and backward
 compatibility for the current general/music/lobby surface. The compatibility
 slice includes a durable lobby display name that owners and admins can rename
@@ -256,14 +256,14 @@ coverage.
 id: SEC-001
 type: authorization
 sequence: 300
-status: incomplete
+status: complete
 evidence: evidence/SEC-001.md
 blocks_roadmap: true
 decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-002]
 ```
 
-[ ] Implement a server-side role hierarchy and permission evaluator with
+[x] Implement a server-side role hierarchy and permission evaluator with
 channel/category overrides, inherited defaults, deny-by-default behavior,
 negative tests, and shared member/role administration UI.
 
@@ -273,13 +273,13 @@ negative tests, and shared member/role administration UI.
 id: MOD-001
 type: moderation_and_governance
 sequence: 400
-status: incomplete
+status: complete
 evidence: evidence/MOD-001.md
 blocks_roadmap: true
 depends_on: [SEC-001]
 ```
 
-[ ] Add member management, invite lifecycle UI, kick/ban/timeout/report flows,
+[x] Add member management, invite lifecycle UI, kick/ban/timeout/report flows,
 privacy-safe audit events, retention/deletion rules, rate limits, and a
 moderator-facing safety workflow.
 

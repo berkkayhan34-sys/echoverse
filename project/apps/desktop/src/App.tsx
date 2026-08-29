@@ -1620,6 +1620,7 @@ export default function App() {
         setError(result?.error || t("error.operationFailed"));
         return;
       }
+      setGuilds((current) => current.filter((entry) => entry.id !== guild.id));
       if (activeGuildRef.current?.id === guild.id) {
         if (joined) await leaveVoice();
         setActiveGuild(null);
@@ -2210,6 +2211,7 @@ export default function App() {
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
           leaveGuild: t("guild.leave"),
+          moreOptions: t("guild.moreOptions"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),

@@ -273,6 +273,35 @@ export const socketEventPayloadSchemas = {
       archived: z.boolean().optional()
     })
     .strict(),
+  "guild:categories": z.object({ guildId: identifierSchema }).strict(),
+  "guild:create-category": z
+    .object({ guildId: identifierSchema, name: z.string().trim().min(1).max(64) })
+    .strict(),
+  "guild:update-category": z
+    .object({
+      guildId: identifierSchema,
+      categoryId: identifierSchema,
+      name: z.string().trim().min(1).max(64).optional(),
+      archived: z.boolean().optional()
+    })
+    .strict(),
+  "guild:reorder-categories": z
+    .object({ guildId: identifierSchema, categoryIds: z.array(identifierSchema).min(1).max(100) })
+    .strict(),
+  "guild:reorder-channels": z
+    .object({ guildId: identifierSchema, channelIds: z.array(identifierSchema).min(1).max(200) })
+    .strict(),
+  "guild:set-permission-override": z
+    .object({
+      guildId: identifierSchema,
+      scopeType: z.enum(["guild", "category", "channel"]),
+      scopeId: identifierSchema,
+      role: z.enum(["owner", "admin", "moderator", "member"]),
+      permission: z.string().trim().min(1).max(64),
+      allowed: z.boolean()
+    })
+    .strict(),
+  "guild:members": z.object({ guildId: identifierSchema }).strict(),
   "guild:moderate-member": z
     .object({
       guildId: identifierSchema,
@@ -281,6 +310,16 @@ export const socketEventPayloadSchemas = {
       durationMinutes: z.number().int().min(1).max(43_200).optional(),
       reason: z.string().trim().max(500).optional()
     })
+    .strict(),
+  "guild:report-member": z
+    .object({
+      guildId: identifierSchema,
+      accountId: identifierSchema,
+      reason: z.string().trim().min(1).max(500)
+    })
+    .strict(),
+  "guild:reports": z
+    .object({ guildId: identifierSchema, limit: z.number().int().min(1).max(100).optional() })
     .strict(),
   "guild:audit": z
     .object({ guildId: identifierSchema, limit: z.number().int().min(1).max(100).optional() })
@@ -394,6 +433,14 @@ export type GuildChannel = {
   name: string;
   type: GuildChannelType;
   categoryId?: string | null;
+  position: number;
+  archived: boolean;
+  createdAt: string;
+};
+export type GuildCategory = {
+  id: string;
+  guildId: string;
+  name: string;
   position: number;
   archived: boolean;
   createdAt: string;

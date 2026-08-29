@@ -5,9 +5,9 @@
 
 ```yaml
 id: ARCH-002
-status: in_progress
+status: complete
 date: 2026-08-29
-revision: v1.8.7 / main 84d324f
+revision: v1.8.8 candidate
 ```
 
 Migration `008_spaces_channels_messages.sql` (PostgreSQL and SQLite) adds
@@ -15,5 +15,7 @@ categories, ordered text/voice/stage/forum channels, archive state, and
 durable guild messages. Deterministic `general` and `Lobby` channels preserve
 legacy clients; channel CRUD is exposed through validated socket events.
 
-Remaining work: category CRUD/reordering UI and full PostgreSQL migration-runner
-evidence. The roadmap remains incomplete until those acceptance gates pass.
+Migration `009_guild_governance` preserves category/channel ordering and adds
+scope tables used by the server evaluator. Socket contracts expose category
+CRUD, channel/category reordering, archive state, and member-visible channel
+updates; SQLite migration tests cover the complete ordered migration history.

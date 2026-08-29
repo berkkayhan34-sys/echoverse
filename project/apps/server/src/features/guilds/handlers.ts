@@ -4,7 +4,7 @@
  */
 
 import type { Guild, GuildChannelType, GuildRole, User } from "../../domain/types.js";
-import { canChangeRole } from "./permissions.js";
+import { canChangeRole, type GuildPermission } from "./permissions.js";
 
 export type GuildHandlerDependencies = {
   socket: any;
@@ -42,6 +42,27 @@ export type GuildHandlerDependencies = {
     updates: { name?: string; archived?: boolean }
   ): Promise<any>;
   listChannels(guildId: string): any[];
+  guildCategories(guildId: string): any[];
+  createCategory(guildId: string, name: string): Promise<any>;
+  updateCategory(
+    guildId: string,
+    categoryId: string,
+    updates: { name?: string; archived?: boolean }
+  ): Promise<any>;
+  reorderCategories(guildId: string, categoryIds: string[]): Promise<any>;
+  reorderChannels(guildId: string, channelIds: string[]): Promise<any>;
+  setPermissionOverride(
+    guildId: string,
+    scopeType: "guild" | "category" | "channel",
+    scopeId: string,
+    role: GuildRole,
+    permission: GuildPermission,
+    allowed: boolean
+  ): Promise<any>;
+  listPermissionOverrides(guildId: string): any[];
+  membersFor(guildId: string): Promise<any[]>;
+  reportMember(guildId: string, reporterId: string, targetId: string, reason: string): Promise<any>;
+  reportsFor(guildId: string, limit?: number): Promise<any[]>;
   hasPermission(guildId: string, accountId: string | undefined, permission: any): boolean;
   moderateMember(
     guildId: string,
@@ -84,6 +105,16 @@ export function registerGuildHandlers({
   createChannel,
   updateChannel,
   listChannels,
+  guildCategories,
+  createCategory,
+  updateCategory,
+  reorderCategories,
+  reorderChannels,
+  setPermissionOverride,
+  listPermissionOverrides,
+  membersFor,
+  reportMember,
+  reportsFor,
   hasPermission,
   moderateMember,
   auditFor,
@@ -212,7 +243,11 @@ export function registerGuildHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
-      callback?.({ ok: true, channels: listChannels(guildId) });
+      callback?.({
+        ok: true,
+        channels: listChannels(guildId),
+        categories: guildCategories(guildId)
+      });
     }
   );
 
@@ -257,6 +292,179 @@ export function registerGuildHandlers({
           peer.emit("guild:moderation-changed", { guildId, accountId, action });
       }
       callback?.({ ok: true });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:categories",
+    ({ guildId }: { guildId: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:view")) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+        return;
+      }
+      callback?.({ ok: true, categories: guildCategories(guildId) });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:create-category",
+    async ({ guildId, name }: { guildId: string; name: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:manage")) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      const category = await createCategory(guildId, sanitizeName(name, 64));
+      callback?.({ ok: true, category });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:update-category",
+    async (
+      {
+        guildId,
+        categoryId,
+        name,
+        archived
+      }: { guildId: string; categoryId: string; name?: string; archived?: boolean },
+      callback: any
+    ) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:manage")) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      const category = await updateCategory(guildId, categoryId, {
+        ...(name ? { name: sanitizeName(name, 64) } : {}),
+        ...(typeof archived === "boolean" ? { archived } : {})
+      });
+      if (!category) {
+        callback?.({ ok: false, error: socketError(socket, "server.channelNotFound") });
+        return;
+      }
+      callback?.({ ok: true, category });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:set-permission-override",
+    async ({ guildId, scopeType, scopeId, role, permission, allowed }: any, callback: any) => {
+      const user = users.get(socket.id);
+      if (
+        !user?.accountId ||
+        !hasPermission(guildId, user.accountId, "guild:manage") ||
+        !canChangeRole(roleFor(guildId, user.accountId), role)
+      ) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      const override = await setPermissionOverride(
+        guildId,
+        scopeType,
+        scopeId,
+        role,
+        permission,
+        allowed
+      );
+      callback?.(
+        override
+          ? { ok: true, override }
+          : { ok: false, error: socketError(socket, "server.channelNotFound") }
+      );
+    }
+  );
+
+  for (const [event, reorder] of [
+    ["guild:reorder-categories", reorderCategories],
+    ["guild:reorder-channels", reorderChannels]
+  ] as const) {
+    onValidatedSocketEvent(
+      socket,
+      event,
+      async (
+        {
+          guildId,
+          [event === "guild:reorder-categories" ? "categoryIds" : "channelIds"]: ids
+        }: any,
+        callback: any
+      ) => {
+        const user = users.get(socket.id);
+        if (!user?.accountId || !hasPermission(guildId, user.accountId, "channel:manage")) {
+          callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+          return;
+        }
+        const result = await reorder(guildId, ids);
+        callback?.(
+          result
+            ? {
+                ok: true,
+                [event === "guild:reorder-categories" ? "categories" : "channels"]: result
+              }
+            : { ok: false, error: socketError(socket, "server.channelNotFound") }
+        );
+      }
+    );
+  }
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:members",
+    async ({ guildId }: { guildId: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !hasPermission(guildId, user.accountId, "guild:view")) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+        return;
+      }
+      callback?.({
+        ok: true,
+        members: await membersFor(guildId),
+        overrides: listPermissionOverrides(guildId)
+      });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:report-member",
+    async (
+      { guildId, accountId, reason }: { guildId: string; accountId: string; reason: string },
+      callback: any
+    ) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !isMember(guildId, user.accountId) || !isMember(guildId, accountId)) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
+        return;
+      }
+      const report = await reportMember(
+        guildId,
+        user.accountId,
+        accountId,
+        sanitizeName(reason, 500)
+      );
+      if (!report) {
+        callback?.({ ok: false, error: socketError(socket, "server.rateLimited") });
+        return;
+      }
+      callback?.({ ok: true, report });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:reports",
+    async ({ guildId, limit }: { guildId: string; limit?: number }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId || !hasPermission(guildId, user.accountId, "guild:moderate")) {
+        callback?.({ ok: false, error: socketError(socket, "server.guildPermissionRequired") });
+        return;
+      }
+      callback?.({ ok: true, reports: await reportsFor(guildId, limit) });
     }
   );
 

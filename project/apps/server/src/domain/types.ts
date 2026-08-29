@@ -49,6 +49,15 @@ export type GuildChannel = {
   createdAt: string;
 };
 
+export type GuildCategory = {
+  id: string;
+  guildId: string;
+  name: string;
+  position: number;
+  archived: boolean;
+  createdAt: string;
+};
+
 export type GuildModerationAction = "kick" | "ban" | "timeout" | "unban";
 
 export type StoredGuildMessage = {

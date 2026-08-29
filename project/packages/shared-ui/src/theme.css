@@ -137,41 +137,87 @@ select:focus {
   height: 48px;
 }
 
-.server-remove,
-.mobile-guild-leave {
-  border: 1px solid var(--ev-border-strong);
-  background: var(--ev-danger-soft);
-  color: #ffc1c9;
-  cursor: pointer;
+.guild-options {
+  position: absolute;
+  z-index: 3;
 }
 
-.server-remove {
-  position: absolute;
+.server-entry .guild-options {
+  top: -5px;
   right: -5px;
-  bottom: -5px;
-  width: 19px;
-  height: 19px;
-  padding: 0;
+}
+
+.guild-options-trigger {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0 0 5px;
+  border: 1px solid var(--ev-border-strong);
   border-radius: 50%;
-  font-size: 14px;
-  line-height: 16px;
+  background: var(--ev-surface);
+  color: var(--ev-text-muted);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
   opacity: 0;
   transform: scale(0.8);
   transition:
     opacity 140ms ease,
-    transform 140ms ease;
+    transform 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
-.server-entry:hover .server-remove,
-.server-entry:focus-within .server-remove {
+.guild-options-trigger::-webkit-details-marker {
+  display: none;
+}
+
+details.guild-options > .guild-options-trigger {
+  list-style: none;
+}
+
+.server-entry:hover .guild-options-trigger,
+.server-entry:focus-within .guild-options-trigger,
+details.guild-options[open] > .guild-options-trigger,
+.guild-options-trigger[aria-expanded="true"] {
   opacity: 1;
   transform: scale(1);
 }
 
-.server-remove:hover,
-.mobile-guild-leave:hover {
-  background: var(--ev-danger);
-  color: white;
+.guild-options-trigger:hover,
+.guild-options-trigger:focus-visible {
+  background: var(--ev-surface-active);
+  color: var(--ev-text);
+}
+
+.guild-options-menu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 8px);
+  min-width: 142px;
+  padding: 5px;
+  border: 1px solid var(--ev-border-strong);
+  border-radius: var(--ev-radius-sm);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-popover);
+}
+
+.guild-leave-action {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ev-danger);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.guild-leave-action:hover,
+.guild-leave-action:focus-visible {
+  background: var(--ev-danger-soft);
+  color: #ffc1c9;
 }
 
 .server-logo,
@@ -200,6 +246,28 @@ select:focus {
   border-color: var(--ev-border);
 }
 
+.guild-title {
+  min-height: 55px;
+  height: auto;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.guild-heading-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guild-heading-copy > span,
+.guild-heading-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .channel {
   color: var(--ev-text-muted);
   border-radius: var(--ev-radius-sm);
@@ -221,6 +289,10 @@ select:focus {
 .call-controls {
   background: rgba(8, 10, 15, 0.72);
   border-color: var(--ev-border);
+}
+
+.channels .user-panel {
+  margin-top: auto;
 }
 
 .top-actions,
@@ -497,22 +569,59 @@ select:focus {
 
 .guild-invite-button {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
-  margin: 8px 10px 0 auto;
+  margin: 0;
   border: 1px solid var(--ev-border);
-  border-radius: var(--ev-radius-sm);
+  border-radius: 10px;
   background: var(--ev-surface-hover);
   color: var(--ev-text);
-  padding: 6px 10px;
+  padding: 7px 10px;
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .guild-invite-button:hover {
   border-color: var(--ev-primary);
   background: var(--ev-primary-soft);
+}
+
+.guild-admin-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--ev-border);
+  border-radius: 0.75rem;
+  background: var(--ev-surface);
+}
+.guild-admin-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.guild-admin-members-title {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.guild-admin-member {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+}
+.guild-admin-member > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.guild-admin-member select {
+  min-width: 7rem;
+}
+.guild-admin-member button {
+  color: var(--ev-danger);
 }
 
 .lobby-name-editor {
@@ -855,14 +964,23 @@ select:focus {
   min-width: 0;
 }
 
-.mobile-guild-leave {
+.mobile-guild-entry .guild-options {
+  position: relative;
   flex: none;
+  margin-left: 6px;
+}
+
+.mobile-guild-entry .guild-options-trigger {
   width: 30px;
   height: 30px;
-  margin-left: 6px;
-  border-radius: var(--ev-radius-sm);
-  font-size: 18px;
-  line-height: 1;
+  opacity: 1;
+  transform: none;
+}
+
+.mobile-guild-entry .guild-options-menu {
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -44,6 +44,7 @@ import type {
   FriendUser,
   Guild,
   GuildChannel,
+  GuildCategory,
   IncomingCall,
   PeerInfo,
   ScreenSource,
@@ -108,6 +109,7 @@ export default function App() {
   const [joined, setJoined] = useState(false);
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
+  const [guildCategories, setGuildCategories] = useState<GuildCategory[]>([]);
   const [activeChannelId, setActiveChannelId] = useState("");
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -545,9 +547,19 @@ export default function App() {
     });
     s.on(
       "guild:channels",
-      ({ guildId, channels }: { guildId: string; channels: GuildChannel[] }) => {
+      ({
+        guildId,
+        channels,
+        categories
+      }: {
+        guildId: string;
+        channels: GuildChannel[];
+        categories?: GuildCategory[];
+      }) => {
         if (guildId === activeGuildRef.current?.id)
           setGuildChannels(Array.isArray(channels) ? channels : []);
+        if (guildId === activeGuildRef.current?.id)
+          setGuildCategories(Array.isArray(categories) ? categories : []);
       }
     );
 
@@ -1507,6 +1519,7 @@ export default function App() {
         setError(result?.error || t("error.operationFailed"));
         return;
       }
+      setGuilds((current) => current.filter((entry) => entry.id !== guild.id));
       if (activeGuildRef.current?.id === guild.id) {
         if (joined) await leaveVoice();
         setActiveGuild(null);
@@ -2025,6 +2038,7 @@ export default function App() {
       <GuildPicker
         guilds={guilds}
         channels={guildChannels}
+        categories={guildCategories}
         platformLabel={isDesktopShell ? undefined : t("platform.web")}
         labels={{
           title: t("guild.list"),
@@ -2125,6 +2139,7 @@ export default function App() {
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
           leaveGuild: t("guild.leave"),
+          moreOptions: t("guild.moreOptions"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),

@@ -491,11 +491,19 @@ describe("shared chat UI", () => {
   it("keeps workspace navigation and profile controls inside the shared boundary", () => {
     const onSelectGuild = vi.fn();
     const onCreateGuild = vi.fn();
+    const onLeaveGuild = vi.fn();
     const onTogglePeerMute = vi.fn();
     const onPeerVolumeChange = vi.fn();
-    const guild = { id: "guild-1", name: "Echo", createdBy: "account-1", createdAt: "now" };
+    const guild = { id: "echoverse", name: "EchoVerse", createdBy: "account-1", createdAt: "now" };
+    const privateGuild = {
+      id: "guild-1",
+      name: "Private room",
+      createdBy: "account-2",
+      createdAt: "now",
+      role: "member" as const
+    };
     const element = WorkspaceSidebar({
-      guilds: [guild],
+      guilds: [guild, privateGuild],
       activeGuild: guild,
       presence: [
         { socketId: "socket-1", userId: "account-1", username: "Ada" },
@@ -523,10 +531,13 @@ describe("shared chat UI", () => {
         voiceConnected: (version) => `Voice connected · v${version}`,
         microphone: "Microphone",
         logout: "Sign out",
-        createGuild: "New server"
+        createGuild: "New server",
+        leaveGuild: "Leave server",
+        moreOptions: "More server options"
       },
       onSelectGuild,
       onCreateGuild,
+      onLeaveGuild,
       onTogglePeerMute,
       onPeerVolumeChange,
       onChangeAvatar: vi.fn(),
@@ -550,6 +561,17 @@ describe("shared chat UI", () => {
     expect(onCreateGuild).toHaveBeenCalledOnce();
     expect(onTogglePeerMute).toHaveBeenCalledWith("socket-2");
     expect(onPeerVolumeChange).toHaveBeenCalledWith("socket-2", 150);
+
+    const summaries = elementsOfType(element, "summary");
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.props["aria-label"]).toContain("Private room");
+    const leaveButton = buttons.find((button) => buttonText(button) === "Leave server");
+    const removeAttribute = vi.fn();
+    (leaveButton?.props.onClick as (event: unknown) => void)({
+      currentTarget: { closest: () => ({ removeAttribute }) }
+    });
+    expect(removeAttribute).toHaveBeenCalledWith("open");
+    expect(onLeaveGuild).toHaveBeenCalledWith(privateGuild);
   });
 });
 

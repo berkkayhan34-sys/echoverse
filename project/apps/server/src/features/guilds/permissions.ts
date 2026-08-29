@@ -16,6 +16,12 @@ export type GuildPermission =
   | "message:send"
   | "message:manage";
 
+export type PermissionOverride = {
+  role: GuildRole;
+  permission: GuildPermission;
+  allowed: boolean;
+};
+
 const roleRank: Record<GuildRole, number> = {
   member: 1,
   moderator: 2,
@@ -57,6 +63,20 @@ const rolePermissions: Record<GuildRole, ReadonlySet<GuildPermission>> = {
 
 export function roleCan(role: GuildRole | undefined, permission: GuildPermission) {
   return Boolean(role && rolePermissions[role].has(permission));
+}
+
+/** Most-specific scope wins; an explicit deny is never bypassed by inheritance. */
+export function permissionCan(
+  role: GuildRole | undefined,
+  permission: GuildPermission,
+  scopes: ReadonlyArray<ReadonlyMap<string, PermissionOverride>>
+) {
+  if (!role) return false;
+  for (const scope of scopes) {
+    const override = scope.get(`${role}:${permission}`);
+    if (override) return override.allowed;
+  }
+  return roleCan(role, permission);
 }
 
 export function roleRankOf(role: GuildRole | undefined) {

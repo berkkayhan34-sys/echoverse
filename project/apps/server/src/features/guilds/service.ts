@@ -9,11 +9,17 @@ import type {
   Guild,
   GuildChannel,
   GuildChannelType,
+  GuildCategory,
   GuildRole,
   User
 } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
-import { roleCan } from "./permissions.js";
+import {
+  permissionCan,
+  type GuildPermission,
+  type PermissionOverride,
+  roleCan
+} from "./permissions.js";
 
 export type GuildServiceDependencies = {
   io: any;
@@ -22,6 +28,8 @@ export type GuildServiceDependencies = {
   guildMembers: Map<string, Set<string>>;
   guildRoles?: Map<string, Map<string, GuildRole>>;
   guildChannels?: Map<string, GuildChannel[]>;
+  guildCategories?: Map<string, GuildCategory[]>;
+  guildPermissionOverrides?: Map<string, Map<string, PermissionOverride>>;
   guildModeration?: Map<
     string,
     Map<string, { action: "ban" | "timeout"; expiresAt?: string | null; reason?: string | null }>
@@ -60,6 +68,8 @@ export function createGuildService({
   guildInvites: providedGuildInvites,
   users,
   guildChannels: providedGuildChannels,
+  guildCategories: providedGuildCategories,
+  guildPermissionOverrides: providedPermissionOverrides,
   guildModeration: providedGuildModeration,
   guildAuditEvents: providedAuditEvents
 }: GuildServiceDependencies) {
@@ -71,6 +81,9 @@ export function createGuildService({
       { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
     >();
   const guildChannels = providedGuildChannels ?? new Map<string, GuildChannel[]>();
+  const guildCategories = providedGuildCategories ?? new Map<string, GuildCategory[]>();
+  const guildPermissionOverrides =
+    providedPermissionOverrides ?? new Map<string, Map<string, PermissionOverride>>();
   const guildModeration =
     providedGuildModeration ??
     new Map<
@@ -91,6 +104,8 @@ export function createGuildService({
         createdAt: string;
       }>
     >();
+  const moderationAttempts = new Map<string, number[]>();
+  const reportAttempts = new Map<string, number[]>();
   function toGuild(row: Record<string, any>): Guild {
     const createdAt = row.created_at?.toISOString?.() || String(row.created_at);
     return {
@@ -182,6 +197,37 @@ export function createGuildService({
       channels.push(channel);
       guildChannels.set(channel.guildId, channels);
     }
+    const categoryResult = await pool.query(
+      "SELECT id,guild_id,name,position,archived,created_at FROM echoverse_guild_categories ORDER BY guild_id,position,id"
+    );
+    for (const row of categoryResult.rows) {
+      const category: GuildCategory = {
+        id: String(row.id),
+        guildId: String(row.guild_id),
+        name: String(row.name),
+        position: Number(row.position || 0),
+        archived: Boolean(row.archived),
+        createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+      };
+      const categories = guildCategories.get(category.guildId) || [];
+      categories.push(category);
+      guildCategories.set(category.guildId, categories);
+    }
+    const overrideResult = await pool.query(
+      "SELECT guild_id,scope_type,scope_id,role,permission,allowed FROM echoverse_guild_permission_overrides"
+    );
+    for (const row of overrideResult.rows) {
+      const overrides = guildPermissionOverrides.get(String(row.guild_id)) || new Map();
+      overrides.set(
+        `${String(row.scope_type)}:${String(row.scope_id)}:${String(row.role)}:${String(row.permission)}`,
+        {
+          role: String(row.role) as any,
+          permission: String(row.permission) as GuildPermission,
+          allowed: Boolean(row.allowed)
+        }
+      );
+      guildPermissionOverrides.set(String(row.guild_id), overrides);
+    }
     // Only database-backed guilds have a valid foreign-key target. The
     // in-memory main-guild placeholder is reconciled later, after the founder
     // row has been inserted by ensureMainGuildOwner.
@@ -230,7 +276,41 @@ export function createGuildService({
     if (!isMember(guildId, accountId)) return false;
     const restriction = accountId ? moderationFor(guildId, accountId) : null;
     if (restriction?.action === "timeout" && permission !== "guild:moderate") return false;
-    return roleCan(roleFor(guildId, accountId), permission);
+    return permissionCan(roleFor(guildId, accountId), permission, [
+      guildPermissionScope(guildId, "guild", guildId)
+    ]);
+  }
+
+  function guildPermissionScope(
+    guildId: string,
+    scopeType: "guild" | "category" | "channel",
+    scopeId: string
+  ) {
+    const source = guildPermissionOverrides.get(guildId);
+    if (!source) return new Map<string, PermissionOverride>();
+    const scope = new Map<string, PermissionOverride>();
+    for (const [key, value] of source) {
+      if (key.startsWith(`${scopeType}:${scopeId}:`))
+        scope.set(`${value.role}:${value.permission}`, value);
+    }
+    return scope;
+  }
+
+  function hasScopedPermission(
+    guildId: string,
+    accountId: string | undefined,
+    permission: GuildPermission,
+    channelId?: string,
+    categoryId?: string | null
+  ) {
+    if (!isMember(guildId, accountId)) return false;
+    const restriction = accountId ? moderationFor(guildId, accountId) : null;
+    if (restriction?.action === "timeout" && permission !== "guild:moderate") return false;
+    return permissionCan(roleFor(guildId, accountId), permission, [
+      ...(channelId ? [guildPermissionScope(guildId, "channel", channelId)] : []),
+      ...(categoryId ? [guildPermissionScope(guildId, "category", categoryId)] : []),
+      guildPermissionScope(guildId, "guild", guildId)
+    ]);
   }
 
   function guildList(accountId?: string) {
@@ -398,6 +478,189 @@ export function createGuildService({
     return [...(guildChannels.get(guildId) || [])].filter((channel) => !channel.archived);
   }
 
+  function listCategories(guildId: string) {
+    return [...(guildCategories.get(guildId) || [])].filter((category) => !category.archived);
+  }
+
+  async function createCategory(guildId: string, name: string) {
+    const categories = guildCategories.get(guildId) || [];
+    const category: GuildCategory = {
+      id: crypto.randomBytes(8).toString("hex"),
+      guildId,
+      name,
+      position: categories.length,
+      archived: false,
+      createdAt: new Date().toISOString()
+    };
+    if (pool)
+      await pool.query(
+        "INSERT INTO echoverse_guild_categories (id,guild_id,name,position,archived,created_at) VALUES ($1,$2,$3,$4,0,$5)",
+        [category.id, guildId, name, category.position, category.createdAt]
+      );
+    guildCategories.set(guildId, [...categories, category]);
+    return category;
+  }
+
+  async function updateCategory(
+    guildId: string,
+    categoryId: string,
+    updates: { name?: string; archived?: boolean }
+  ) {
+    const category = guildCategories.get(guildId)?.find((entry) => entry.id === categoryId);
+    if (!category) return null;
+    const updated = { ...category, ...updates };
+    if (pool)
+      await pool.query(
+        "UPDATE echoverse_guild_categories SET name=$1,archived=$2 WHERE id=$3 AND guild_id=$4",
+        [updated.name, updated.archived ? 1 : 0, categoryId, guildId]
+      );
+    guildCategories.set(
+      guildId,
+      (guildCategories.get(guildId) || []).map((entry) =>
+        entry.id === categoryId ? updated : entry
+      )
+    );
+    return updated;
+  }
+
+  async function reorderCategories(guildId: string, categoryIds: string[]) {
+    const current = guildCategories.get(guildId) || [];
+    if (
+      new Set(categoryIds).size !== categoryIds.length ||
+      categoryIds.some((id) => !current.some((entry) => entry.id === id))
+    )
+      return null;
+    const byId = new Map(current.map((entry) => [entry.id, entry]));
+    const reordered = categoryIds.map((id, position) => ({ ...byId.get(id)!, position }));
+    if (pool)
+      for (const category of reordered)
+        await pool.query(
+          "UPDATE echoverse_guild_categories SET position=$1 WHERE id=$2 AND guild_id=$3",
+          [category.position, category.id, guildId]
+        );
+    guildCategories.set(guildId, reordered);
+    return reordered;
+  }
+
+  async function setPermissionOverride(
+    guildId: string,
+    scopeType: "guild" | "category" | "channel",
+    scopeId: string,
+    role: GuildRole,
+    permission: GuildPermission,
+    allowed: boolean
+  ) {
+    const validPermissions = new Set<GuildPermission>([
+      "guild:view",
+      "guild:manage",
+      "guild:invite",
+      "guild:moderate",
+      "channel:view",
+      "channel:manage",
+      "message:send",
+      "message:manage"
+    ]);
+    if (!validPermissions.has(permission) || !guilds.has(guildId)) return null;
+    if (
+      scopeType === "category" &&
+      !guildCategories.get(guildId)?.some((entry) => entry.id === scopeId)
+    )
+      return null;
+    if (
+      scopeType === "channel" &&
+      !guildChannels.get(guildId)?.some((entry) => entry.id === scopeId)
+    )
+      return null;
+    const overrides =
+      guildPermissionOverrides.get(guildId) || new Map<string, PermissionOverride>();
+    const key = `${scopeType}:${scopeId}:${role}:${permission}`;
+    const value = { role, permission, allowed };
+    if (pool)
+      await pool.query(
+        "INSERT INTO echoverse_guild_permission_overrides (guild_id,scope_type,scope_id,role,permission,allowed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (guild_id,scope_type,scope_id,role,permission) DO UPDATE SET allowed=$6",
+        [guildId, scopeType, scopeId, role, permission, allowed ? 1 : 0]
+      );
+    overrides.set(key, value);
+    guildPermissionOverrides.set(guildId, overrides);
+    return value;
+  }
+
+  function listPermissionOverrides(guildId: string) {
+    return [...(guildPermissionOverrides.get(guildId)?.entries() || [])].map(([key, value]) => ({
+      key,
+      ...value
+    }));
+  }
+
+  async function membersFor(guildId: string) {
+    if (pool) {
+      const result = await pool.query(
+        "SELECT m.account_id, m.role, u.username, u.avatar_data FROM echoverse_guild_members m JOIN echoverse_users u ON u.id=m.account_id WHERE m.guild_id=$1 ORDER BY u.username",
+        [guildId]
+      );
+      return result.rows.map((row) => ({
+        accountId: String(row.account_id),
+        role: String(row.role),
+        username: String(row.username),
+        avatarData: row.avatar_data || null
+      }));
+    }
+    return [...(guildMembers.get(guildId) || [])].map((accountId) => ({
+      accountId,
+      role: roleFor(guildId, accountId) || "member",
+      username: users.get(accountId)?.username || accountId,
+      avatarData: users.get(accountId)?.avatarData || null
+    }));
+  }
+
+  async function reportMember(
+    guildId: string,
+    reporterId: string,
+    targetId: string,
+    reason: string
+  ) {
+    const key = `${guildId}:${reporterId}`;
+    const now = Date.now();
+    const recent = (reportAttempts.get(key) || []).filter(
+      (timestamp) => now - timestamp < 3_600_000
+    );
+    if (recent.length >= 10) return null;
+    recent.push(now);
+    reportAttempts.set(key, recent);
+    const report = {
+      id: crypto.randomUUID(),
+      guildId,
+      reporterId,
+      targetId,
+      reason,
+      status: "open",
+      createdAt: new Date().toISOString()
+    };
+    if (pool)
+      await pool.query(
+        "INSERT INTO echoverse_guild_reports (id,guild_id,reporter_id,target_id,reason,status,created_at) VALUES ($1,$2,$3,$4,$5,'open',$6)",
+        [report.id, guildId, reporterId, targetId, reason, report.createdAt]
+      );
+    return report;
+  }
+
+  async function reportsFor(guildId: string, limit = 100) {
+    if (!pool) return [];
+    const result = await pool.query(
+      "SELECT id,guild_id,reporter_id,target_id,reason,status,created_at FROM echoverse_guild_reports WHERE guild_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2",
+      [guildId, limit]
+    );
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      guildId: String(row.guild_id),
+      reporterId: String(row.reporter_id),
+      targetId: String(row.target_id),
+      reason: String(row.reason),
+      status: String(row.status),
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at)
+    }));
+  }
+
   async function createChannel(
     guildId: string,
     name: string,
@@ -456,6 +719,25 @@ export function createGuildService({
       )
     );
     return updated;
+  }
+
+  async function reorderChannels(guildId: string, channelIds: string[]) {
+    const current = guildChannels.get(guildId) || [];
+    if (
+      new Set(channelIds).size !== channelIds.length ||
+      channelIds.some((id) => !current.some((entry) => entry.id === id))
+    )
+      return null;
+    const byId = new Map(current.map((entry) => [entry.id, entry]));
+    const reordered = channelIds.map((id, position) => ({ ...byId.get(id)!, position }));
+    if (pool)
+      for (const channel of reordered)
+        await pool.query(
+          "UPDATE echoverse_guild_channels SET position=$1 WHERE id=$2 AND guild_id=$3",
+          [channel.position, channel.id, guildId]
+        );
+    guildChannels.set(guildId, reordered);
+    return reordered;
   }
 
   function hashInvite(token: string) {
@@ -580,6 +862,14 @@ export function createGuildService({
     durationMinutes?: number,
     reason?: string
   ) {
+    const key = `${guildId}:${actorId}`;
+    const now = Date.now();
+    const recent = (moderationAttempts.get(key) || []).filter(
+      (timestamp) => now - timestamp < 60_000
+    );
+    if (recent.length >= 30) return false;
+    recent.push(now);
+    moderationAttempts.set(key, recent);
     if (!guilds.has(guildId) || accountId === guilds.get(guildId)?.ownerId) return false;
     if (action === "kick" || action === "ban") {
       if (pool)
@@ -631,6 +921,12 @@ export function createGuildService({
   }
 
   async function auditFor(guildId: string, limit = 100) {
+    const cutoff = new Date(Date.now() - 180 * 86_400_000).toISOString();
+    if (pool)
+      await pool.query(
+        "DELETE FROM echoverse_guild_audit_events WHERE guild_id=$1 AND created_at < $2",
+        [guildId, cutoff]
+      );
     if (!pool) return (guildAuditEvents.get(guildId) || []).slice(-limit);
     const result = await pool.query(
       "SELECT id,guild_id,actor_id,action,target_id,metadata,created_at FROM echoverse_guild_audit_events WHERE guild_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2",
@@ -683,7 +979,18 @@ export function createGuildService({
     createChannel,
     ensureDefaultChannels,
     guildChannels: listChannels,
+    guildCategories: listCategories,
+    createCategory,
+    updateCategory,
+    reorderCategories,
+    setPermissionOverride,
+    listPermissionOverrides,
+    hasScopedPermission,
+    membersFor,
+    reportMember,
+    reportsFor,
     updateChannel,
+    reorderChannels,
     hasPermission,
     moderateMember,
     auditFor,
