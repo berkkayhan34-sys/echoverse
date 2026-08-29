@@ -601,7 +601,6 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   initDatabase()
     .then(async () => {
       await loadGuilds();
-      await ensureDefaultChannels("echoverse");
       const owner = process.env.ECHO_VERSE_MAIN_OWNER_EMAIL
         ? await accountByEmail(
             process.env.ECHO_VERSE_MAIN_OWNER_EMAIL.trim().toLocaleLowerCase("en-US")
@@ -618,8 +617,13 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
         });
       });
     })
-    .catch(() => {
-      serverLogger.error("echoverse.database.init_failed");
+    .catch((error: unknown) => {
+      const failure = error instanceof Error ? error.message : String(error);
+      serverLogger.error("echoverse.database.init_failed", {
+        startupFailure: failure
+          .replace(/(?:postgres(?:ql)?:\/\/)[^\s]+/gi, "[REDACTED_URL]")
+          .slice(0, 240)
+      });
       process.exit(1);
     });
 }

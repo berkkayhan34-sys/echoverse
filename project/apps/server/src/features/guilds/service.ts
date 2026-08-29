@@ -336,6 +336,10 @@ export function createGuildService({
         setMembership(MAIN_GUILD_ID, memberId, "member");
     }
     setMembership(MAIN_GUILD_ID, account.id, "owner");
+    // The main guild row is inserted above. Create its default channels only
+    // after that foreign-key target exists; this also repairs older databases
+    // that were provisioned before channel persistence was introduced.
+    await ensureDefaultChannels(MAIN_GUILD_ID);
     for (const peer of io.sockets.sockets.values()) {
       const peerAccountId = peer.data.account?.id;
       if (peerAccountId) peer.emit("guild:list", guildList(peerAccountId));
