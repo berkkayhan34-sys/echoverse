@@ -90,7 +90,10 @@ function httpError(
 
 const app = express();
 app.disable("x-powered-by");
-app.set("trust proxy", config.trustProxy);
+// Render terminates TLS through one trusted proxy hop. A numeric hop count
+// preserves the client IP for rate limiting without permitting arbitrary
+// forwarded headers as `trust proxy=true` would.
+app.set("trust proxy", config.trustProxy ? 1 : 0);
 app.use((req, res, next) => {
   const correlationId = createCorrelationId(req.get("X-EchoVerse-Request-ID"));
   const startedAt = performance.now();

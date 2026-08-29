@@ -50,8 +50,10 @@ secret configuration, health, and logs before sharing an installer. Local web
 cookies are intentionally non-secure for the HTTP development origin; hosted
 deployments must set `WEB_COOKIE_SECURE=true` and use
 `WEB_COOKIE_SAMESITE=none` when the approved web origin is cross-site. Set
-`TRUST_PROXY=true` only when the service is behind a trusted TLS-terminating
-proxy.
+`TRUST_PROXY=true` only when the service is behind one trusted TLS-terminating
+proxy hop. The server maps this boolean to Express's numeric one-hop setting
+so forwarded client addresses remain rate-limitable without trusting an
+arbitrary chain of headers.
 
 ## Desktop UI cache
 
