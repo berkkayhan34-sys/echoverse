@@ -7,9 +7,9 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ```yaml
 id: RELEASE-1.9.0
-status: in_progress
+status: complete
 date: 2026-08-29
-revision: working tree
+revision: 73a0ed2
 ```
 
 ## Verified in this working tree
@@ -30,22 +30,23 @@ revision: working tree
 
 ## Deferred or not yet verified
 
-- Adding a participant directly from an already active one-to-one call is not
-  yet exposed as a complete UI flow; group calls can be started from a
-  persistent group DM.
 - Full Unicode catalog versioning, rich media, SFU scaling, background voice,
   and in-place participant renegotiation inside an active one-to-one call
   remain deferred. Creating a group from an active one-to-one call now
   preserves the current peer and starts the group call automatically.
-- GitHub release and Render acceptance remain pending until publication and
-  post-deploy health checks complete.
+- GitHub release `v1.9.0` is published with Windows, macOS Intel, and macOS
+  Apple Silicon artifacts. Render health returned HTTP 200 with product
+  version `1.9.0`, protocol version `2`, and PostgreSQL persistence.
 
 ## Validation run so far
 
-| Check                                                         | Result                     |
-| ------------------------------------------------------------- | -------------------------- |
-| `npm run typecheck`                                           | pass                       |
-| `npm run lint`                                                | pass                       |
-| `npm test -- --run --reporter=dot`                            | pass (22 files, 112 tests) |
-| format, localization, build, audit, and Windows package smoke | pass                       |
-| GitHub release and Render deployment gates                    | pending                    |
+| Check                                                         | Result                        |
+| ------------------------------------------------------------- | ----------------------------- |
+| `npm run typecheck`                                           | pass                          |
+| `npm run lint`                                                | pass                          |
+| `npm test -- --run --reporter=dot`                            | pass (22 files, 112 tests)    |
+| format, localization, build, audit, and Windows package smoke | pass                          |
+| GitHub Release workflow `33272054338`                         | pass                          |
+| Quality Gate workflow `33272026294`                           | pass                          |
+| Deploy EchoVerse Web workflow `33272026295`                   | pass                          |
+| Render `GET /health`                                          | pass (`200`, version `1.9.0`) |
