@@ -300,7 +300,6 @@ guilds.set("echoverse", {
   createdBy: "system",
   createdAt: new Date().toISOString()
 });
-void ensureDefaultChannels("echoverse");
 
 function verifyToken(token: string) {
   return sessionManager.verifyAccess(token)?.userId || "";
@@ -602,6 +601,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   initDatabase()
     .then(async () => {
       await loadGuilds();
+      await ensureDefaultChannels("echoverse");
       const owner = process.env.ECHO_VERSE_MAIN_OWNER_EMAIL
         ? await accountByEmail(
             process.env.ECHO_VERSE_MAIN_OWNER_EMAIL.trim().toLocaleLowerCase("en-US")
