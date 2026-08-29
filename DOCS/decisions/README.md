@@ -25,4 +25,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0015: unattended desktop updates](0015-unattended-desktop-updates.md)
 - [ADR-0016: managed main guild and mobile shell](0016-main-guild-and-mobile-shell.md)
 - [ADR-0017: shared responsive renderer surface](0017-shared-responsive-renderer-surface.md)
+- [ADR-0018: signed remote UI cache for the desktop shell](0018-signed-remote-ui-cache.md)
 - [Unresolved decisions](unresolved.md)

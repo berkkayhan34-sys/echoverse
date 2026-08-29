@@ -56,17 +56,17 @@ const ICE_SERVERS: RTCIceServer[] = [
 ];
 
 const EV_SOUNDS = {
-  join: "/sounds/voice-join.wav",
-  leave: "/sounds/voice-leave.wav",
-  message: "/sounds/message.wav",
-  mic: "/sounds/mic-toggle.wav",
-  call: "/sounds/incoming-call.wav",
-  outgoing: "/sounds/outgoing-call.wav",
-  connected: "/sounds/call-connected.wav",
-  ended: "/sounds/call-ended.wav",
-  deafen: "/sounds/deafen-toggle.wav",
-  screenShare: "/sounds/screen-share-toggle.wav",
-  mention: "/sounds/mention.wav"
+  join: "./sounds/voice-join.wav",
+  leave: "./sounds/voice-leave.wav",
+  message: "./sounds/message.wav",
+  mic: "./sounds/mic-toggle.wav",
+  call: "./sounds/incoming-call.wav",
+  outgoing: "./sounds/outgoing-call.wav",
+  connected: "./sounds/call-connected.wav",
+  ended: "./sounds/call-ended.wav",
+  deafen: "./sounds/deafen-toggle.wav",
+  screenShare: "./sounds/screen-share-toggle.wav",
+  mention: "./sounds/mention.wav"
 } as const;
 
 function resolveEvSoundUrl(path: string) {
@@ -2214,7 +2214,7 @@ export default function App() {
         account={account}
         username={username}
         appVersion={appVersion}
-        brandIconSrc="/branding/echoverse-icon.png"
+        brandIconSrc="./branding/echoverse-icon.png"
         labels={{
           appName: t("app.name"),
           textChannels: t("guild.textChannels"),

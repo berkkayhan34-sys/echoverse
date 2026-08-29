@@ -40,6 +40,19 @@ Release validation must cover this no-UI path on every supported desktop
 platform; a failed or timed-out check must leave the known-good version
 launchable.
 
+## Desktop UI delivery
+
+The web workflow also publishes a signed `ui-manifest.json` beside the static
+web assets. It is signed with the protected `ECHO_VERSE_UI_SIGNING_KEY` GitHub
+Actions secret and contains the canonical product version, minimum compatible
+shell version, entrypoint, file sizes, and SHA-512 digests. Packaged Electron
+clients fetch this manifest over HTTPS at startup, verify the embedded Ed25519
+public key, download same-origin relative files into a staging directory, and
+atomically activate the cache. A failed check retains the previous verified
+cache or the bundled renderer. The desktop shell must not load a live arbitrary
+URL, and UI cache activation must not bypass the native updater or its release
+validation.
+
 ## Automation contract
 
 GitHub Actions reads `VERSION`, validates package mirrors, builds each target,

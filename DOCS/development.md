@@ -53,6 +53,16 @@ deployments must set `WEB_COOKIE_SECURE=true` and use
 `TRUST_PROXY=true` only when the service is behind a trusted TLS-terminating
 proxy.
 
+## Desktop UI cache
+
+The packaged desktop shell reads `uiUpdate.manifestUrl` from
+`project/apps/desktop/config.json`. The URL must be an HTTPS GitHub Pages
+manifest. The web build creates the manifest with `npm run ui:manifest`; CI
+supplies the protected `ECHO_VERSE_UI_SIGNING_KEY` secret and publishes the
+manifest beside the hashed static assets. Do not disable signature validation,
+point a packaged build at an arbitrary host, or commit the private signing
+key. The shell keeps the bundled renderer as its final recovery path.
+
 Persistence is selected explicitly: set `SQLITE_PATH=./tmp/runtime/echoverse.sqlite`
 for a local file-backed database, or set `DATABASE_URL` for PostgreSQL. Do not
 set both. SQLite and PostgreSQL use the same migration IDs and table/column

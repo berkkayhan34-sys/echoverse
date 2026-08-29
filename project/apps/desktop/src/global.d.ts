@@ -7,6 +7,7 @@ declare global {
       getConfig: () => Promise<{
         serverUrl: string;
         spotifyClientId?: string;
+        uiUpdate?: { enabled?: boolean; manifestUrl?: string };
       }>;
       authSession?: {
         get: () => Promise<{
@@ -64,6 +65,7 @@ declare global {
       selectScreenSource?: (sourceId: string) => Promise<{ ok: boolean }>;
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       getVersion?: () => Promise<string>;
+      getUiVersion?: () => Promise<string | null>;
       notify?: (payload: {
         title: string;
         body: string;

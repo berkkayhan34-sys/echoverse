@@ -292,6 +292,31 @@ depends_on: [CHAT-001, VOICE-001]
 deep links, permissions, offline behavior, background voice, accessibility,
 store distribution, and Windows/macOS packaging parity.
 
+### signed-desktop-ui-cache
+
+```yaml
+id: PLATFORM-002
+type: desktop_ui_delivery
+sequence: 850
+status: in_progress
+evidence: null
+blocks_roadmap: true
+decision: decisions/0018-signed-remote-ui-cache.md
+depends_on: [PLATFORM-001]
+```
+
+[-] Keep the Electron native shell stable while delivering the shared renderer
+through a signed, versioned UI manifest. Publish the manifest with the web
+assets, verify Ed25519 signatures and per-file SHA-512 digests in the packaged
+desktop client, atomically cache only compatible same-origin files, and fall
+back to the previous cache or bundled renderer on every failure. Keep native
+shell updates on the existing unattended installer path.
+
+Acceptance requires signature/path/size/hash/fallback tests, web workflow
+manifest evidence, desktop/web production builds, and a packaged startup smoke
+test proving that an unavailable or invalid UI update still opens the known-good
+renderer.
+
 ### reliability-and-public-release-gate
 
 ```yaml

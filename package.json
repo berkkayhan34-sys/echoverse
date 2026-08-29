@@ -22,6 +22,7 @@
     "reuse:check": "node DOCS/tools/reuse-check.mjs",
     "secret-scan": "gitleaks detect --source . --no-banner --redact --exit-code 1",
     "localization:check": "node DOCS/tools/check-localization.mjs",
+    "ui:manifest": "node DOCS/tools/create-ui-manifest.mjs",
     "version:check": "node -e \"const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) throw new Error('Invalid VERSION'); console.log(v)\""
   },
   "devDependencies": {
