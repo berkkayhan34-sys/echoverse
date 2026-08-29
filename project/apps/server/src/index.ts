@@ -289,7 +289,6 @@ const {
   revokeInvite,
   renameLobby,
   createChannel,
-  ensureDefaultChannels,
   guildChannels: listGuildChannels,
   updateChannel,
   hasPermission,
