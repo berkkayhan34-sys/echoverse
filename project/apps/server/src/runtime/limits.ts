@@ -18,7 +18,6 @@ const defaultSocketEventLimits: Record<string, number> = {
   "join-room": 30,
   "guild:create": 20,
   "guild:join-code": 30,
-  "spotify:sync": 120,
   "dm:typing": 120,
   "dm:read": 60,
   "dm:react": 60

@@ -110,8 +110,8 @@ following repository strings are intentionally non-localizable identifiers:
   MIME types, storage keys, and machine-readable status values;
 - stable structured log event IDs such as `echoverse.auth.login_failed`, which
   keep diagnostics searchable and language-independent;
-- product and third-party literals such as `EchoVerse`, `Spotify`, `Spotify
-Together`, `LIVE`, and protocol version values.
+- product and protocol literals such as `EchoVerse`, `LIVE`, and protocol
+  version values.
 
 User-visible errors and notifications are not covered by these exclusions and
 must use the shared translator or the server response catalog.

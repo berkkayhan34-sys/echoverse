@@ -3,15 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type {
-  Account,
-  CallSession,
-  Guild,
-  GuildRole,
-  StoredDm,
-  SpotifyPartyState,
-  User
-} from "../domain/types.js";
+import type { Account, CallSession, Guild, GuildRole, StoredDm, User } from "../domain/types.js";
 
 export const users = new Map<string, User>();
 export const guilds = new Map<string, Guild>();
@@ -21,7 +13,6 @@ export const guildInvites = new Map<
   string,
   { guildId: string; createdBy: string; expiresAt: string; revokedAt?: string }
 >();
-export const spotifyParties = new Map<string, SpotifyPartyState>();
 export const pendingCalls = new Map<
   string,
   CallSession & {

@@ -5,6 +5,19 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.8.5
+
+- Repair the friend lifecycle so users can search offline accounts, cancel
+  pending requests, prevent duplicate relationships, and accept requests after
+  reconnecting.
+- Reconcile the public EchoVerse main guild for existing and newly registered
+  accounts while retaining deployment-configured founder ownership.
+- Normalize legacy placeholder lobby labels, keep authorized lobby renaming,
+  and expose the shared responsive workspace with Discord-style mobile server,
+  channel, DM, and bottom-navigation structure.
+- Remove Spotify Together and its native bridge, protocol events, UI, assets,
+  and legacy token file cleanup path.
+
 ## 1.8.4
 
 - Stabilize the Electron shell release at `1.8.4` while the deployed web UI

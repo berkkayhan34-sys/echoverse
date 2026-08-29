@@ -58,7 +58,9 @@ describe("PostgreSQL persistence boundary", () => {
       "002_dm_metadata",
       "003_friendship_updated_at",
       "004_guild_access",
-      "005_guild_lobby_name"
+      "005_guild_lobby_name",
+      "006_friendship_pair_integrity",
+      "007_normalize_legacy_lobby_names"
     ]);
   });
 

@@ -19,7 +19,6 @@ It provides two clients:
 - account registration and sign-in;
 - servers, presence, chat, direct messages, friends, and private calls;
 - microphone, camera, voice-lobby, and screen-sharing controls;
-- Spotify Together integration in the desktop client;
 - English and Turkish interfaces, with English fallback for other locales.
 
 ## Project status

@@ -16,6 +16,9 @@ export type MemoryFriendship = {
   createdAt: string;
 };
 
+export type FriendshipRelationship =
+  "none" | "pending_incoming" | "pending_outgoing" | "friends" | "blocked";
+
 export type FriendServiceDependencies = {
   pool: PersistenceDatabase | null;
   sqliteDatabase: PersistenceDatabase | null;
@@ -69,18 +72,24 @@ export function createFriendService({
     if (!clean) return [];
 
     if (!pool) {
-      return [...memoryAccounts.values()]
+      const results = [...memoryAccounts.values()]
         .filter(
           (account) =>
             account.id !== selfId &&
             account.username.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US").includes(clean)
         )
         .slice(0, 20)
-        .map((account) => ({
-          id: account.id,
-          username: account.username,
-          avatarData: account.avatarData
-        }));
+        .map((account) => {
+          const friendship = memoryFriendships.get(friendshipKey(selfId, account.id)) || null;
+          return {
+            id: account.id,
+            username: account.username,
+            avatarData: account.avatarData,
+            friendshipId: friendship?.id,
+            relationship: relationshipFor(friendship, selfId, account.id)
+          };
+        });
+      return results;
     }
 
     const searchPattern = `%${clean.replace(/[\\%_]/g, "\\$&")}%`;
@@ -99,11 +108,44 @@ export function createFriendService({
       pool === sqliteDatabase ? [selfId, locale, searchPattern] : [selfId, searchPattern]
     );
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      username: row.username,
-      avatarData: row.avatar_data || null
-    }));
+    return Promise.all(
+      result.rows.map(async (row) => {
+        const friendship = await friendshipBetween(selfId, String(row.id));
+        return {
+          id: row.id,
+          username: row.username,
+          avatarData: row.avatar_data || null,
+          friendshipId: friendship?.id,
+          relationship: relationshipFor(friendship, selfId, String(row.id))
+        };
+      })
+    );
+  }
+
+  function relationshipFor(
+    friendship: {
+      requester_id?: string;
+      addressee_id?: string;
+      status?: string;
+      requesterId?: string;
+      addresseeId?: string;
+    } | null,
+    selfId: string,
+    otherId: string
+  ): FriendshipRelationship {
+    if (!friendship) return "none";
+    const requesterId = friendship.requester_id ?? friendship.requesterId;
+    const addresseeId = friendship.addressee_id ?? friendship.addresseeId;
+    if (friendship.status === "accepted") return "friends";
+    if (friendship.status === "blocked") return requesterId === selfId ? "blocked" : "none";
+    if (friendship.status === "pending") {
+      return requesterId === selfId
+        ? "pending_outgoing"
+        : addresseeId === selfId
+          ? "pending_incoming"
+          : "none";
+    }
+    return "none";
   }
 
   async function friendshipBetween(a: string, b: string) {
@@ -367,6 +409,7 @@ export function createFriendService({
     findUsersByUsername,
     friendshipBetween,
     friendshipKey,
+    relationshipFor,
     listFriendState,
     loadDmHistory,
     parseReactions,

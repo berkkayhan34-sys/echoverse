@@ -42,7 +42,9 @@ describe("SQLite persistence adapter", () => {
       "002_dm_metadata",
       "003_friendship_updated_at",
       "004_guild_access",
-      "005_guild_lobby_name"
+      "005_guild_lobby_name",
+      "006_friendship_pair_integrity",
+      "007_normalize_legacy_lobby_names"
     ]);
 
     const guildColumns = await database.query("PRAGMA table_info(echoverse_guilds)");
@@ -64,9 +66,30 @@ describe("SQLite persistence adapter", () => {
       ]
     );
     await database.query(
+      "INSERT INTO echoverse_guilds (id,name,lobby_name,owner_id) VALUES ($1,$2,$3,$4)",
+      ["migration-guild", "Migration Guild", "Lobby", first]
+    );
+    await database.query("UPDATE echoverse_guilds SET lobby_name=$2 WHERE id=$1", [
+      "migration-guild",
+      "testlooby"
+    ]);
+    expect(
+      (
+        await database.query("SELECT lobby_name FROM echoverse_guilds WHERE id=$1", [
+          "migration-guild"
+        ])
+      ).rows[0].lobby_name
+    ).toBe("testlooby");
+    await database.query(
       "INSERT INTO echoverse_friendships (id,requester_id,addressee_id,status,created_at,updated_at) VALUES ($1,$2,$3,'accepted',$4,$4)",
       [crypto.randomUUID(), first, second, new Date().toISOString()]
     );
+    await expect(
+      database.query(
+        "INSERT INTO echoverse_friendships (id,requester_id,addressee_id,status,created_at,updated_at) VALUES ($1,$2,$3,'pending',$4,$4)",
+        [crypto.randomUUID(), second, first, new Date().toISOString()]
+      )
+    ).rejects.toThrow();
     await database.query(
       "INSERT INTO echoverse_dm_messages (id,sender_id,recipient_id,body) VALUES ($1,$2,$3,$4)",
       [crypto.randomUUID(), first, second, "unicode: ı̆🙂漢字"]

@@ -74,8 +74,8 @@ behavior while relocating the existing implementation as one bounded change;
 future runtime changes must continue to use the `project/` boundaries.
 
 Server feature boundaries will be explicit: authentication/accounts,
-guilds/presence, chat, friends/DM, calls/signaling, Spotify integration,
-persistence, and transport. Each boundary should expose a small interface and
+persistence, guilds/presence, chat, friends/DM, calls/signaling, and transport.
+Each boundary should expose a small interface and
 keep validation, authorization, and side effects at the correct layer.
 
 ## 4. Maintainability rules

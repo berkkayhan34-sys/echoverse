@@ -39,8 +39,7 @@ describe("guild and presence service", () => {
       io: { to: vi.fn() },
       guilds,
       guildMembers: new Map(),
-      users,
-      spotifyParties: new Map()
+      users
     });
 
     expect(service.roomFor("echoverse")).toBe("guild:echoverse:lobby");
@@ -81,8 +80,7 @@ describe("guild and presence service", () => {
       io: { to: vi.fn() },
       guilds,
       guildMembers,
-      users: new Map(),
-      spotifyParties: new Map()
+      users: new Map()
     });
 
     await service.ensureMainGuildMembership(member);

@@ -24,8 +24,6 @@ const { prepareUiUpdate } = require("./ui-update.cjs");
 const { publicKeyDerBase64: uiSigningPublicKey } = require("./ui-signing-public.cjs");
 const path = require("path");
 const fs = require("fs");
-const http = require("http");
-const crypto = require("crypto");
 
 function localizationRoot() {
   return app.isPackaged
@@ -86,8 +84,6 @@ const brandingIcon = path.join(brandingRoot, "echoverse-icon.png");
 const brandingIco = path.join(brandingRoot, "echoverse.ico");
 const splashImage = path.join(brandingRoot, "echoverse-splash.png");
 let isQuitting = false;
-let spotifyTokens = null;
-let spotifyLoginServer = null;
 let selectedDisplaySourceId = null;
 let updaterSetupDone = false;
 let updateInstallRequested = false;
@@ -107,9 +103,6 @@ let activeUi = {
   source: "bundled"
 };
 
-const SPOTIFY_CALLBACK_PORT = 43821;
-const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
-
 function getConfigPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "config.json");
@@ -123,51 +116,9 @@ function readConfig() {
   } catch {
     return {
       serverUrl: "http://localhost:3001",
-      spotifyClientId: "",
       uiUpdate: { enabled: false, manifestUrl: "" }
     };
   }
-}
-
-function spotifyTokenPath() {
-  return path.join(app.getPath("userData"), "spotify-token.bin");
-}
-
-function saveSpotifyTokens(tokens) {
-  spotifyTokens = tokens;
-
-  try {
-    const raw = Buffer.from(JSON.stringify(tokens), "utf8");
-    const out = safeStorage.isEncryptionAvailable()
-      ? safeStorage.encryptString(raw.toString("utf8"))
-      : raw;
-    fs.writeFileSync(spotifyTokenPath(), out);
-  } catch {
-    console.error("[echoverse.spotify_token_save_failed]");
-  }
-}
-
-function loadSpotifyTokens() {
-  try {
-    if (!fs.existsSync(spotifyTokenPath())) return null;
-
-    const raw = fs.readFileSync(spotifyTokenPath());
-    const text = safeStorage.isEncryptionAvailable()
-      ? safeStorage.decryptString(raw)
-      : raw.toString("utf8");
-
-    spotifyTokens = JSON.parse(text);
-    return spotifyTokens;
-  } catch {
-    return null;
-  }
-}
-
-function clearSpotifyTokens() {
-  spotifyTokens = null;
-  try {
-    fs.rmSync(spotifyTokenPath(), { force: true });
-  } catch {}
 }
 
 function authSessionPath() {
@@ -219,125 +170,12 @@ function clearAuthSession() {
   return { ok: true };
 }
 
-function b64url(buffer) {
-  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function validatedSpotifyTokenResponse(value) {
-  if (!value || typeof value !== "object") return null;
-  if (
-    typeof value.access_token !== "string" ||
-    value.access_token.length < 1 ||
-    value.access_token.length > 4096
-  ) {
-    return null;
-  }
-  if (value.token_type !== "Bearer") return null;
-  if (!Number.isInteger(value.expires_in) || value.expires_in < 1 || value.expires_in > 86_400) {
-    return null;
-  }
-  if (
-    value.refresh_token !== undefined &&
-    (typeof value.refresh_token !== "string" ||
-      value.refresh_token.length < 1 ||
-      value.refresh_token.length > 4096)
-  ) {
-    return null;
-  }
-  return {
-    access_token: value.access_token,
-    token_type: value.token_type,
-    expires_in: value.expires_in,
-    ...(value.refresh_token ? { refresh_token: value.refresh_token } : {})
-  };
-}
-
-async function refreshSpotifyToken() {
-  if (!spotifyTokens?.refresh_token) throw new Error(translate("desktop.spotifyNotConnected"));
-
-  const clientId = readConfig().spotifyClientId;
-  if (!clientId || clientId.startsWith("SPOTIFY_CLIENT_ID")) {
-    throw new Error(translate("desktop.spotifyClientIdMissing"));
-  }
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: spotifyTokens.refresh_token,
-    client_id: clientId
-  });
-
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body
-  });
-
-  if (!res.ok) {
-    clearSpotifyTokens();
-    throw new Error(translate("desktop.spotifyTokenRefreshFailed", { status: res.status }));
-  }
-
-  const next = validatedSpotifyTokenResponse(await res.json());
-  if (!next) {
-    clearSpotifyTokens();
-    throw new Error(translate("desktop.spotifyTokenInvalid"));
-  }
-  saveSpotifyTokens({
-    ...spotifyTokens,
-    ...next,
-    refresh_token: next.refresh_token || spotifyTokens.refresh_token,
-    expires_at: Date.now() + (next.expires_in || 3600) * 1000
-  });
-
-  return spotifyTokens.access_token;
-}
-
-async function spotifyAccessToken() {
-  if (!spotifyTokens) loadSpotifyTokens();
-  if (!spotifyTokens) throw new Error(translate("desktop.spotifyNotConnected"));
-
-  if (!spotifyTokens.expires_at || Date.now() > spotifyTokens.expires_at - 60_000) {
-    return refreshSpotifyToken();
-  }
-
-  return spotifyTokens.access_token;
-}
-
-async function spotifyApi(endpoint, options = {}) {
-  const token = await spotifyAccessToken();
-
-  const res = await fetch(`https://api.spotify.com/v1${endpoint}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
-
-  if (res.status === 204) return null;
-
-  if (res.status === 401) {
-    await refreshSpotifyToken();
-    return spotifyApi(endpoint, options);
-  }
-
-  if (!res.ok) {
-    throw new Error(translate("desktop.spotifyApiFailed"));
-  }
-
-  return res.json();
-}
-
-async function activeSpotifyDevice() {
-  const devices = await spotifyApi("/me/player/devices");
-  return (
-    devices?.devices?.find((d) => d.is_active) ||
-    devices?.devices?.find((d) => !d.is_restricted) ||
-    null
-  );
+function removeLegacyIntegrationData() {
+  // Spotify Together was removed in 1.8.5. Delete only its former encrypted
+  // refresh-token file so an obsolete credential is not retained locally.
+  try {
+    fs.rmSync(path.join(app.getPath("userData"), "spotify-token.bin"), { force: true });
+  } catch {}
 }
 
 ipcMain.handle("echoverse:getConfig", () => readConfig());
@@ -425,268 +263,6 @@ ipcMain.handle("capture:openScreenSettings", async () => {
 
 ipcMain.handle("echoverse:getVersion", () => app.getVersion());
 ipcMain.handle("ui:get-version", () => activeUi.webRevision);
-
-ipcMain.handle("spotify:status", async () => {
-  const cfg = readConfig();
-
-  if (!cfg.spotifyClientId || cfg.spotifyClientId.startsWith("SPOTIFY_CLIENT_ID")) {
-    return {
-      connected: false,
-      configured: false,
-      error: translate("desktop.spotifyClientIdMissing")
-    };
-  }
-
-  if (!spotifyTokens) loadSpotifyTokens();
-  if (!spotifyTokens) {
-    return { connected: false, configured: true };
-  }
-
-  try {
-    const me = await spotifyApi("/me");
-    return {
-      connected: true,
-      configured: true,
-      displayName: me.display_name || me.id
-    };
-  } catch {
-    return {
-      connected: false,
-      configured: true,
-      error: translate("desktop.spotifyConnectionInvalid")
-    };
-  }
-});
-
-ipcMain.handle("spotify:logout", async () => {
-  clearSpotifyTokens();
-  return { ok: true };
-});
-
-ipcMain.handle("spotify:login", async () => {
-  const clientId = readConfig().spotifyClientId;
-
-  if (!clientId || clientId.startsWith("SPOTIFY_CLIENT_ID")) {
-    throw new Error(translate("desktop.spotifyLoginConfig"));
-  }
-
-  if (spotifyLoginServer) {
-    try {
-      spotifyLoginServer.close();
-    } catch {}
-    spotifyLoginServer = null;
-  }
-
-  const verifier = b64url(crypto.randomBytes(64));
-  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
-  const state = b64url(crypto.randomBytes(16));
-
-  const scopes = [
-    "user-read-playback-state",
-    "user-modify-playback-state",
-    "user-read-currently-playing"
-  ];
-
-  const authUrl = new URL("https://accounts.spotify.com/authorize");
-  authUrl.searchParams.set("client_id", clientId);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("redirect_uri", SPOTIFY_REDIRECT_URI);
-  authUrl.searchParams.set("scope", scopes.join(" "));
-  authUrl.searchParams.set("state", state);
-  authUrl.searchParams.set("code_challenge_method", "S256");
-  authUrl.searchParams.set("code_challenge", challenge);
-
-  const loginResult = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      try {
-        spotifyLoginServer?.close();
-      } catch {}
-      spotifyLoginServer = null;
-      reject(new Error(translate("desktop.spotifyLoginTimeout")));
-    }, 180000);
-
-    spotifyLoginServer = http.createServer(async (req, res) => {
-      try {
-        const url = new URL(req.url, SPOTIFY_REDIRECT_URI);
-
-        if (url.pathname !== "/callback") {
-          res.writeHead(404);
-          res.end();
-          return;
-        }
-
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-        const error = url.searchParams.get("error");
-
-        if (error) throw new Error(translate("desktop.spotifyCallbackRejected"));
-        if (!code || returnedState !== state)
-          throw new Error(translate("desktop.spotifyCallbackInvalid"));
-
-        const body = new URLSearchParams({
-          client_id: clientId,
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: SPOTIFY_REDIRECT_URI,
-          code_verifier: verifier
-        });
-
-        const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body
-        });
-
-        if (!tokenRes.ok) {
-          throw new Error(
-            translate("desktop.spotifyTokenRequestFailed", { status: tokenRes.status })
-          );
-        }
-
-        const tokens = validatedSpotifyTokenResponse(await tokenRes.json());
-        if (!tokens) throw new Error(translate("desktop.spotifyTokenInvalid"));
-
-        saveSpotifyTokens({
-          ...tokens,
-          expires_at: Date.now() + (tokens.expires_in || 3600) * 1000
-        });
-
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(`
-          <html>
-            <body style="font-family:system-ui;background:#101218;color:white;padding:40px">
-            <h2>${translate("desktop.spotifyConnectedHtml")}</h2>
-            <p>${translate("desktop.spotifyConnectedHtmlBody")}</p>
-            </body>
-          </html>
-        `);
-
-        clearTimeout(timeout);
-        setTimeout(() => {
-          try {
-            spotifyLoginServer?.close();
-          } catch {}
-          spotifyLoginServer = null;
-        }, 500);
-
-        resolve({ ok: true });
-      } catch (err) {
-        clearTimeout(timeout);
-        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end(translate("desktop.spotifyConnectionFailed"));
-        try {
-          spotifyLoginServer?.close();
-        } catch {}
-        spotifyLoginServer = null;
-        reject(err);
-      }
-    });
-
-    spotifyLoginServer.listen(SPOTIFY_CALLBACK_PORT, "127.0.0.1", () => {
-      shell.openExternal(authUrl.toString());
-    });
-  });
-
-  return loginResult;
-});
-
-ipcMain.handle("spotify:playback", async () => {
-  const state = await spotifyApi("/me/player");
-  if (!state || !state.item) return null;
-
-  const trackUri = state.item.uri;
-  const trackName = state.item.name;
-  const artistName = (state.item.artists || []).map((a) => a.name).join(", ");
-  const albumImage = state.item.album?.images?.[0]?.url || "";
-  if (
-    typeof trackUri !== "string" ||
-    trackUri.length > 512 ||
-    typeof trackName !== "string" ||
-    trackName.length > 512 ||
-    typeof artistName !== "string" ||
-    artistName.length > 512 ||
-    typeof albumImage !== "string" ||
-    albumImage.length > 2048 ||
-    (albumImage && !/^https:\/\//i.test(albumImage))
-  ) {
-    return null;
-  }
-
-  return {
-    trackUri,
-    trackName,
-    artistName,
-    albumImage,
-    positionMs: Number.isFinite(state.progress_ms) ? Math.max(0, state.progress_ms) : 0,
-    isPlaying: !!state.is_playing,
-    timestamp: Date.now()
-  };
-});
-
-ipcMain.handle("spotify:applySync", async (_evt, sync) => {
-  if (
-    !sync ||
-    typeof sync !== "object" ||
-    (sync.trackUri !== undefined &&
-      (typeof sync.trackUri !== "string" || sync.trackUri.length > 512)) ||
-    (sync.positionMs !== undefined &&
-      (typeof sync.positionMs !== "number" ||
-        !Number.isFinite(sync.positionMs) ||
-        sync.positionMs < 0 ||
-        sync.positionMs > 86_400_000)) ||
-    (sync.updatedAt !== undefined &&
-      (typeof sync.updatedAt !== "number" ||
-        !Number.isFinite(sync.updatedAt) ||
-        sync.updatedAt < 0)) ||
-    (sync.isPlaying !== undefined && typeof sync.isPlaying !== "boolean")
-  ) {
-    return { ok: false, error: translate("desktop.spotifyStateInvalid") };
-  }
-  const device = await activeSpotifyDevice();
-
-  if (!device) {
-    throw new Error(translate("desktop.spotifyNoActiveDevice"));
-  }
-
-  const deviceQuery = `?device_id=${encodeURIComponent(device.id)}`;
-  const desiredPos = Math.max(
-    0,
-    Number(sync.positionMs || 0) +
-      (sync.isPlaying ? Math.max(0, Date.now() - Number(sync.updatedAt || Date.now())) : 0)
-  );
-
-  const current = await spotifyApi("/me/player");
-  const currentUri = current?.item?.uri;
-
-  if (sync.trackUri && currentUri !== sync.trackUri) {
-    await spotifyApi(`/me/player/play${deviceQuery}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        uris: [sync.trackUri],
-        position_ms: desiredPos
-      })
-    });
-  } else if (sync.trackUri) {
-    if (Math.abs((current?.progress_ms || 0) - desiredPos) > 1800) {
-      await spotifyApi(
-        `/me/player/seek?position_ms=${Math.round(desiredPos)}&device_id=${encodeURIComponent(device.id)}`,
-        { method: "PUT" }
-      );
-    }
-
-    if (sync.isPlaying && !current?.is_playing) {
-      await spotifyApi(`/me/player/play${deviceQuery}`, { method: "PUT" });
-    }
-
-    if (!sync.isPlaying && current?.is_playing) {
-      await spotifyApi(`/me/player/pause${deviceQuery}`, { method: "PUT" });
-    }
-  }
-
-  return { ok: true };
-});
 
 function updaterLogPath() {
   try {
@@ -1226,7 +802,7 @@ app.whenReady().then(async () => {
   // The tray keeps its own context menu; remove Electron's native File/Edit
   // application menu from the main window on every supported platform.
   Menu.setApplicationMenu(null);
-  loadSpotifyTokens();
+  removeLegacyIntegrationData();
   setupAutoUpdater();
 
   // Do not create or reveal the application window until the packaged updater

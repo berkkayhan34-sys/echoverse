@@ -20,7 +20,7 @@ is already implemented.
 ## Trust boundaries
 
 The browser/Electron renderer, Electron main process, backend HTTP API,
-Socket.IO connections, database, OAuth/Spotify services, object/file storage,
+Socket.IO connections, database, object/file storage,
 and update distribution are separate trust boundaries. Renderer input,
 socket payloads, request headers, uploaded files, remote metadata, and update
 artifacts are untrusted until validated.
@@ -38,7 +38,6 @@ evidence retention must be named before public release under `DOC-005`.
 | HTTP and Socket.IO transport         | `project/apps/server/src/index.ts`                                     | origin abuse, malformed payloads, replay, denial of service                | `QUAL-003`, `CODE-001`, `CODE-002`             |
 | Feature and authorization boundaries | `project/apps/server/src/features/`, `project/apps/server/src/domain/` | IDOR, cross-guild/DM access, confused deputy behavior                      | `QUAL-002`, `QUAL-003`, `CODE-004`, `CODE-005` |
 | Persistence and migrations           | `project/apps/server/db/`, `project/apps/server/src/persistence/`      | injection, unauthorized reads, retention/deletion residue, migration drift | `QUAL-003`, `CODE-003`                         |
-| OAuth and third-party integrations   | Spotify bridge and server integration code                             | token leakage, callback forgery, excessive scopes, provider failure        | `CODE-002`, `QUAL-003`                         |
 | Release and update distribution      | `.github/workflows/`, desktop packaging                                | artifact tampering, version confusion, unsigned publisher trust            | `CODE-008`, `OPS-003`                          |
 
 The threat model covers credential/session theft, cross-user access, malformed
@@ -87,8 +86,7 @@ These values are now executable policy for the implemented boundaries. DM
 attachments use an explicit MIME allowlist and the declared MIME must match the
 data-URL header. WebRTC carries bounded signaling metadata rather than media
 bytes; media capture remains a browser/Electron resource concern covered by
-CODE-007. Spotify's loopback callback enforces PKCE/state checks and validates
-provider token responses before storage. Updater metadata and progress values
+CODE-007. Updater metadata and progress values
 are validated before logging, UI display, or installation state changes.
 
 #### Executable boundary budget

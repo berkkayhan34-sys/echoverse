@@ -27,4 +27,5 @@ open questions are recorded explicitly rather than guessed.
 - [ADR-0017: shared responsive renderer surface](0017-shared-responsive-renderer-surface.md)
 - [ADR-0018: signed remote UI cache for the desktop shell](0018-signed-remote-ui-cache.md)
 - [ADR-0019: separate desktop shell and web revision tracks](0019-desktop-shell-and-web-revision-versioning.md)
+- [ADR-0020: remove Spotify Together](0020-remove-spotify-together.md)
 - [Unresolved decisions](unresolved.md)

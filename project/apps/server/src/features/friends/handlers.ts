@@ -76,6 +76,15 @@ export function registerFriendHandlers({
   socketError,
   onValidatedSocketEvent
 }: FriendHandlerDependencies) {
+  function isFriendshipConflict(error: unknown) {
+    const code = String((error as { code?: unknown })?.code || "");
+    return (
+      code === "23505" ||
+      code === "SQLITE_CONSTRAINT_UNIQUE" ||
+      /unique|duplicate/i.test(String(error))
+    );
+  }
+
   onValidatedSocketEvent(socket, "friends:search", async ({ query }, callback) => {
     const user = users.get(socket.id);
     if (!user?.accountId) {
@@ -149,8 +158,17 @@ export function registerFriendHandlers({
           [id, user.accountId, target.id, createdAt]
         );
       }
-    } catch {
-      callback?.({ ok: false, error: socketError(socket, "server.friendshipExists") });
+    } catch (error) {
+      serverLogger.error("echoverse.friends.request_failed", {
+        conflict: isFriendshipConflict(error)
+      });
+      callback?.({
+        ok: false,
+        error: socketError(
+          socket,
+          isFriendshipConflict(error) ? "server.friendshipExists" : "server.requestFailed"
+        )
+      });
       return;
     }
 
@@ -221,6 +239,55 @@ export function registerFriendHandlers({
       if (otherSocket) io.to(otherSocket.socketId).emit("friends:changed");
     }
 
+    socket.emit("friends:changed");
+    callback?.({ ok: true });
+  });
+
+  onValidatedSocketEvent(socket, "friends:cancel", async ({ friendshipId }, callback) => {
+    const user = users.get(socket.id);
+    if (!user?.accountId) {
+      callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      return;
+    }
+
+    const id = String(friendshipId || "");
+    let targetId: string | null = null;
+    if (!pool) {
+      const row = [...memoryFriendships.values()].find(
+        (friendship) => friendship.id === id && friendship.requesterId === user.accountId
+      );
+      if (!row || row.status !== "pending") {
+        callback?.({ ok: false, error: socketError(socket, "server.friendRequestNotFound") });
+        return;
+      }
+      targetId = row.addresseeId;
+      memoryFriendships.delete(friendshipKey(row.requesterId, row.addresseeId));
+    } else {
+      const lookup = await pool.query(
+        `SELECT addressee_id, requester_id, status
+         FROM echoverse_friendships
+         WHERE id = $1
+         LIMIT 1`,
+        [id]
+      );
+      const row = lookup.rows[0];
+      if (!row || row.requester_id !== user.accountId || row.status !== "pending") {
+        callback?.({ ok: false, error: socketError(socket, "server.friendRequestNotFound") });
+        return;
+      }
+      const result = await pool.query(
+        `DELETE FROM echoverse_friendships
+         WHERE id = $1 AND requester_id = $2 AND status = 'pending'`,
+        [id, user.accountId]
+      );
+      if (!result.rowCount) {
+        callback?.({ ok: false, error: socketError(socket, "server.friendRequestNotFound") });
+        return;
+      }
+      targetId = String(row.addressee_id);
+    }
+
+    if (targetId) emitToAccount(targetId, "friends:changed", {});
     socket.emit("friends:changed");
     callback?.({ ok: true });
   });

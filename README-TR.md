@@ -20,7 +20,6 @@ iletişim uygulamasıdır.
 - hesap oluşturma ve giriş;
 - sunucular, çevrimiçi durum, sohbet, doğrudan mesaj, arkadaşlar ve özel aramalar;
 - mikrofon, kamera, ses lobisi ve ekran paylaşımı kontrolleri;
-- masaüstü istemcisinde Spotify Together entegrasyonu;
 - İngilizce ve Türkçe arayüzler; diğer diller için İngilizce geri dönüşü.
 
 ## Proje durumu

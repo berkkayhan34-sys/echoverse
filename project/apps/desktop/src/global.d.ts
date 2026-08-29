@@ -6,7 +6,6 @@ declare global {
       setLocale?: (locale: string) => Promise<{ ok: boolean }>;
       getConfig: () => Promise<{
         serverUrl: string;
-        spotifyClientId?: string;
         uiUpdate?: { enabled?: boolean; manifestUrl?: string };
       }>;
       authSession?: {
@@ -41,17 +40,6 @@ declare global {
       }>;
       installUpdate?: () => Promise<{ ok: boolean; error?: string }>;
       getUpdaterLogPath?: () => Promise<string | null>;
-
-      spotifyStatus?: () => Promise<{
-        connected: boolean;
-        configured: boolean;
-        displayName?: string;
-        error?: string;
-      }>;
-      spotifyLogin?: () => Promise<{ ok: boolean }>;
-      spotifyLogout?: () => Promise<{ ok: boolean }>;
-      spotifyPlayback?: () => Promise<any>;
-      spotifyApplySync?: (state: any) => Promise<{ ok: boolean }>;
 
       screenPermission?: () => Promise<string>;
       listScreenSources?: () => Promise<

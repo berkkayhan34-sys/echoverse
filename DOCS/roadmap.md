@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.4`, with protocol major version 2.
+The shipped baseline is product version `1.8.5`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -70,13 +70,13 @@ acceptance, security, validation, documentation, and release gates.
 ```yaml
 id: FEATURE-001
 type: runtime_feature
-status: in_progress
-evidence: null
-blocks_roadmap: true
+status: complete
+evidence: evidence/CODE-010.md
+blocks_roadmap: false
 decision: decisions/0013-guild-access-dm-mobile.md
 ```
 
-[-] Deliver the owner-approved private guild, role, invite, persistent DM,
+[x] Deliver the owner-approved private guild, role, invite, persistent DM,
 mobile responsive, and mobile voice foundation in implementation order:
 
 1. Add durable guild, membership, role, invite, and channel-access data with
@@ -100,6 +100,10 @@ mobile responsive, and mobile voice foundation in implementation order:
 9. Replace the narrow-screen navigation with the shared Discord-style drawer,
    mobile bottom navigation, explicit lobby entry, DM/friends access, safe-area
    composer spacing, and the same brand/sound assets across web and desktop.
+
+10. Remove Spotify Together from the protocol, server handlers, native bridge,
+    renderer, localization catalogs, configuration, documentation, and legacy
+    token storage.
 
 Acceptance evidence is required for each child before this feature is marked
 complete. No unrelated product feature should be added to this child.

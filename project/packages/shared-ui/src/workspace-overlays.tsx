@@ -77,6 +77,7 @@ export function WorkspaceOverlays({
   onSearchFriends,
   onSendFriendRequest,
   onRespondFriendRequest,
+  onCancelFriendRequest,
   onOpenDm,
   onCallFriend,
   onRemoveFriend,
@@ -144,6 +145,7 @@ export function WorkspaceOverlays({
   onSearchFriends: () => void;
   onSendFriendRequest: (accountId: string) => void;
   onRespondFriendRequest: (friendshipId: string, accept: boolean) => void;
+  onCancelFriendRequest: (friendshipId: string) => void;
   onOpenDm: (friend: FriendUser) => void;
   onCallFriend: (friend: FriendUser) => void;
   onRemoveFriend: (accountId: string) => void;
@@ -211,6 +213,7 @@ export function WorkspaceOverlays({
           onSearch={onSearchFriends}
           onSendFriendRequest={onSendFriendRequest}
           onRespondFriendRequest={onRespondFriendRequest}
+          onCancelFriendRequest={onCancelFriendRequest}
           onOpenDm={onOpenDm}
           onCallFriend={onCallFriend}
           onRemoveFriend={onRemoveFriend}

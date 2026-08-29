@@ -24,7 +24,6 @@ import { registerIdentityHttpRoutes } from "./features/identity/http.js";
 import { createFriendService } from "./features/friends/service.js";
 import { createGuildService } from "./features/guilds/service.js";
 import { registerCallHandlers } from "./features/calls/handlers.js";
-import { registerSpotifyHandlers } from "./features/spotify/handlers.js";
 import { registerGuildHandlers } from "./features/guilds/handlers.js";
 import { registerFriendHandlers } from "./features/friends/handlers.js";
 import {
@@ -46,7 +45,6 @@ import {
   memoryDmMessages,
   memoryFriendships,
   pendingCalls,
-  spotifyParties,
   users
 } from "./runtime/state.js";
 import { createCorrelationId, serverLogger, serverMetrics } from "./runtime/observability.js";
@@ -255,8 +253,7 @@ const guildService = createGuildService({
   guildMembers,
   guildRoles,
   guildInvites,
-  users,
-  spotifyParties
+  users
 });
 const {
   broadcastPresence,
@@ -470,20 +467,11 @@ io.on("connection", (socket) => {
     socketError,
     onValidatedSocketEvent
   });
-  registerSpotifyHandlers({
-    socket,
-    io,
-    users,
-    spotifyParties,
-    roomFor,
-    onValidatedSocketEvent
-  });
   registerGuildHandlers({
     socket,
     io,
     users,
     guilds,
-    spotifyParties,
     areFriends,
     accountPresence,
     roomFor,
@@ -545,12 +533,6 @@ io.on("connection", (socket) => {
 
     if (user?.roomId && user.guildId) {
       const oldRoom = user.roomId;
-      const party = spotifyParties.get(user.guildId);
-
-      if (party?.leaderSocketId === socket.id) {
-        spotifyParties.delete(user.guildId);
-        io.to(oldRoom).emit("spotify:party-ended");
-      }
 
       socket.to(oldRoom).emit("peer-left", {
         socketId: socket.id,

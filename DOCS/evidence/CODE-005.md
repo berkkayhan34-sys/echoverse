@@ -16,7 +16,7 @@ decision: decisions/0011-authorization-boundaries.md
 ## Scope
 
 - Protected identity, guild, presence, friendship, direct-message, call,
-  signaling, chat, and Spotify operations now authorize from server-side
+  signaling and chat operations now authorize from server-side
   account, membership, friendship, room, and active-call state.
 - Custom guild lists are filtered to the default guild or a server-recorded
   membership. Joining by code records membership before room entry.

@@ -46,7 +46,6 @@ import type {
   IncomingCall,
   PeerInfo,
   ScreenSource,
-  SpotifyState,
   Locale
 } from "@echoverse/contracts";
 
@@ -93,7 +92,6 @@ export default function App() {
   );
   const t = useMemo(() => createTranslator(locale), [locale]);
   const translatorRef = useRef(t);
-  const [spotifyConfigured, setSpotifyConfigured] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
   const refreshingSessionRef = useRef(false);
   const [username, setUsername] = useState(() => readStoredUsername(localStorage));
@@ -199,13 +197,6 @@ export default function App() {
   const [privateCallId, setPrivateCallId] = useState("");
   const [ringing, setRinging] = useState(false);
 
-  const [spotifyConnected, setSpotifyConnected] = useState(false);
-  const [spotifyName, setSpotifyName] = useState("");
-  const [spotifyParty, setSpotifyParty] = useState<SpotifyState | null>(null);
-  const [spotifyFollowing, setSpotifyFollowing] = useState(false);
-  const [spotifyLeader, setSpotifyLeader] = useState(false);
-  const [spotifyMessage, setSpotifyMessage] = useState("");
-
   useEffect(() => {
     translatorRef.current = t;
   }, [t]);
@@ -235,7 +226,6 @@ export default function App() {
   const remoteAudio = useRef<Map<string, HTMLAudioElement>>(new Map());
   const remoteVideoHost = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const spotifyLeaderTimer = useRef<number | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const speakingIntervals = useRef<Map<string, number>>(new Map());
   const ringAudio = useRef<HTMLAudioElement | null>(null);
@@ -287,6 +277,7 @@ export default function App() {
     searchFriends,
     sendFriendRequest,
     respondFriendRequest,
+    cancelFriendRequest,
     removeFriend,
     openDm
   } = friendsFeature;
@@ -435,17 +426,10 @@ export default function App() {
             serverUrl:
               window.location.hostname === "127.0.0.1"
                 ? "http://127.0.0.1:3001"
-                : "http://localhost:3001",
-            spotifyClientId: ""
+                : "http://localhost:3001"
           };
 
       setServerUrl(cfg.serverUrl);
-      setSpotifyConfigured(
-        !!cfg.spotifyClientId && !cfg.spotifyClientId.startsWith("SPOTIFY_CLIENT_ID")
-      );
-
-      await refreshSpotifyStatus();
-
       try {
         const version = await window.echoverse?.getVersion?.();
         if (version) setAppVersion(version);
@@ -771,42 +755,11 @@ export default function App() {
       } catch {}
     });
 
-    s.on("spotify:party-state", (state: SpotifyState) => {
-      setSpotifyParty(state);
-      setSpotifyLeader(state.leaderSocketId === s.id);
-    });
-
-    s.on("spotify:party-ended", () => {
-      setSpotifyParty(null);
-      setSpotifyFollowing(false);
-      setSpotifyLeader(false);
-      stopSpotifyLeaderTimer();
-      setSpotifyMessage(translatorRef.current("spotify.ended"));
-    });
-
-    s.on("spotify:sync", async (state: SpotifyState) => {
-      setSpotifyParty(state);
-
-      if (!spotifyFollowing || state.leaderSocketId === s.id) return;
-
-      try {
-        await window.echoverse?.spotifyApplySync?.(state);
-        setSpotifyMessage(
-          state.trackName
-            ? `🎵 ${state.trackName} • ${state.artistName || ""}`
-            : translatorRef.current("spotify.synchronized")
-        );
-      } catch (err: any) {
-        setSpotifyMessage(err?.message || translatorRef.current("spotify.syncFailed"));
-      }
-    });
-
     return () => {
       s.disconnect();
-      stopSpotifyLeaderTimer();
       stopAllMedia();
     };
-  }, [locale, serverUrl, spotifyFollowing]);
+  }, [locale, serverUrl]);
 
   useEffect(() => {
     for (const [peerId, audio] of remoteAudio.current.entries()) {
@@ -1185,129 +1138,6 @@ export default function App() {
     playCallEndTone();
   }
 
-  async function refreshSpotifyStatus() {
-    try {
-      const status = await window.echoverse?.spotifyStatus?.();
-      if (!status) return;
-
-      setSpotifyConfigured(status.configured);
-      setSpotifyConnected(status.connected);
-      setSpotifyName(status.displayName || "");
-
-      if (status.error && status.configured) {
-        setSpotifyMessage(status.error);
-      }
-    } catch {}
-  }
-
-  async function spotifyLogin() {
-    try {
-      setSpotifyMessage(t("spotify.opening"));
-      await window.echoverse?.spotifyLogin?.();
-      await refreshSpotifyStatus();
-      setSpotifyMessage(t("spotify.connected"));
-    } catch {
-      setSpotifyMessage(t("spotify.loginFailed"));
-    }
-  }
-
-  async function spotifyLogout() {
-    await window.echoverse?.spotifyLogout?.();
-    setSpotifyConnected(false);
-    setSpotifyName("");
-    setSpotifyFollowing(false);
-    setSpotifyLeader(false);
-    stopSpotifyLeaderTimer();
-    setSpotifyMessage(t("spotify.disconnected"));
-  }
-
-  function stopSpotifyLeaderTimer() {
-    if (spotifyLeaderTimer.current !== null) {
-      window.clearInterval(spotifyLeaderTimer.current);
-      spotifyLeaderTimer.current = null;
-    }
-  }
-
-  async function broadcastSpotifyState() {
-    if (!socket || !activeGuild) return;
-
-    try {
-      const state = await window.echoverse?.spotifyPlayback?.();
-      if (!state) {
-        setSpotifyMessage(t("spotify.openTrackFirst"));
-        return;
-      }
-
-      socket.emit("spotify:sync", {
-        guildId: activeGuild.id,
-        state
-      });
-
-      setSpotifyParty({
-        ...state,
-        guildId: activeGuild.id,
-        leaderSocketId: socket.id,
-        leaderUsername: username,
-        active: true,
-        updatedAt: Date.now()
-      });
-
-      setSpotifyMessage(`🎵 ${state.trackName} • ${state.artistName}`);
-    } catch (err: any) {
-      setSpotifyMessage(err?.message || t("spotify.syncFailed"));
-    }
-  }
-
-  async function startSpotifyParty() {
-    if (!socket || !activeGuild || !spotifyConnected) return;
-
-    setSpotifyFollowing(false);
-    setSpotifyLeader(true);
-
-    socket.emit("spotify:party-start", {
-      guildId: activeGuild.id
-    });
-
-    await broadcastSpotifyState();
-
-    stopSpotifyLeaderTimer();
-
-    spotifyLeaderTimer.current = window.setInterval(() => {
-      broadcastSpotifyState();
-    }, 2000);
-  }
-
-  function stopSpotifyParty() {
-    if (!socket || !activeGuild) return;
-
-    socket.emit("spotify:party-stop", {
-      guildId: activeGuild.id
-    });
-
-    stopSpotifyLeaderTimer();
-    setSpotifyLeader(false);
-    setSpotifyParty(null);
-    setSpotifyMessage(t("spotify.stopped"));
-  }
-
-  async function followSpotifyParty() {
-    if (!spotifyConnected) {
-      setSpotifyMessage(t("spotify.connectFirst"));
-      return;
-    }
-
-    setSpotifyFollowing(true);
-
-    if (spotifyParty?.trackUri) {
-      try {
-        await window.echoverse?.spotifyApplySync?.(spotifyParty);
-        setSpotifyMessage(t("spotify.following", { track: spotifyParty.trackName || "Spotify" }));
-      } catch {
-        setSpotifyMessage(t("spotify.openTrackFirst"));
-      }
-    }
-  }
-
   async function ensureMicrophone() {
     if (localStream.current) return localStream.current;
 
@@ -1638,9 +1468,6 @@ export default function App() {
     setActiveDmFriend(null);
     setMessages([]);
     setPresence([]);
-    setSpotifyParty(null);
-    setSpotifyFollowing(false);
-    setSpotifyLeader(false);
 
     lobbyStateReadyRef.current = false;
     lobbyMembersRef.current = [];
@@ -1761,11 +1588,6 @@ export default function App() {
     videoSenders.current.clear();
 
     stopCameraAndScreen();
-    stopSpotifyLeaderTimer();
-
-    setSpotifyFollowing(false);
-    setSpotifyLeader(false);
-    setSpotifyParty(null);
     setJoined(false);
     setPresence([]);
   }
@@ -2204,13 +2026,6 @@ export default function App() {
         speakingPeers={speakingPeers}
         peerMuted={peerMuted}
         peerVolumes={peerVolumes}
-        spotifyConfigured={spotifyConfigured}
-        spotifyConnected={spotifyConnected}
-        spotifyName={spotifyName}
-        spotifyParty={spotifyParty}
-        spotifyLeader={spotifyLeader}
-        spotifyFollowing={spotifyFollowing}
-        spotifyMessage={spotifyMessage}
         account={account}
         username={username}
         appVersion={appVersion}
@@ -2224,15 +2039,6 @@ export default function App() {
           lobby: t("guild.lobby"),
           self: t("guild.self"),
           muteOnlyYou: t("media.muteOnlyYou"),
-          spotifyTogether: t("spotify.together"),
-          spotifyClientRequired: t("spotify.clientRequired"),
-          spotifyConnect: t("spotify.connect"),
-          spotifyConnected: t("spotify.connectedLabel"),
-          spotifyStartParty: t("spotify.startParty"),
-          spotifyStopParty: t("spotify.stopParty"),
-          spotifyFollowing: t("spotify.followingLabel"),
-          spotifyListenTogether: t("spotify.listenTogether"),
-          spotifyLogout: t("spotify.logout"),
           changeAvatar: t("profile.changeAvatar"),
           voiceConnected: (version) => t("profile.voiceConnected", { version }),
           microphone: t("media.microphone"),
@@ -2270,11 +2076,6 @@ export default function App() {
         }}
         onTogglePeerMute={togglePeerMute}
         onPeerVolumeChange={setPeerVolume}
-        onSpotifyLogin={spotifyLogin}
-        onStartSpotifyParty={startSpotifyParty}
-        onStopSpotifyParty={stopSpotifyParty}
-        onFollowSpotifyParty={followSpotifyParty}
-        onSpotifyLogout={spotifyLogout}
         onChangeAvatar={changeAvatar}
         onToggleMute={toggleMute}
         onLogout={logout}
@@ -2596,6 +2397,9 @@ export default function App() {
             myFriends: t("ui.myFriends"),
             noFriends: t("ui.noFriends"),
             add: t("friends.add"),
+            pending: t("friends.pending"),
+            friends: t("ui.myFriends"),
+            cancel: t("common.cancel"),
             accept: t("common.accept"),
             decline: t("common.reject"),
             openDirectMessage: t("friends.openDm"),
@@ -2658,6 +2462,7 @@ export default function App() {
         onSearchFriends={searchFriends}
         onSendFriendRequest={sendFriendRequest}
         onRespondFriendRequest={respondFriendRequest}
+        onCancelFriendRequest={cancelFriendRequest}
         onOpenDm={openDm}
         onCallFriend={callFriend}
         onRemoveFriend={removeFriend}
