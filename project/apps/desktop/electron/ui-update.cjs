@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { safeUpdateVersion } = require("./updater-validation.cjs");
 
-const UI_MANIFEST_SCHEMA_VERSION = 1;
+const UI_MANIFEST_SCHEMA_VERSION = 2;
 const MAX_MANIFEST_BYTES = 1_000_000;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -20,6 +20,7 @@ function canonicalManifestPayload(manifest) {
     schemaVersion: manifest.schemaVersion,
     product: manifest.product,
     version: manifest.version,
+    webRevision: manifest.webRevision,
     minShellVersion: manifest.minShellVersion,
     entrypoint: manifest.entrypoint,
     files: manifest.files.map((file) => ({
@@ -79,13 +80,23 @@ function validSha512(value) {
   return typeof value === "string" && /^[a-f0-9]{128}$/u.test(value);
 }
 
+function validWebRevision(value) {
+  return typeof value === "string" && /^[a-f0-9]{7,64}$/u.test(value);
+}
+
 function validateManifest(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (value.schemaVersion !== UI_MANIFEST_SCHEMA_VERSION || value.product !== "EchoVerse")
     return null;
   const version = parseVersion(value.version);
   const minShellVersion = parseVersion(value.minShellVersion);
-  if (!version || !minShellVersion || !validRelativePath(value.entrypoint)) return null;
+  if (
+    !version ||
+    !minShellVersion ||
+    !validWebRevision(value.webRevision) ||
+    !validRelativePath(value.entrypoint)
+  )
+    return null;
   if (!Array.isArray(value.files) || value.files.length < 1 || value.files.length > MAX_FILES)
     return null;
 
@@ -123,6 +134,7 @@ function validateManifest(value) {
     schemaVersion: UI_MANIFEST_SCHEMA_VERSION,
     product: "EchoVerse",
     version: version.version,
+    webRevision: value.webRevision,
     minShellVersion: minShellVersion.version,
     entrypoint: value.entrypoint,
     files,
@@ -156,8 +168,8 @@ function ensureWithin(root, candidate) {
   return candidatePath === rootPath || candidatePath.startsWith(`${rootPath}${path.sep}`);
 }
 
-function uiCacheDirectory(cacheRoot, version) {
-  return path.join(cacheRoot, `v-${version}`);
+function uiCacheDirectory(cacheRoot, version, webRevision) {
+  return path.join(cacheRoot, `v-${version}-${webRevision}`);
 }
 
 function readCachedUi(cacheRoot, shellVersion, publicKeyDerBase64) {
@@ -166,16 +178,22 @@ function readCachedUi(cacheRoot, shellVersion, publicKeyDerBase64) {
     const pointer = JSON.parse(fs.readFileSync(pointerPath, "utf8"));
     const manifestVersion = parseVersion(pointer.version);
     const pointerMinShellVersion = parseVersion(pointer.minShellVersion);
-    if (!manifestVersion || !validRelativePath(pointer.entrypoint)) return null;
+    if (
+      !manifestVersion ||
+      !validWebRevision(pointer.webRevision) ||
+      !validRelativePath(pointer.entrypoint)
+    )
+      return null;
     if (!pointerMinShellVersion || compareVersions(shellVersion, pointerMinShellVersion) < 0)
       return null;
-    const directory = uiCacheDirectory(cacheRoot, manifestVersion.version);
+    const directory = uiCacheDirectory(cacheRoot, manifestVersion.version, pointer.webRevision);
     const manifest = validateManifest(
       JSON.parse(fs.readFileSync(path.join(directory, "ui-manifest.json"), "utf8"))
     );
     if (
       !manifest ||
       manifest.version !== manifestVersion.version ||
+      manifest.webRevision !== pointer.webRevision ||
       !verifyManifestSignature(manifest, publicKeyDerBase64)
     )
       return null;
@@ -196,7 +214,13 @@ function readCachedUi(cacheRoot, shellVersion, publicKeyDerBase64) {
     }
     const entrypoint = path.resolve(directory, pointer.entrypoint);
     if (!ensureWithin(directory, entrypoint) || !fs.statSync(entrypoint).isFile()) return null;
-    return { directory, entrypoint, version: manifestVersion.version, source: "cache" };
+    return {
+      directory,
+      entrypoint,
+      version: manifestVersion.version,
+      webRevision: manifest.webRevision,
+      source: "cache"
+    };
   } catch {
     return null;
   }
@@ -266,7 +290,12 @@ async function downloadUiUpdate({
 
   fs.mkdirSync(cacheRoot, { recursive: true });
   const existing = readCachedUi(cacheRoot, shellVersion, publicKeyDerBase64);
-  if (existing && compareVersions(manifest.version, existing.version) <= 0) return existing;
+  if (
+    existing &&
+    existing.version === manifest.version &&
+    existing.webRevision === manifest.webRevision
+  )
+    return existing;
 
   const staging = fs.mkdtempSync(path.join(cacheRoot, ".staging-"));
   let totalBytes = 0;
@@ -289,7 +318,7 @@ async function downloadUiUpdate({
       fs.writeFileSync(destination, fileBytes, { mode: 0o600 });
     }
     atomicWrite(path.join(staging, "ui-manifest.json"), `${JSON.stringify(manifest)}\n`);
-    const destination = uiCacheDirectory(cacheRoot, manifest.version);
+    const destination = uiCacheDirectory(cacheRoot, manifest.version, manifest.webRevision);
     if (!ensureWithin(cacheRoot, destination)) throw new Error("UI cache path rejected");
     if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true });
     fs.renameSync(staging, destination);
@@ -297,6 +326,7 @@ async function downloadUiUpdate({
       path.join(cacheRoot, "current.json"),
       JSON.stringify({
         version: manifest.version,
+        webRevision: manifest.webRevision,
         minShellVersion: manifest.minShellVersion,
         entrypoint: manifest.entrypoint
       })
@@ -305,6 +335,7 @@ async function downloadUiUpdate({
       directory: destination,
       entrypoint: path.join(destination, manifest.entrypoint),
       version: manifest.version,
+      webRevision: manifest.webRevision,
       source: "download"
     };
   } finally {
@@ -323,6 +354,7 @@ async function prepareUiUpdate(options) {
       directory: options.bundledDirectory,
       entrypoint: path.join(options.bundledDirectory, "index.html"),
       version: null,
+      webRevision: null,
       source: "bundled",
       fallback: true,
       error: error.message
@@ -334,6 +366,7 @@ module.exports = {
   UI_MANIFEST_SCHEMA_VERSION,
   canonicalManifestPayload,
   compareVersions,
+  validWebRevision,
   validateManifest,
   verifyManifestSignature,
   readCachedUi,

@@ -9,10 +9,13 @@ on:
     branches: ["main"]
     paths:
       - "project/apps/desktop/**"
+      - "project/packages/client-core/**"
+      - "project/packages/config/**"
+      - "project/packages/contracts/**"
+      - "project/packages/shared-ui/**"
       - "VERSION"
       - "package.json"
-      - "project/apps/server/package.json"
-      - "project/apps/web/package.json"
+      - "package-lock.json"
       - ".github/workflows/build-desktop.yml"
 
 jobs:

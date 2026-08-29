@@ -63,6 +63,16 @@ manifest beside the hashed static assets. Do not disable signature validation,
 point a packaged build at an arbitrary host, or commit the private signing
 key. The shell keeps the bundled renderer as its final recovery path.
 
+The manifest uses schema version 2. Its `version` and `minShellVersion` fields
+remain desktop-shell compatibility values, while `webRevision` is the full
+lowercase Git commit SHA of the deployed web build. CI supplies `GITHUB_SHA`;
+local manifest generation must set `ECHO_VERSE_WEB_REVISION` to a lowercase
+commit SHA explicitly. The web bundle's diagnostic version is set by
+`ECHO_VERSE_WEB_VERSION` and defaults to `web-local` for local development.
+Web-only commits update the signed cache without producing a desktop installer.
+Changes to the native shell, desktop configuration, packaging, or
+desktop-relevant shared packages still require a new desktop release.
+
 Persistence is selected explicitly: set `SQLITE_PATH=./tmp/runtime/echoverse.sqlite`
 for a local file-backed database, or set `DATABASE_URL` for PostgreSQL. Do not
 set both. SQLite and PostgreSQL use the same migration IDs and table/column
@@ -150,11 +160,11 @@ tokens, cookies, database URLs, or signing keys into Git or issue trackers.
 
 ## Version changes
 
-1. Change root `VERSION`.
-2. Mirror the exact value in package manifests required by tooling.
-3. Update the roadmap/changelog and relevant release notes.
-4. Run the metadata and workflow validation described in `release.md`.
-5. Use a tag in the form `v<value>` only after the release decision is approved.
+For a desktop-shell release, change root `VERSION`, mirror it in the package
+manifests required by tooling, update the roadmap/release notes, run the
+metadata and workflow validation, and use a matching `v<value>` tag. For a
+web-only change, keep the desktop version unchanged; the web workflow uses the
+Git commit SHA as the renderer revision and no installer is required.
 
 ## Branches and reviews
 

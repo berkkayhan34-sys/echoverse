@@ -12,6 +12,9 @@ on:
       - "project/packages/config/**"
       - "project/packages/contracts/**"
       - "project/packages/shared-ui/**"
+      - "VERSION"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
@@ -42,6 +45,8 @@ jobs:
 
       - name: Build web app
         working-directory: project/apps/web
+        env:
+          ECHO_VERSE_WEB_VERSION: git-${{ github.sha }}
         run: npm run build
 
       - name: Create signed UI manifest

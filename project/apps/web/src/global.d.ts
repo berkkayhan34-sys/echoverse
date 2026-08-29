@@ -1,6 +1,8 @@
 export {};
 
 declare global {
+  const __ECHO_VERSE_WEB_VERSION__: string;
+
   interface Window {
     echoverse?: {
       getConfig: () => Promise<{
@@ -33,6 +35,7 @@ declare global {
       openScreenSettings?: () => Promise<{ ok: boolean }>;
       checkForUpdates?: () => Promise<{ ok: boolean; version?: string | null; error?: string }>;
       getVersion?: () => Promise<string>;
+      getUiVersion?: () => Promise<string | null>;
       notify?: (payload: {
         title: string;
         body: string;

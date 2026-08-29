@@ -5,13 +5,21 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Release workflow
 
-## Canonical version
+## Version tracks
 
-The only authoritative product version is the trimmed contents of the root
-[`VERSION`](../VERSION) file. `package.json`, `project/apps/server/package.json`,
-`project/apps/web/package.json`, and `project/apps/desktop/package.json` are mirrors for tooling. A
-release is blocked if a mirror differs, if the Git tag is not `v<version>`, or
-if a workflow uses a hardcoded product version.
+The trimmed contents of root [`VERSION`](../VERSION) are the canonical
+desktop-shell/product release version. `package.json`,
+`project/apps/server/package.json`, `project/apps/web/package.json`, and
+`project/apps/desktop/package.json` mirror it for workspace tooling. A desktop
+release is blocked if a mirror differs or if the Git tag is not `v<version>`.
+
+The deployed web renderer uses a separate version track: the full lowercase Git
+commit SHA is its `webRevision`. The web bundle reports `git-<sha>` and the
+signed UI manifest uses the raw SHA for cache identity. A web-only commit
+publishes a new manifest and does not require a desktop installer. A new
+installer is required only when the native shell, desktop configuration,
+packaging, or desktop-relevant shared packages change. Version `1.8.4` is the
+first shell release using this split.
 
 ## Release preparation
 
@@ -45,7 +53,8 @@ launchable.
 The web workflow also publishes a signed `ui-manifest.json` beside the static
 web assets. It is signed with the protected `ECHO_VERSE_UI_SIGNING_KEY` GitHub
 Actions secret and contains the canonical product version, minimum compatible
-shell version, entrypoint, file sizes, and SHA-512 digests. Packaged Electron
+shell version, web commit revision, entrypoint, file sizes, and SHA-512 digests.
+Packaged Electron
 clients fetch this manifest over HTTPS at startup, verify the embedded Ed25519
 public key, download same-origin relative files into a staging directory, and
 atomically activate the cache. A failed check retains the previous verified
@@ -55,10 +64,12 @@ validation.
 
 ## Automation contract
 
-GitHub Actions reads `VERSION`, validates package mirrors, builds each target,
-and publishes only the matching `v<version>` release. Workflow files must not
-reintroduce independent version constants. A failed validation stops the
-workflow before publishing.
+GitHub Actions reads `VERSION`, validates package mirrors, builds desktop targets
+only when desktop/native paths change, and publishes only the matching
+`v<version>` release. The web workflow rebuilds on web/shared renderer changes,
+sets the commit revision from `GITHUB_SHA`, signs the manifest, and deploys to
+Pages. Workflow files must not reintroduce independent product-version
+constants. A failed validation stops the affected workflow before publication.
 
 For local preparation, run `make release-check` first. Platform-specific build
 targets are `make release-win`, `make release-mac-intel`, and

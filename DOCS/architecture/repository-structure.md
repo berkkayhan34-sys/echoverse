@@ -28,7 +28,7 @@ echoverse/
 │  ├─ audits/         # risk and quality reviews
 │  └─ historic/       # immutable release notes and completed-roadmap references
 ├─ .github/            # contribution, security, ownership, and automation
-├─ VERSION             # canonical product version
+├─ VERSION             # canonical desktop-shell/product release version
 ├─ LICENSE             # GPL-3.0-only license text
 ├─ REUSE.toml          # SPDX/REUSE annotations
 ├─ README.md           # English product entrypoint

@@ -98,10 +98,15 @@ untrusted input
 
 ## Version source of truth
 
-`VERSION` at the repository root is the canonical product version. Package
-manifests mirror it for ecosystem tooling, and release workflows must validate
-the mirrors and the `v<version>` tag before publishing. See
-[release workflow](release.md) and [ADR-0002](decisions/0002-licensing-and-versioning.md).
+`VERSION` at the repository root is the canonical desktop-shell/product release
+version. Package manifests mirror it for ecosystem tooling, and desktop release
+workflows validate the mirrors and the `v<version>` tag before publishing. The
+deployed web renderer has a separate version dimension: its full lowercase Git
+commit SHA is published as `webRevision` in the signed UI manifest and exposed
+to the browser as `git-<sha>`. The desktop cache identity is the pair
+`(VERSION, webRevision)`, so web-only commits do not require a new installer
+while shell changes still require a desktop release. See [release workflow](release.md),
+[ADR-0002](decisions/0002-licensing-and-versioning.md), and ADR-0019.
 
 ## Development platform decisions
 

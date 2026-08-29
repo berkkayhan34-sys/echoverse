@@ -26,16 +26,20 @@ function response(content: Buffer) {
   };
 }
 
-function signedManifest(files: Array<{ path: string; content: Buffer }>) {
+function signedManifest(
+  files: Array<{ path: string; content: Buffer }>,
+  webRevision = "a".repeat(40)
+) {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519", {
     publicKeyEncoding: { type: "spki", format: "der" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" }
   });
   const unsigned = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     product: "EchoVerse",
     version: "1.8.4",
-    minShellVersion: "1.8.0",
+    webRevision,
+    minShellVersion: "1.8.4",
     entrypoint: "index.html",
     files: files.map((file) => ({
       path: file.path,
@@ -46,7 +50,11 @@ function signedManifest(files: Array<{ path: string; content: Buffer }>) {
   const signature = crypto
     .sign(null, Buffer.from(canonicalManifestPayload(unsigned)), privateKey)
     .toString("base64");
-  return { manifest: { ...unsigned, signature }, publicKey: publicKey.toString("base64") };
+  return {
+    manifest: { ...unsigned, signature },
+    publicKey: publicKey.toString("base64"),
+    privateKey
+  };
 }
 
 describe("desktop UI update boundary", () => {
@@ -58,6 +66,7 @@ describe("desktop UI update boundary", () => {
     const { manifest, publicKey } = signedManifest(files);
 
     expect(validateManifest(manifest)).not.toBeNull();
+    expect(validateManifest({ ...manifest, webRevision: "not-a-commit" })).toBeNull();
     expect(verifyManifestSignature(manifest, publicKey)).toBe(true);
     expect(verifyManifestSignature({ ...manifest, version: "9.9.9" }, publicKey)).toBe(false);
     expect(
@@ -82,7 +91,7 @@ describe("desktop UI update boundary", () => {
       const downloaded = await prepareUiUpdate({
         manifestUrl,
         cacheRoot,
-        shellVersion: "1.8.3",
+        shellVersion: "1.8.4",
         publicKeyDerBase64: publicKey,
         bundledDirectory: "bundled",
         fetchImpl
@@ -98,7 +107,7 @@ describe("desktop UI update boundary", () => {
       const failed = await prepareUiUpdate({
         manifestUrl,
         cacheRoot,
-        shellVersion: "1.8.3",
+        shellVersion: "1.8.4",
         publicKeyDerBase64: publicKey,
         bundledDirectory: "bundled",
         fetchImpl
@@ -112,7 +121,7 @@ describe("desktop UI update boundary", () => {
         const bundledFallback = await prepareUiUpdate({
           manifestUrl,
           cacheRoot: emptyCacheRoot,
-          shellVersion: "1.8.3",
+          shellVersion: "1.8.4",
           publicKeyDerBase64: publicKey,
           bundledDirectory: "bundled",
           fetchImpl
@@ -122,6 +131,56 @@ describe("desktop UI update boundary", () => {
       } finally {
         fs.rmSync(emptyCacheRoot, { recursive: true, force: true });
       }
+    } finally {
+      fs.rmSync(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the web commit revision as part of cache identity", async () => {
+    const files = [{ path: "index.html", content: Buffer.from("<main>revisioned</main>") }];
+    const first = signedManifest(files, "a".repeat(40));
+    const secondRevision = "b".repeat(40);
+    const manifestUrl = "https://ui.example.test/echoverse/ui-manifest.json";
+    let active = first;
+    const payloads = new Map<string, Buffer>([
+      ...files.map((file) => [new URL(file.path, manifestUrl).toString(), file.content] as const)
+    ]);
+    const fetchImpl = async (url: string) =>
+      response(
+        url === manifestUrl
+          ? Buffer.from(JSON.stringify(active.manifest))
+          : payloads.get(url) || Buffer.from("missing")
+      );
+    const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "echoverse-ui-revision-"));
+    try {
+      const initial = await prepareUiUpdate({
+        manifestUrl,
+        cacheRoot,
+        shellVersion: "1.8.4",
+        publicKeyDerBase64: first.publicKey,
+        bundledDirectory: "bundled",
+        fetchImpl
+      });
+      expect(initial.source).toBe("download");
+      const secondUnsigned = { ...first.manifest, webRevision: secondRevision };
+      const secondSignature = crypto
+        .sign(null, Buffer.from(canonicalManifestPayload(secondUnsigned)), first.privateKey)
+        .toString("base64");
+      active = {
+        manifest: { ...secondUnsigned, signature: secondSignature },
+        publicKey: first.publicKey
+      };
+      const revisionChanged = await prepareUiUpdate({
+        manifestUrl,
+        cacheRoot,
+        shellVersion: "1.8.4",
+        publicKeyDerBase64: first.publicKey,
+        bundledDirectory: "bundled",
+        fetchImpl
+      });
+      expect(revisionChanged.source).toBe("download");
+      expect(revisionChanged.fallback).toBe(false);
+      expect(revisionChanged.webRevision).toBe(secondRevision);
     } finally {
       fs.rmSync(cacheRoot, { recursive: true, force: true });
     }

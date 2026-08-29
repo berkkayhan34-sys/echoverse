@@ -31,8 +31,9 @@ known-good desktop shell from opening.
 
 The native Electron updater remains responsible for shell/security changes and
 continues to use the existing signed-release policy. UI and shell versions are
-reported separately for diagnostics; `VERSION` remains the canonical product
-release version.
+reported separately for diagnostics; `VERSION` remains the canonical
+desktop-shell/product release version and the web commit revision is defined in
+[ADR-0019](0019-desktop-shell-and-web-revision-versioning.md).
 
 ## Security and compatibility invariants
 
