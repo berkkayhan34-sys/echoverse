@@ -36,3 +36,9 @@ authorization. If historical membership rows are missing, the fixed main-guild
 identifier remains publicly readable/selectable while no account is promoted to
 owner/admin without the configured founder identity. The value is never stored
 in source or logs.
+
+WebRTC signaling is authorized per transport boundary: active private calls
+may relay only between their two call participants, while guild voice offers,
+answers, and ICE candidates may relay only between authenticated sockets that
+are currently in the same guild voice lobby. A socket outside that lobby is
+denied even when it knows another socket's identifier.

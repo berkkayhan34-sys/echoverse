@@ -137,6 +137,23 @@ decision: null
 
 Acceptance evidence is recorded in [`evidence/CODE-011.md`](evidence/CODE-011.md).
 
+### guild-voice-signaling-regression
+
+```yaml
+id: BUG-001
+type: runtime_bugfix
+status: complete
+evidence: evidence/CODE-012.md
+blocks_roadmap: false
+decision: null
+```
+
+[x] Restore server voice WebRTC signaling without weakening the private-call
+boundary: relays are allowed for authenticated members of the same active
+guild lobby, private-call relays remain friendship-scoped, and outsiders are
+denied. The regression is covered by an integration test for both allowed and
+denied signaling.
+
 ## Release/version rule
 
 The root [`VERSION`](../VERSION) file remains the canonical desktop-shell and

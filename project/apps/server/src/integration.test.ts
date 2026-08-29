@@ -644,6 +644,50 @@ describe("server HTTP and Socket.IO boundaries", () => {
     await expect(stale).resolves.toBeNull();
   });
 
+  it("relays WebRTC signaling between members of the same guild voice lobby", async () => {
+    const owner = await registerClient(await connectClient(), "voice-owner");
+    const member = await registerClient(await connectClient(), "voice-member");
+    const outsider = { socket: await connectClient() };
+
+    const created = (await emitWithAck(owner.socket, "guild:create", {
+      name: "Voice Guild"
+    })) as { ok: boolean; guild: { id: string }; invite?: { token: string } };
+    expect(created.ok).toBe(true);
+    expect(created.invite?.token).toEqual(expect.any(String));
+
+    expect(
+      await emitWithAck(member.socket, "guild:join-code", { code: created.invite?.token })
+    ).toMatchObject({ ok: true });
+    expect(await emitWithAck(owner.socket, "join-room", { guildId: created.guild.id })).toEqual({
+      ok: true,
+      guildId: created.guild.id
+    });
+    expect(await emitWithAck(member.socket, "join-room", { guildId: created.guild.id })).toEqual({
+      ok: true,
+      guildId: created.guild.id
+    });
+
+    const unauthorized = waitForEvent(member.socket, "webrtc-offer");
+    outsider.socket.emit("webrtc-offer", {
+      to: member.socket.id,
+      sdp: { type: "offer", sdp: "v=0 outsider" }
+    });
+    await expect(unauthorized).resolves.toBeNull();
+
+    const relayed = waitForEvent<{ from: string; sdp: { type: string } }>(
+      member.socket,
+      "webrtc-offer"
+    );
+    owner.socket.emit("webrtc-offer", {
+      to: member.socket.id,
+      sdp: { type: "offer", sdp: "v=0 guild" }
+    });
+    await expect(relayed).resolves.toMatchObject({
+      from: owner.socket.id,
+      sdp: { type: "offer" }
+    });
+  });
+
   it("enforces the per-socket authentication rate limit", async () => {
     const client = await connectClient();
     const responses: AckResponse[] = [];

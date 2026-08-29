@@ -5,6 +5,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## Unreleased
+
+- Repair guild voice WebRTC signaling so members in the same lobby can hear
+  one another while outsiders remain blocked; private-call authorization is
+  unchanged.
+
 ## 1.8.6
 
 - Restore the EchoVerse icon and wordmark across browser and Electron-hosted
@@ -56,11 +62,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 Sürümler root `VERSION` dosyasına göre adlandırılır. Bu kayıt, belgelenmiş ve
 doğrulanmış değişiklikleri özetler; planlanan işler release edilmiş sayılmaz.
-
-## Unreleased
-
-- Dokümantasyon ve repo yönetişimi temeli hazırlanıyor.
-- Runtime davranış değişikliği bu fazın kapsamı dışındadır.
 
 ## 1.8.1
 

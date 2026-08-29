@@ -198,7 +198,15 @@ export function registerCallHandlers({
         (candidate.callerSocketId === fromSocketId && candidate.targetSocketId === toSocketId) ||
         (candidate.targetSocketId === fromSocketId && candidate.callerSocketId === toSocketId)
     );
-    return Boolean(call && (await areFriends(call.callerAccountId, call.targetAccountId)));
+    if (call) return await areFriends(call.callerAccountId, call.targetAccountId);
+
+    // Guild voice uses the same WebRTC signaling transport as private calls,
+    // but its authorization boundary is the shared lobby rather than a
+    // friendship record. Only authenticated sockets currently in the exact
+    // same voice room may exchange guild signaling messages.
+    const sender = users.get(fromSocketId);
+    const recipient = users.get(toSocketId);
+    return Boolean(sender?.roomId && sender.roomId === recipient?.roomId);
   }
 
   function endCallsForSocket(socketId: string) {
