@@ -251,7 +251,7 @@ export function registerFriendHandlers({
     }
 
     const id = String(friendshipId || "");
-    let targetId: string | null = null;
+    let targetId: string;
     if (!pool) {
       const row = [...memoryFriendships.values()].find(
         (friendship) => friendship.id === id && friendship.requesterId === user.accountId
@@ -287,7 +287,7 @@ export function registerFriendHandlers({
       targetId = String(row.addressee_id);
     }
 
-    if (targetId) emitToAccount(targetId, "friends:changed", {});
+    emitToAccount(targetId, "friends:changed", {});
     socket.emit("friends:changed");
     callback?.({ ok: true });
   });
