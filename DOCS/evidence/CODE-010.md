@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: FEATURE-001
 status: complete
 date: 2026-08-29
-revision: working-tree
+revision: 7978e34197a113c24aa5b8da8df28180e031dc52 (v1.8.5)
 ```
 
 ## Scope
@@ -37,17 +37,27 @@ revision: working-tree
 
 ## Validation
 
-| Command or check                                                | Runtime/dependencies          | Result  | Artifacts or notes                                                                          |
-| --------------------------------------------------------------- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------- |
-| `npm test -- --run project/apps/server/src/integration.test.ts` | Node.js 22 / Vitest           | pass    | Offline request, duplicate, cancellation, reconnect, authorization, and guild tests passed. |
-| `npm test -- --run`                                             | Node.js 22 / Vitest           | pending | Full suite to be rerun after final formatting and version updates.                          |
-| `npm run typecheck`                                             | Node.js 22 / TypeScript       | pending | Final release gate.                                                                         |
-| `npm run build`                                                 | Node.js 22 / workspace builds | pending | Web, desktop, server, and package builds.                                                   |
-| Integrated browser mobile/desktop inspection                    | In-app Browser                | pending | Representative responsive interactions and no-overflow checks.                              |
+| Command or check                                                | Runtime/dependencies          | Result  | Artifacts or notes                                                                                                                                                               |
+| --------------------------------------------------------------- | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test -- --run project/apps/server/src/integration.test.ts` | Node.js 22 / Vitest           | pass    | Offline request, duplicate, cancellation, reconnect, authorization, and guild tests passed.                                                                                      |
+| `npm test -- --run`                                             | Node.js 22 / Vitest           | pass    | 20 test files and 100 tests passed.                                                                                                                                              |
+| `npm run typecheck`                                             | Node.js 22 / TypeScript       | pass    | All workspace packages type-checked successfully.                                                                                                                                |
+| `npm run build`                                                 | Node.js 22 / workspace builds | pass    | Web, desktop, server, and package builds completed successfully.                                                                                                                 |
+| `npm run format:check`                                          | Node.js 22 / Prettier         | pass    | Repository formatting check passed.                                                                                                                                              |
+| `npm run lint`                                                  | Node.js 22 / ESLint           | pass    | Lint completed with no findings.                                                                                                                                                 |
+| `npm run dependency:check` / `npm audit --audit-level=high`     | Node.js 22 / npm              | pass    | Dependency checks passed; 0 high-or-critical vulnerabilities reported.                                                                                                           |
+| `node DOCS/tools/validate-roadmap.mjs`                          | Node.js 22                    | pass    | Roadmap schema and status validation passed.                                                                                                                                     |
+| GitHub Quality Gate + PostgreSQL migration job                  | GitHub Actions                | pass    | Release revision passed CI quality and database migration gates.                                                                                                                 |
+| GitHub Release workflow                                         | GitHub Actions                | pass    | Windows and macOS installer artifacts published for `v1.8.5`.                                                                                                                    |
+| Render `/health`                                                | Render / PostgreSQL           | pass    | Public health endpoint returned HTTP 200 and version `1.8.5`.                                                                                                                    |
+| GitHub Pages web manifest                                       | GitHub Pages                  | pass    | Web manifest reports version `1.8.5` and the expected commit revision.                                                                                                           |
+| Integrated browser mobile/desktop inspection                    | In-app Browser                | partial | At 390x844, landing/settings views rendered without horizontal overflow. Authenticated workspace interaction was not run because credential-entry confirmation was not provided. |
 
 ## Review notes
 
 The migration removes only duplicate friendship rows for the same unordered
 pair, retaining the most recently updated row. A database backup/recovery point
 must be retained by the deployment operator before applying production
-migrations. Historical documentation remains unchanged.
+migrations. Historical documentation remains unchanged. The authenticated
+workspace visual flow remains unverified; the browser result above is limited
+to the public landing/settings surface and responsive overflow checks.
