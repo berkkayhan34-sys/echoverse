@@ -44,6 +44,12 @@ boundary, account/friend/DM identity, PWA-first mobile delivery,
 owner/admin-first moderation, Unicode/custom emoji before rich media, and
 public single-region scale with private invitation-only servers.
 
+The owner confirmed the detailed execution profile on 2026-08-29 in
+[ADR-0021](0021-discord-parity-execution-profile.md): bounded P2P voice as the
+current implementation path, full Discord-style channel/social/messaging and
+notification behavior, and automatic public-main/private-member-only server
+visibility. Implementation and evidence remain on the active roadmap.
+
 ### OPS-003 platform signing and notarization
 
 OPS-003 is blocked as of 2026-08-28. The release workflows intentionally

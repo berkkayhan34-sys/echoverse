@@ -207,9 +207,11 @@ is recorded.
 
 The following children are the ordered implementation queue for the target
 product: Discord-like communities, identity, and text/social features combined
-with TeamSpeak-like persistent, low-friction voice rooms. They are deliberately
-incomplete until the owner answers the linked product decisions. Each ID is
-stable and must not be reused; dependencies are machine-facing identifiers.
+with TeamSpeak-like persistent, low-friction voice rooms. The product direction
+is accepted in ADR-0014 and the detailed execution profile is accepted in
+ADR-0021; the children remain incomplete until implementation and evidence are
+finished. Each ID is stable and must not be reused; dependencies are
+machine-facing identifiers.
 
 ### foundation-product-contract
 
@@ -220,7 +222,7 @@ sequence: 100
 status: incomplete
 evidence: null
 blocks_roadmap: true
-decision: decisions/0014-discord-teamspeak-product-direction.md
+decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [FEATURE-001, AUDIT-003]
 ```
 
@@ -237,7 +239,7 @@ sequence: 200
 status: incomplete
 evidence: null
 blocks_roadmap: true
-decision: decisions/0014-discord-teamspeak-product-direction.md
+decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-001]
 ```
 
@@ -257,7 +259,7 @@ sequence: 300
 status: incomplete
 evidence: null
 blocks_roadmap: true
-decision: decisions/0014-discord-teamspeak-product-direction.md
+decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-002]
 ```
 
@@ -322,12 +324,12 @@ sequence: 700
 status: incomplete
 evidence: null
 blocks_roadmap: true
-decision: decisions/0014-discord-teamspeak-product-direction.md
+decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [ARCH-002, SEC-001]
 ```
 
-[ ] Choose the voice topology and provider boundary, then implement persistent
-voice-room semantics, SFU/region readiness, stage/stream permissions,
+[ ] Implement the bounded P2P voice path and provider-neutral SFU boundary,
+persistent voice-room semantics, stage/stream permissions,
 reconnect/background lifecycle, device diagnostics, and quality telemetry.
 
 ### mobile-and-platform-delivery
@@ -339,13 +341,13 @@ sequence: 800
 status: incomplete
 evidence: null
 blocks_roadmap: true
-decision: decisions/0014-discord-teamspeak-product-direction.md
+decision: decisions/0021-discord-parity-execution-profile.md
 depends_on: [CHAT-001, VOICE-001]
 ```
 
-[ ] Decide PWA-first versus native iOS/Android delivery, then specify push,
-deep links, permissions, offline behavior, background voice, accessibility,
-store distribution, and Windows/macOS packaging parity.
+[ ] Deliver the PWA-first responsive web/mobile surface and specify push, deep
+links, permissions, offline behavior, background voice, accessibility, and
+Windows/macOS packaging parity. Native iOS/Android delivery remains deferred.
 
 ### signed-desktop-ui-cache
 
