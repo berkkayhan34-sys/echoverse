@@ -7,7 +7,7 @@
 id: ARCH-002
 status: complete
 date: 2026-08-29
-revision: v1.8.9 candidate
+revision: v1.8.9
 ```
 
 Migration `008_spaces_channels_messages.sql` (PostgreSQL and SQLite) adds
