@@ -5,6 +5,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.8.4
+
+- Stabilize the Electron shell release at `1.8.4` while the deployed web UI
+  receives an independent Git commit revision on every web deployment.
+- Add signed UI manifest schema 2 with `webRevision`-based cache identity, so
+  compatible desktop installations refresh web-only commits without a new
+  installer.
+
 ## 1.8.3
 
 - Repair friend-list synchronization and make incoming/outgoing requests

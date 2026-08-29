@@ -36,8 +36,10 @@ generated/local state belongs under the ignored root `tmp/` directory.
 9. `DOCS/roadmap.md` — ordered migration and feature work.
 10. `README.md` and `README-TR.md` — owner-facing product entrypoints; they
     must link to, and must not contradict, the canonical documents above.
-11. `VERSION` — the single canonical product version. Package manifests are
-    compatibility mirrors and release automation must validate them against it.
+11. `VERSION` — the canonical desktop-shell/product release version. Package
+    manifests are compatibility mirrors and release automation must validate
+    them against it. The deployed web renderer has a separate commit-based
+    revision; see `DOCS/release.md` and ADR-0019.
 
 When two documents disagree, update the lower-authority document or record an
 unresolved decision; do not silently invent a third interpretation.

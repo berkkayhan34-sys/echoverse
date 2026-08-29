@@ -33,7 +33,8 @@ const bridge = {
     spotifyClientId: ""
   }),
 
-  getVersion: async () => "1.8.2-web",
+  getVersion: async () => __ECHO_VERSE_WEB_VERSION__,
+  getUiVersion: async () => __ECHO_VERSE_WEB_VERSION__,
 
   onUpdateStatus: (callback: UpdateCallback) => {
     updateCallbacks.add(callback);
@@ -42,7 +43,7 @@ const bridge = {
   checkForUpdates: async () => {
     const message = translator()("update.webInfo");
     for (const cb of updateCallbacks) cb(message);
-    return { ok: true, version: "web-latest" };
+    return { ok: true, version: __ECHO_VERSE_WEB_VERSION__ };
   },
 
   notify: async ({ title, body, icon }: { title: string; body: string; icon?: string | null }) => {

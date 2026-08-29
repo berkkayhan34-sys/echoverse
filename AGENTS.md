@@ -19,7 +19,9 @@ The repository shape is:
 - `tmp/` — ignored generated output, local environments, runtime data, and
   short-lived work files;
 - root metadata — `package.json`, `package-lock.json`, `Makefile`, `VERSION`,
-  `LICENSE`, `REUSE.toml`, `.github/`, and the product README files.
+  `LICENSE`, `REUSE.toml`, `.github/`, and the product README files. `VERSION`
+  is the desktop-shell release version; deployed web builds use the Git commit
+  revision documented in `DOCS/release.md`.
 
 Do not create application code outside `project/`, technical instructions
 outside `DOCS/`, or generated output outside `tmp/` unless an authoritative

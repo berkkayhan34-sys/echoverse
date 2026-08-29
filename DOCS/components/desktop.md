@@ -57,5 +57,8 @@ shell activates that web renderer only after Ed25519 signature, shell-version,
 same-origin path, size, and SHA-512 checks succeed. Files are downloaded into a
 per-user staging directory and switched through an atomic cache pointer; an
 invalid or unavailable update keeps the previous verified cache or bundled
-renderer. The web renderer preserves the native bridge when it is running
+renderer. Manifest schema 2 identifies a cache by both the compatible shell
+version and the web commit revision (`webRevision`); changing only the web
+commit therefore refreshes the renderer without requiring a new installer. The
+web renderer preserves the native bridge when it is running
 inside Electron, while browser sessions install their own fallback bridge.

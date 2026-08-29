@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.8.3`, with protocol major version 2.
+The shipped baseline is product version `1.8.4`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -106,10 +106,15 @@ complete. No unrelated product feature should be added to this child.
 
 ## Release/version rule
 
-The root [`VERSION`](../VERSION) file remains the canonical product version.
+The root [`VERSION`](../VERSION) file remains the canonical desktop-shell and
+product release version.
 Every release must update package mirrors, changelog/release notes, roadmap
 status, checksums, and workflow evidence together, then publish only the
 matching `v<version>` tag as described in [release.md](release.md).
+The deployed web renderer has a separate commit-based revision. Web-only
+changes publish a signed manifest identified by the latest Git commit and do
+not require a new desktop installer; desktop/native or desktop-relevant shared
+changes still require a new shell release.
 
 ## Post-feature parity audit
 
@@ -312,10 +317,10 @@ desktop client, atomically cache only compatible same-origin files, and fall
 back to the previous cache or bundled renderer on every failure. Keep native
 shell updates on the existing unattended installer path.
 
-Acceptance requires signature/path/size/hash/fallback tests, web workflow
-manifest evidence, desktop/web production builds, and a packaged startup smoke
-test proving that an unavailable or invalid UI update still opens the known-good
-renderer.
+Acceptance requires signature/path/size/hash/fallback tests, `webRevision`
+cache-identity coverage, web workflow manifest evidence, desktop/web production
+builds, and a packaged startup smoke test proving that an unavailable or invalid
+UI update still opens the known-good renderer.
 
 ### reliability-and-public-release-gate
 

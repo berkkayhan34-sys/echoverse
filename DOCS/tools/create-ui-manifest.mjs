@@ -14,10 +14,14 @@ const outputDirectory = path.resolve(
 );
 const version = fs.readFileSync(path.join(repositoryRoot, "VERSION"), "utf8").trim();
 const signingKey = process.env.ECHO_VERSE_UI_SIGNING_KEY;
-const minShellVersion = process.env.ECHO_VERSE_UI_MIN_SHELL_VERSION || "1.8.0";
+const webRevision = process.env.ECHO_VERSE_WEB_REVISION || process.env.GITHUB_SHA;
+const minShellVersion = process.env.ECHO_VERSE_UI_MIN_SHELL_VERSION || "1.8.4";
 
 if (!signingKey)
   throw new Error("ECHO_VERSE_UI_SIGNING_KEY is required to publish the UI manifest");
+if (!webRevision || !/^[a-f0-9]{7,64}$/u.test(webRevision)) {
+  throw new Error("ECHO_VERSE_WEB_REVISION or GITHUB_SHA must be a Git commit SHA");
+}
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(version)) {
   throw new Error(`Invalid canonical product version: ${version}`);
 }
@@ -52,9 +56,10 @@ if (!files.some((file) => file.path === "index.html")) {
 }
 
 const unsignedManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   product: "EchoVerse",
   version,
+  webRevision,
   minShellVersion,
   entrypoint: "index.html",
   files
@@ -67,4 +72,4 @@ fs.writeFileSync(
   `${JSON.stringify(manifest, null, 2)}\n`,
   "utf8"
 );
-console.log(`Signed EchoVerse UI manifest ${version} (${files.length} files)`);
+console.log(`Signed EchoVerse UI manifest ${version} web=${webRevision} (${files.length} files)`);

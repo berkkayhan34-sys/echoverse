@@ -99,7 +99,13 @@ let updaterState = {
   percent: 0,
   error: null
 };
-let activeUi = { directory: null, entrypoint: null, version: null, source: "bundled" };
+let activeUi = {
+  directory: null,
+  entrypoint: null,
+  version: null,
+  webRevision: null,
+  source: "bundled"
+};
 
 const SPOTIFY_CALLBACK_PORT = 43821;
 const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_CALLBACK_PORT}/callback`;
@@ -418,7 +424,7 @@ ipcMain.handle("capture:openScreenSettings", async () => {
 });
 
 ipcMain.handle("echoverse:getVersion", () => app.getVersion());
-ipcMain.handle("ui:get-version", () => activeUi.version);
+ipcMain.handle("ui:get-version", () => activeUi.webRevision);
 
 ipcMain.handle("spotify:status", async () => {
   const cfg = readConfig();
@@ -1177,6 +1183,7 @@ async function prepareStartupUi() {
       directory: bundledDirectory,
       entrypoint: path.join(bundledDirectory, "index.html"),
       version: null,
+      webRevision: null,
       source: "bundled"
     };
     return;
@@ -1193,11 +1200,14 @@ async function prepareStartupUi() {
     directory: result.directory,
     entrypoint: result.entrypoint,
     version: result.version,
+    webRevision: result.webRevision,
     source: result.source
   };
   logUpdater(
     "ui_ready",
-    `source=${result.source}${result.version ? ` version=${result.version}` : ""}`
+    `source=${result.source}${result.version ? ` shell=${result.version}` : ""}${
+      result.webRevision ? ` web=${result.webRevision}` : ""
+    }`
   );
   if (result.fallback) logUpdater("ui_update_fallback", result.error || "unknown");
 }
