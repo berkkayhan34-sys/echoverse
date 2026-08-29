@@ -7,7 +7,7 @@
 id: ARCH-001
 status: complete
 date: 2026-08-29
-revision: 1.8.7 candidate
+revision: v1.8.7 / main 84d324f
 ```
 
 The hybrid Discord/TeamSpeak contract is now explicit in `DOCS/architecture.md`
