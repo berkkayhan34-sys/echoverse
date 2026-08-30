@@ -23,12 +23,12 @@ date: 2026-08-30
 
 ## Validation planned
 
-| Check                                              | Result                               |
-| -------------------------------------------------- | ------------------------------------ |
-| Node syntax, typecheck, lint, format, tests, build | pending 1.9.2 rerun                  |
-| Packaged Windows artifact and smoke test           | pending 1.9.2 release workflow       |
-| Two-account Render chat/voice smoke                | passed on 1.9.1; rerun after release |
-| Computer Use single-window relaunch/update check   | pending                              |
+| Check                                              | Result                                       |
+| -------------------------------------------------- | -------------------------------------------- |
+| Node syntax, typecheck, lint, format, tests, build | pass (23 files, 114 tests)                   |
+| Packaged Windows artifact and smoke test           | pass (release workflow and local smoke)      |
+| Two-account Render chat/voice smoke                | pass (guild, chat, voice peer, WebRTC relay) |
+| Computer Use single-window relaunch/update check   | pending (installed 1.9.0 needs v1.9.2 run)   |
 
 ## Security and recovery notes
 
