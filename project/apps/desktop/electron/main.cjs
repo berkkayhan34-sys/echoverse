@@ -106,6 +106,25 @@ let activeUi = {
   source: "bundled"
 };
 
+// A single updater/renderer process owns the installed per-user state. Without
+// this lock, repeated launches can race on the same downloaded installer and
+// leave the user with a hidden process and no usable window.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+let pendingSecondInstance = false;
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    pendingSecondInstance = true;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    pendingSecondInstance = false;
+  });
+}
+
 function getConfigPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "config.json");
@@ -513,8 +532,11 @@ function setupAutoUpdater() {
     void installUpdateSilently("downloaded");
   });
 
-  autoUpdater.on("error", () => {
-    logUpdater("auto_updater_error");
+  autoUpdater.on("error", (error) => {
+    logUpdater(
+      "auto_updater_error",
+      error instanceof Error ? error.message.slice(0, 240) : "unknown"
+    );
 
     // IMPORTANT: never hide updater errors. This is how Defender/download
     // failures become visible to the user instead of silently disappearing.
@@ -821,6 +843,7 @@ async function prepareStartupUi() {
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   app.setName("EchoVerse");
   if (process.platform === "win32") app.setAppUserModelId("com.echoverse.desktop");
   if (
@@ -861,6 +884,11 @@ app.whenReady().then(async () => {
   createSplash();
   createTray();
   createWindow();
+  if (pendingSecondInstance && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    pendingSecondInstance = false;
+  }
 
   app.on("activate", () => {
     if (!mainWindow) createWindow();

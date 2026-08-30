@@ -7,6 +7,13 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.2
+
+- Enforce a single desktop process so updater, cache, tray, and renderer state
+  cannot race when the app is launched repeatedly.
+- Bring a second launch to the existing window instead of leaving a hidden
+  process behind, and record bounded updater error details for diagnosis.
+
 ## 1.9.1
 
 - Keep web authentication usable while the realtime connection is reconnecting;
