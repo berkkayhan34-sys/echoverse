@@ -6,6 +6,7 @@
 import { chatMessageSchema, type Locale, socketEventPayloadSchemas } from "@echoverse/contracts";
 import type { User } from "../../domain/types.js";
 import { sanitizeText } from "../../domain/validation.js";
+import { serverLogger } from "../../runtime/observability.js";
 import { utilityBotResponse } from "./commands.js";
 
 type SocketEventName = keyof typeof socketEventPayloadSchemas;
@@ -100,13 +101,27 @@ export function registerChatHandlers({
       return;
     }
 
-    const stored = await guildChat.store({
-      guildId,
-      channelId,
-      senderId: user.userId,
-      body: safeText,
-      replyToId: parsed.data.replyToId || null
-    });
+    let stored: Awaited<ReturnType<typeof guildChat.store>>;
+    try {
+      stored = await guildChat.store({
+        guildId,
+        channelId,
+        senderId: user.userId,
+        body: safeText,
+        replyToId: parsed.data.replyToId || null
+      });
+    } catch (error) {
+      // Persistence failures must not reject an async Socket.IO handler and
+      // take down the process. Keep the client draft intact with a safe error
+      // while retaining the full diagnostic only in structured server logs.
+      serverLogger.error("echoverse.chat.store_failed", {
+        guildId,
+        channelId,
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      callback?.({ ok: false, error: socketError(socket, "server.messageSendFailed") });
+      return;
+    }
     const message = {
       id: stored.id,
       guildId,

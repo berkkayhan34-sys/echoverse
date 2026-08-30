@@ -9,6 +9,7 @@
   "app.connecting": "Connecting to server…",
   "connection.lost": "Connection lost. Reconnecting…",
   "connection.retrying": "Trying to reconnect to the EchoVerse server…",
+  "connection.retryNow": "Retry connection",
   "error.connectionFailed": "Could not connect to the server.",
   "connection.online": "Online",
   "connection.offline": "Offline",

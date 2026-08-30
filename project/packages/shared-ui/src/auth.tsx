@@ -23,7 +23,7 @@ export type AuthFormLabels = {
 export function AuthForm({
   mode,
   labels,
-  connected,
+  connected: _connected,
   busy,
   username,
   email,
@@ -92,7 +92,11 @@ export function AuthForm({
         placeholder={labels.passwordPlaceholder}
       />
 
-      <ActionButton className="primary" onClick={onSubmit} disabled={!connected || busy}>
+      {/* Credential authentication is an HTTP boundary on web. It must remain
+          usable while the realtime socket is reconnecting; the renderer will
+          keep the workspace locked until the authenticated socket session is
+          confirmed. */}
+      <ActionButton className="primary" onClick={onSubmit} disabled={busy}>
         {busy ? labels.wait : mode === "register" ? labels.submitRegister : labels.submitLogin}
       </ActionButton>
     </>

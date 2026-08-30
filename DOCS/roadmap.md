@@ -30,7 +30,7 @@ deferred and the owner condition that makes it eligible for scheduling.
 
 ## Current baseline
 
-The shipped baseline is product version `1.9.0`, with protocol major version 2.
+The shipped baseline is product version `1.9.1`, with protocol major version 2.
 The completed documentation, quality, runtime, localization, modular-boundary,
 installer/update, observability, and reliability work is a historical
 reference, not an open implementation queue. Local SQLite validation and CI
@@ -298,6 +298,11 @@ depends_on: [ARCH-002, SEC-001]
 [ ] Add guild/DM search, pins, threads, replies, message links, mention
 autocomplete, content/attachment policy, message requests, spam quarantine,
 mute/archive, group DMs, and notification controls.
+
+The 1.9.1 live-parity slice hardens the existing guild chat path against
+hosted-database bootstrap failures and reconnect races; it is recorded in
+[`evidence/CODE-013.md`](evidence/CODE-013.md). The broader parity work remains
+incomplete.
 
 The 1.9.0 slice is tracked as the following stable sub-items and is evidenced
 without claiming the parent parity item is complete:

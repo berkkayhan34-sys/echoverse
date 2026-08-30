@@ -604,7 +604,8 @@ export default function App() {
     if (!serverUrl) return;
 
     const s = io(serverUrl, {
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"],
+      tryAllTransports: true,
       ...REALTIME_RETRY_POLICY,
       auth: createSocketAuth(locale, "desktop")
     });
@@ -1602,16 +1603,17 @@ export default function App() {
       setAuthPassword("");
       setError("");
 
-      try {
-        await ensureMicrophone();
-      } catch (err: any) {
-        setError(
-          t("auth.microphoneUnavailable", {
-            reason: err?.message || t("media.micPermissionDenied")
-          })
-        );
-      }
+      // Microphone permission is requested only when the user joins a voice
+      // room or starts a call, never as a side effect of signing in.
     });
+  }
+
+  function retryConnection() {
+    if (!socket) return;
+    setConnectionMessage(t("connection.retrying"));
+    socket.io.reconnection(true);
+    socket.disconnect();
+    socket.connect();
   }
 
   async function logout() {
@@ -1705,9 +1707,6 @@ export default function App() {
       setAccount(result.account);
       setUsername(result.account.username);
       setIdentified(true);
-      try {
-        await ensureMicrophone();
-      } catch {}
     });
   }
 
@@ -1908,24 +1907,29 @@ export default function App() {
   }
 
   function sendMessage() {
-    if (!socket || !activeGuild) return;
+    if (!socket || !connected || !identified || !activeGuild) {
+      setError(t("connection.retrying"));
+      return;
+    }
 
     const value = text.trim();
     if (!value) return;
 
-    socket.emit(
+    socket.timeout(8_000).emit(
       "chat-message",
       {
         guildId: activeGuild.id,
         ...(activeChannelId ? { channelId: activeChannelId } : {}),
         text: value
       },
-      (result: any) => {
-        if (!result?.ok) setError(result?.error || t("chat.sendFailed"));
+      (timeoutError: Error | null, result: any) => {
+        if (timeoutError || !result?.ok) {
+          setError(result?.error || t("chat.sendFailed"));
+          return;
+        }
+        setText("");
       }
     );
-
-    setText("");
   }
 
   function toggleMute() {
@@ -2185,6 +2189,11 @@ export default function App() {
             <span className="dot" />
             {connected ? t("app.online") : t("app.connecting")}
           </div>
+          {!connected && (
+            <button className="connection-retry" onClick={retryConnection}>
+              {t("connection.retryNow")}
+            </button>
+          )}
 
           <AuthForm
             mode={authMode}
@@ -2302,6 +2311,11 @@ export default function App() {
         <div className="connection-status-banner">
           <span className="connection-dot" />
           {connectionMessage}
+          {!connected && (
+            <button className="connection-retry" onClick={retryConnection}>
+              {t("connection.retryNow")}
+            </button>
+          )}
         </div>
       )}
       <WorkspaceSidebar

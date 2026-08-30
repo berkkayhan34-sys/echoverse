@@ -7,6 +7,18 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.1
+
+- Keep web authentication usable while the realtime connection is reconnecting;
+  the workspace now opens only after the authenticated socket session is
+  confirmed.
+- Prefer Socket.IO polling on hosted proxies, upgrade to WebSocket when
+  available, and provide an explicit retry action for offline sessions.
+- Preserve unsent guild-message drafts until the server acknowledges durable
+  storage, with an eight-second timeout and localized failure feedback.
+- Prevent a PostgreSQL message-write failure from crashing the server process;
+  return a safe error and retain structured diagnostics instead.
+
 ## 1.9.0
 
 - Acknowledge guild message sends and surface localized transport failures.

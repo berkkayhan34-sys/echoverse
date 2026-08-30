@@ -527,7 +527,11 @@ export default function App() {
     if (!serverUrl) return;
 
     const s = io(serverUrl, {
-      transports: ["websocket", "polling"],
+      // Prefer polling so hosted proxies that delay WebSocket upgrades still
+      // establish a usable session; Socket.IO upgrades to WebSocket when it
+      // is available and falls back again after a transport failure.
+      transports: ["polling", "websocket"],
+      tryAllTransports: true,
       ...REALTIME_RETRY_POLICY,
       withCredentials: true,
       auth: createSocketAuth(locale, "web")
@@ -1501,16 +1505,6 @@ export default function App() {
       socket?.connect();
       setAuthPassword("");
       setError("");
-
-      try {
-        await ensureMicrophone();
-      } catch (err: any) {
-        setError(
-          t("auth.microphoneUnavailable", {
-            reason: err?.message || t("media.micPermissionDenied")
-          })
-        );
-      }
     } catch (err: any) {
       setAuthBusy(false);
       setError(err?.message || t("error.operationFailed"));
@@ -1824,19 +1818,29 @@ export default function App() {
     const value = text.trim();
     if (!value) return;
 
-    socket.emit(
+    socket.timeout(8_000).emit(
       "chat-message",
       {
         guildId: activeGuild.id,
         ...(activeChannelId ? { channelId: activeChannelId } : {}),
         text: value
       },
-      (result: any) => {
-        if (!result?.ok) setError(result?.error || t("chat.sendFailed"));
+      (timeoutError: Error | null, result: any) => {
+        if (timeoutError || !result?.ok) {
+          setError(result?.error || t("chat.sendFailed"));
+          return;
+        }
+        setText("");
       }
     );
+  }
 
-    setText("");
+  function retryConnection() {
+    if (!socket) return;
+    setConnectionMessage(t("connection.retrying"));
+    socket.io.reconnection(true);
+    socket.disconnect();
+    socket.connect();
   }
 
   function toggleMute() {
@@ -2100,6 +2104,11 @@ export default function App() {
             <span className="dot" />
             {connected ? t("app.online") : t("app.connecting")}
           </div>
+          {!connected && (
+            <button className="connection-retry" onClick={retryConnection}>
+              {t("connection.retryNow")}
+            </button>
+          )}
 
           <AuthForm
             mode={authMode}
@@ -2241,6 +2250,11 @@ export default function App() {
         <div className="connection-status-banner">
           <span className="connection-dot" />
           {connectionMessage}
+          {!connected && (
+            <button className="connection-retry" onClick={retryConnection}>
+              {t("connection.retryNow")}
+            </button>
+          )}
         </div>
       )}
       <WorkspaceSidebar

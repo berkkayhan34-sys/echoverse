@@ -9,6 +9,7 @@
   "app.connecting": "Sunucuya bağlanıyor…",
   "connection.lost": "Bağlantı kesildi. Yeniden bağlanılıyor…",
   "connection.retrying": "EchoVerse sunucusuna yeniden bağlanmaya çalışıyor…",
+  "connection.retryNow": "Bağlantıyı tekrar dene",
   "error.connectionFailed": "Sunucuya bağlanılamadı.",
   "connection.online": "Online",
   "connection.offline": "Offline",
