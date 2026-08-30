@@ -7,6 +7,13 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.3
+
+- Add shared guild-chat search, server-authorized pin/unpin controls, pinned
+  message rendering, and copyable message deep links across web and desktop.
+- Verify the live message flow with authenticated local browser coverage,
+  including send, search, pin lifecycle, clipboard copy, and deep-link reopen.
+
 ## 1.9.2
 
 - Enforce a single desktop process so updater, cache, tray, and renderer state

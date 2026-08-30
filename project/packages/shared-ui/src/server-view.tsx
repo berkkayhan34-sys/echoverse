@@ -5,7 +5,7 @@
 
 import type { ChatMessage } from "@echoverse/contracts";
 import type { RefObject } from "react";
-import { ChannelMessageList, ChatComposer } from "./chat.js";
+import { ChannelMessageList, ChatComposer, type ChannelMessageLabels } from "./chat.js";
 import { ServerTopbar, type PresenceStatus, type ServerTopbarLabels } from "./topbar.js";
 import {
   VideoStage,
@@ -27,6 +27,11 @@ export type ServerViewLabels = {
     emojiLabel: string;
     sendLabel: string;
   };
+  chat?: ChannelMessageLabels & {
+    searchPlaceholder: string;
+    search: string;
+    clearSearch: string;
+  };
   voice: VoiceControlsLabels;
 };
 
@@ -46,6 +51,9 @@ export function ServerView({
   screenOn,
   connected,
   messages,
+  searchQuery,
+  searchResults,
+  canManageMessages = false,
   text,
   error,
   labels,
@@ -55,6 +63,11 @@ export function ServerView({
   onStatusChange,
   onVideoLayoutChange,
   onTextChange,
+  onSearchQueryChange,
+  onSearch,
+  onClearSearch,
+  onPinMessage,
+  onCopyMessageLink,
   onAddEmoji,
   onSendMessage,
   onToggleMute,
@@ -77,6 +90,9 @@ export function ServerView({
   screenOn: boolean;
   connected: boolean;
   messages: ChatMessage[];
+  searchQuery?: string;
+  searchResults?: ChatMessage[] | null;
+  canManageMessages?: boolean;
   text: string;
   error?: string;
   labels: ServerViewLabels;
@@ -86,6 +102,11 @@ export function ServerView({
   onStatusChange: (status: PresenceStatus) => void;
   onVideoLayoutChange: (layout: "grid" | "focus") => void;
   onTextChange: (value: string) => void;
+  onSearchQueryChange?: (value: string) => void;
+  onSearch?: () => void;
+  onClearSearch?: () => void;
+  onPinMessage?: (message: ChatMessage) => void;
+  onCopyMessageLink?: (message: ChatMessage) => void;
   onAddEmoji: () => void;
   onSendMessage: () => void;
   onToggleMute: () => void;
@@ -118,11 +139,45 @@ export function ServerView({
         onLayoutChange={onVideoLayoutChange}
       />
 
+      {onSearchQueryChange && onSearch && labels.chat && (
+        <div className="chat-search-bar">
+          <input
+            value={searchQuery || ""}
+            aria-label={labels.chat.searchPlaceholder}
+            placeholder={labels.chat.searchPlaceholder}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onSearch();
+            }}
+          />
+          <button type="button" onClick={onSearch} disabled={!searchQuery?.trim()}>
+            {labels.chat.search}
+          </button>
+          {searchResults !== undefined && searchResults !== null && onClearSearch && (
+            <button type="button" className="chat-search-clear" onClick={onClearSearch}>
+              {labels.chat.clearSearch}
+            </button>
+          )}
+        </div>
+      )}
+
+      {labels.chat && searchResults !== undefined && searchResults !== null && (
+        <div className="chat-search-summary" role="status">
+          {searchResults.length > 0
+            ? `${labels.chat.searchResults}: ${searchResults.length}`
+            : labels.chat.noSearchResults}
+        </div>
+      )}
+
       <ChannelMessageList
-        messages={messages}
+        messages={searchResults ?? messages}
         welcomeTitle={labels.channel.welcomeTitle}
         channelBeginning={labels.channel.channelBeginning}
         formatDate={formatDate}
+        labels={labels.chat}
+        canManageMessages={canManageMessages}
+        onPin={onPinMessage}
+        onCopyLink={onCopyMessageLink}
       />
 
       <ChatComposer

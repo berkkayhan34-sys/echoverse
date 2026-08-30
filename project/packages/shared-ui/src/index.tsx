@@ -6,6 +6,7 @@
 export { AuthForm } from "./auth.js";
 export type { AuthFormLabels } from "./auth.js";
 export { ChannelMessageList, ChatComposer } from "./chat.js";
+export type { ChannelMessageLabels } from "./chat.js";
 export { DirectMessageComposer, DirectMessageThread } from "./direct.js";
 export { DirectMessageView } from "./direct-view.js";
 export type { DirectMessageViewLabels } from "./direct-view.js";

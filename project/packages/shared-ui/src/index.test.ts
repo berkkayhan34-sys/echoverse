@@ -102,6 +102,46 @@ describe("shared chat UI", () => {
     expect(children.join(" ")).not.toContain("undefined");
   });
 
+  it("exposes message link and pin actions for a pinned message", () => {
+    const onPin = vi.fn();
+    const onCopyLink = vi.fn();
+    const message = {
+      id: "message-1",
+      username: "Ada",
+      text: "Merhaba",
+      createdAt: "2026-08-27T00:00:00.000Z",
+      pinned: true
+    };
+    const element = ChannelMessageList({
+      messages: [message],
+      welcomeTitle: "Welcome",
+      channelBeginning: "Beginning",
+      formatDate: () => "formatted",
+      labels: {
+        pin: "Pin message",
+        unpin: "Unpin message",
+        copyLink: "Copy message link",
+        pinned: "Pinned",
+        searchResults: "Search results",
+        noSearchResults: "No messages found"
+      },
+      canManageMessages: true,
+      onPin,
+      onCopyLink
+    });
+    const buttons = elementsOfType(element, "button");
+    const copyButton = buttons.find((button) => button.props["aria-label"] === "Copy message link");
+    const unpinButton = buttons.find((button) => button.props["aria-label"] === "Unpin message");
+
+    expect(JSON.stringify(element)).toContain("Pinned");
+    expect(copyButton).toBeDefined();
+    expect(unpinButton).toBeDefined();
+    (copyButton?.props.onClick as () => void)();
+    (unpinButton?.props.onClick as () => void)();
+    expect(onCopyLink).toHaveBeenCalledWith(message);
+    expect(onPin).toHaveBeenCalledWith(message);
+  });
+
   it("exposes accessible input and action labels from the active catalog", () => {
     const onSend = vi.fn();
     const element = ChatComposer({
@@ -981,6 +1021,107 @@ describe("shared server chrome", () => {
     expect(onVideoLayoutChange).toHaveBeenCalledWith("focus");
     expect(onSendMessage).toHaveBeenCalledOnce();
     expect(onToggleScreen).toHaveBeenCalledOnce();
+  });
+
+  it("renders localized guild search controls and forwards search actions", () => {
+    const onSearchQueryChange = vi.fn();
+    const onSearch = vi.fn();
+    const onClearSearch = vi.fn();
+    const element = ServerView({
+      guildName: "Echo",
+      incomingRequestCount: 0,
+      status: "online",
+      videoLayout: "grid",
+      videoStatus: "Camera off",
+      localVideoRef: { current: null },
+      remoteVideoHostRef: { current: null },
+      localVideoActive: false,
+      localSpeaking: false,
+      muted: false,
+      cameraOn: false,
+      screenOn: false,
+      connected: true,
+      messages: [],
+      searchQuery: "hello",
+      searchResults: [],
+      text: "",
+      labels: {
+        topbar: {
+          general: "General",
+          mediaSettings: "Audio & video",
+          friends: "Friends",
+          status: "Status",
+          online: "Online",
+          idle: "Idle",
+          dnd: "Do not disturb",
+          invisible: "Invisible",
+          noiseSuppression: "Noise suppression"
+        },
+        video: { videoShare: "Video", grid: "Grid", focus: "Focus" },
+        channel: { welcomeTitle: "Welcome", channelBeginning: "Beginning" },
+        composer: {
+          inputLabel: "Message",
+          placeholder: "Write",
+          emojiLabel: "Emoji",
+          sendLabel: "Send"
+        },
+        chat: {
+          searchPlaceholder: "Search messages",
+          search: "Search",
+          clearSearch: "Clear",
+          pin: "Pin",
+          unpin: "Unpin",
+          copyLink: "Copy link",
+          pinned: "Pinned",
+          searchResults: "Search results",
+          noSearchResults: "No messages"
+        },
+        voice: {
+          mute: "Mute",
+          microphone: "Microphone",
+          camera: "Camera",
+          cameraOff: "Camera off",
+          screenShare: "Share screen",
+          stopScreenShare: "Stop sharing",
+          endCall: "End call",
+          online: "Online",
+          offline: "Offline"
+        }
+      },
+      formatDate: () => "date",
+      onOpenMediaSettings: vi.fn(),
+      onOpenFriends: vi.fn(),
+      onStatusChange: vi.fn(),
+      onVideoLayoutChange: vi.fn(),
+      onTextChange: vi.fn(),
+      onSearchQueryChange,
+      onSearch,
+      onClearSearch,
+      onAddEmoji: vi.fn(),
+      onSendMessage: vi.fn(),
+      onToggleMute: vi.fn(),
+      onToggleCamera: vi.fn(),
+      onToggleScreen: vi.fn(),
+      onEndCall: vi.fn(),
+      onDismissError: vi.fn()
+    });
+    const searchInput = elementsOfType(element, "input").find(
+      (input) => input.props.placeholder === "Search messages"
+    );
+    const buttons = elementsOfType(element, "button");
+    const searchButton = buttons.find((button) => buttonText(button) === "Search");
+    const clearButton = buttons.find((button) => buttonText(button) === "Clear");
+
+    (searchInput?.props.onChange as (event: { target: { value: string } }) => void)({
+      target: { value: "world" }
+    });
+    (searchInput?.props.onKeyDown as (event: { key: string }) => void)({ key: "Enter" });
+    (clearButton?.props.onClick as () => void)();
+    expect(searchButton).toBeDefined();
+    expect(onSearchQueryChange).toHaveBeenCalledWith("world");
+    expect(onSearch).toHaveBeenCalledOnce();
+    expect(onClearSearch).toHaveBeenCalledOnce();
+    expect(textContent(element)).toContain("No messages");
   });
 
   it("keeps workspace overlays catalog-driven and effect-free", () => {

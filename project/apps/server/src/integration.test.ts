@@ -871,6 +871,7 @@ describe("server HTTP and Socket.IO boundaries", () => {
       })
     ).toMatchObject({ ok: true, channel: expect.objectContaining({ name: "announcements" }) });
     await emitWithAck(owner.socket, "guild:select", { guildId: created.guild.id });
+    await emitWithAck(member.socket, "guild:select", { guildId: created.guild.id });
     const message = waitForEvent<any>(owner.socket, "chat-message");
     owner.socket.emit("chat-message", {
       guildId: created.guild.id,
@@ -881,15 +882,35 @@ describe("server HTTP and Socket.IO boundaries", () => {
       text: "persist me",
       channelId: `${created.guild.id}:general`
     });
+    const history = (await emitWithAck(owner.socket, "chat-history", {
+      guildId: created.guild.id,
+      channelId: `${created.guild.id}:general`
+    })) as any;
+    expect(history).toMatchObject({
+      ok: true,
+      messages: expect.arrayContaining([expect.objectContaining({ body: "persist me" })])
+    });
     expect(
-      await emitWithAck(owner.socket, "chat-history", {
+      await emitWithAck(owner.socket, "chat-search", {
         guildId: created.guild.id,
-        channelId: `${created.guild.id}:general`
+        channelId: `${created.guild.id}:general`,
+        query: "persist"
       })
     ).toMatchObject({
       ok: true,
       messages: expect.arrayContaining([expect.objectContaining({ body: "persist me" })])
     });
+    const pinned = waitForEvent<any>(member.socket, "chat:pinned");
+    const targetMessage = history.messages.find((entry: any) => entry.body === "persist me");
+    expect(targetMessage).toBeDefined();
+    expect(
+      await emitWithAck(owner.socket, "chat-pin", {
+        guildId: created.guild.id,
+        messageId: targetMessage.id,
+        pinned: true
+      })
+    ).toMatchObject({ ok: true });
+    await expect(pinned).resolves.toMatchObject({ pinned: true });
     expect(
       await emitWithAck(owner.socket, "guild:moderate-member", {
         guildId: created.guild.id,

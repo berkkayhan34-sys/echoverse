@@ -468,11 +468,19 @@ export type IncomingCall = {
 };
 export type ChatMessage = {
   id: string;
+  guildId?: string;
+  channelId?: string;
+  userId?: string;
   username: string;
   avatarData?: string | null;
   text: string;
   createdAt: string;
   bot?: boolean;
+  replyToId?: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  pinned?: boolean;
+  reactions?: Record<string, string[]>;
 };
 export type GuildRole = "owner" | "admin" | "moderator" | "member";
 export type GuildChannelType = "text" | "voice" | "stage" | "forum";

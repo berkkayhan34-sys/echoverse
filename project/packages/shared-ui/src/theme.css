@@ -374,6 +374,61 @@ details.guild-options[open] > .guild-options-trigger,
   box-shadow: none;
 }
 
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin: 0 15px 8px;
+  padding: 6px;
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-radius-md);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-panel);
+}
+
+.chat-search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ev-text);
+  padding: 8px 10px;
+}
+
+.chat-search-bar button {
+  min-height: 34px;
+  border: 1px solid var(--ev-border);
+  border-radius: var(--ev-radius-sm);
+  background: var(--ev-primary-soft);
+  color: var(--ev-text);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.chat-search-bar button:hover:not(:disabled),
+.chat-search-bar button:focus-visible {
+  background: var(--ev-primary);
+}
+
+.chat-search-bar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-search-bar .chat-search-clear {
+  background: transparent;
+  color: var(--ev-text-muted);
+}
+
+.chat-search-summary {
+  flex: none;
+  margin: 0 18px 4px;
+  color: var(--ev-text-muted);
+  font-size: 0.78rem;
+}
+
 .message,
 .member,
 .friend-row,
@@ -391,6 +446,47 @@ details.guild-options[open] > .guild-options-trigger,
 .guild-row:hover,
 .screen-source-card:hover {
   background: rgba(157, 171, 196, 0.06);
+}
+
+.message.pinned {
+  background: rgba(121, 103, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--ev-primary);
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.message:hover .message-actions,
+.message:focus-within .message-actions {
+  opacity: 1;
+}
+
+.message-action {
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--ev-radius-sm);
+  background: transparent;
+  color: var(--ev-text-muted);
+  cursor: pointer;
+}
+
+.message-action:hover,
+.message-action:focus-visible {
+  border-color: var(--ev-border);
+  background: var(--ev-surface-hover);
+  color: var(--ev-text);
+}
+
+.message-pinned-badge {
+  color: var(--ev-primary-hover);
+  font-size: 0.72rem;
 }
 
 .modal-backdrop,
@@ -1226,6 +1322,27 @@ details.guild-options[open] > .guild-options-trigger,
     overscroll-behavior-y: contain;
   }
 
+  .chat-search-bar {
+    margin: 0 12px 6px;
+    gap: 5px;
+  }
+
+  .chat-search-bar input {
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  .chat-search-bar button {
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .chat-search-summary {
+    margin: 0 14px 3px;
+    font-size: 11px;
+  }
+
   .channel-intro {
     padding: 14px 0 12px;
     margin-bottom: 8px;
@@ -1253,6 +1370,11 @@ details.guild-options[open] > .guild-options-trigger,
     grid-template-columns: 34px minmax(0, 1fr);
     gap: 9px;
     margin: 11px 0;
+  }
+
+  .message-actions {
+    grid-column: 2;
+    opacity: 1;
   }
 
   .message .avatar,

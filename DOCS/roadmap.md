@@ -317,12 +317,16 @@ without claiming the parent parity item is complete:
   can select the public main guild and send persisted guild messages; missing
   legacy main-guild channel rows are repaired or served from the canonical
   `general`/`Lobby` defaults during startup.
+- `CHAT-001.5` — shared web/desktop guild chat search, server-authorized
+  pin/unpin actions, pinned-message rendering, and copyable message links.
+  Search and pin controls remain renderer-owned while authorization stays on
+  the server boundary.
 
-Still deferred under `CHAT-001`: search/pins/threads/mentions, message-request
-and spam workflows, attachment policy UI, and notification controls. The
-group-call UI supports converting an active one-to-one call while creating a
-group; in-place participant renegotiation without that conversion remains a
-follow-up item.
+Still deferred under `CHAT-001`: threads, mention autocomplete,
+message-request and spam workflows, attachment policy UI, and notification
+controls. The group-call UI supports converting an active one-to-one call
+while creating a group; in-place participant renegotiation without that
+conversion remains a follow-up item.
 
 ### emoji-and-rich-media
 

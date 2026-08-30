@@ -133,8 +133,10 @@ export default function App() {
   const [joined, setJoined] = useState(false);
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
-  const [activeChannelId] = useState("");
+  const [activeChannelId, setActiveChannelId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [chatSearchResults, setChatSearchResults] = useState<ChatMessage[] | null>(null);
   const [presence, setPresence] = useState<PeerInfo[]>([]);
   const [text, setText] = useState("");
   const [muted, setMuted] = useState(false);
@@ -154,6 +156,26 @@ export default function App() {
   const [screenSources, setScreenSources] = useState<ScreenSource[]>([]);
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [screenPermission, setScreenPermission] = useState("");
+  const deepLinkMessageRef = useRef("");
+
+  useEffect(() => {
+    const messageId = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("message");
+    if (!messageId) {
+      deepLinkMessageRef.current = "";
+      return;
+    }
+    if (deepLinkMessageRef.current === messageId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`message-${messageId}`);
+      if (!target) return;
+      deepLinkMessageRef.current = messageId;
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages]);
 
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
   const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({});
@@ -874,6 +896,14 @@ export default function App() {
           icon: msg.avatarData
         });
       }
+    });
+
+    s.on("chat:pinned", (message: ChatMessage) => {
+      if (!message?.id) return;
+      const applyPin = (current: ChatMessage[]) =>
+        current.map((item) => (item.id === message.id ? { ...item, ...message } : item));
+      setMessages(applyPin);
+      setChatSearchResults((current) => (current ? applyPin(current) : current));
     });
 
     s.on("presence", (list: PeerInfo[]) => {
@@ -1626,8 +1656,11 @@ export default function App() {
     setIdentified(false);
     setJoined(false);
     setActiveGuild(null);
+    setActiveChannelId("");
     setPresence([]);
     setMessages([]);
+    setChatSearchQuery("");
+    setChatSearchResults(null);
   }
 
   async function resizeAvatar(file: File) {
@@ -1719,6 +1752,9 @@ export default function App() {
     setViewMode("server");
     setActiveDmFriend(null);
     setMessages([]);
+    setChatSearchQuery("");
+    setChatSearchResults(null);
+    setActiveChannelId(`${guild.id}:general`);
     setPresence([]);
 
     lobbyStateReadyRef.current = false;
@@ -1726,7 +1762,34 @@ export default function App() {
     reconnectingRef.current = false;
 
     socket.emit("guild:select", { guildId: guild.id }, (result: any) => {
-      if (!result?.ok) setError(result?.error || t("error.guildJoinFailed"));
+      if (!result?.ok) {
+        setError(result?.error || t("error.guildJoinFailed"));
+        return;
+      }
+      socket.emit(
+        "chat-history",
+        { guildId: guild.id, channelId: `${guild.id}:general` },
+        (history: any) => {
+          if (!history?.ok) return;
+          setMessages(
+            (history.messages || []).map((message: any) => ({
+              id: message.id,
+              guildId: message.guildId,
+              channelId: message.channelId,
+              userId: message.senderId || message.userId,
+              username: message.username,
+              avatarData: message.avatarData,
+              text: message.text || message.body,
+              createdAt: message.createdAt,
+              replyToId: message.replyToId,
+              editedAt: message.editedAt,
+              deletedAt: message.deletedAt,
+              pinned: message.pinned,
+              reactions: message.reactions
+            }))
+          );
+        }
+      );
     });
     setJoined(false);
   }
@@ -1744,7 +1807,10 @@ export default function App() {
       if (activeGuildRef.current?.id === guild.id) {
         if (joined) await leaveVoice();
         setActiveGuild(null);
+        setActiveChannelId("");
         setMessages([]);
+        setChatSearchQuery("");
+        setChatSearchResults(null);
         setPresence([]);
         setViewMode("server");
       }
@@ -1930,6 +1996,81 @@ export default function App() {
         setText("");
       }
     );
+  }
+
+  function searchMessages() {
+    const query = chatSearchQuery.trim();
+    if (!socket || !activeGuild || !activeChannelId || !query) return;
+    socket
+      .timeout(8_000)
+      .emit(
+        "chat-search",
+        { guildId: activeGuild.id, channelId: activeChannelId, query, limit: 100 },
+        (timeoutError: Error | null, result: any) => {
+          if (timeoutError || !result?.ok) {
+            setError(result?.error || t("chat.searchFailed"));
+            return;
+          }
+          setChatSearchResults(
+            (result.messages || []).map((message: any) => ({
+              id: message.id,
+              guildId: message.guildId,
+              channelId: message.channelId,
+              userId: message.senderId || message.userId,
+              username: message.username,
+              avatarData: message.avatarData,
+              text: message.text || message.body,
+              createdAt: message.createdAt,
+              replyToId: message.replyToId,
+              editedAt: message.editedAt,
+              deletedAt: message.deletedAt,
+              pinned: message.pinned,
+              reactions: message.reactions
+            }))
+          );
+        }
+      );
+  }
+
+  function clearChatSearch() {
+    setChatSearchQuery("");
+    setChatSearchResults(null);
+  }
+
+  function pinMessage(message: ChatMessage) {
+    if (!socket || !activeGuild || !activeChannelId) return;
+    socket
+      .timeout(8_000)
+      .emit(
+        "chat-pin",
+        { guildId: activeGuild.id, messageId: message.id, pinned: !message.pinned },
+        (timeoutError: Error | null, result: any) => {
+          if (timeoutError || !result?.ok) setError(result?.error || t("chat.pinFailed"));
+        }
+      );
+  }
+
+  async function copyMessageLink(message: ChatMessage) {
+    if (!activeGuild || !activeChannelId) return;
+    const url = new URL(window.location.href);
+    url.hash =
+      "guild=" +
+      encodeURIComponent(activeGuild.id) +
+      "&channel=" +
+      encodeURIComponent(activeChannelId) +
+      "&message=" +
+      encodeURIComponent(message.id);
+    const value = url.toString();
+    try {
+      const nativeResult = await window.echoverse?.copyText?.(value);
+      if (!nativeResult?.ok) await navigator.clipboard.writeText(value);
+      window.echoverse?.notify?.({
+        title: t("app.name"),
+        body: t("chat.messageLinkCopied")
+      });
+    } catch {
+      setError(t("chat.messageLinkCopyFailed"));
+    }
   }
 
   function toggleMute() {
@@ -2556,6 +2697,9 @@ export default function App() {
               screenOn={screenOn}
               connected={connected}
               messages={messages}
+              searchQuery={chatSearchQuery}
+              searchResults={chatSearchResults}
+              canManageMessages={["owner", "admin", "moderator"].includes(activeGuild?.role || "")}
               text={text}
               error={error}
               labels={{
@@ -2578,6 +2722,17 @@ export default function App() {
                 channel: {
                   welcomeTitle: t("ui.welcomeChannel"),
                   channelBeginning: t("ui.channelBeginning", { guild: activeGuild?.name || "" })
+                },
+                chat: {
+                  searchPlaceholder: t("chat.searchPlaceholder"),
+                  search: t("chat.search"),
+                  clearSearch: t("chat.clearSearch"),
+                  pin: t("chat.pin"),
+                  unpin: t("chat.unpin"),
+                  copyLink: t("chat.copyLink"),
+                  pinned: t("chat.pinned"),
+                  searchResults: t("chat.searchResults"),
+                  noSearchResults: t("chat.noSearchResults")
                 },
                 composer: {
                   inputLabel: t("chat.message"),
@@ -2609,6 +2764,11 @@ export default function App() {
               onStatusChange={setPresenceStatus}
               onVideoLayoutChange={setVideoLayout}
               onTextChange={setText}
+              onSearchQueryChange={setChatSearchQuery}
+              onSearch={searchMessages}
+              onClearSearch={clearChatSearch}
+              onPinMessage={pinMessage}
+              onCopyMessageLink={copyMessageLink}
               onAddEmoji={(emoji = "😂") =>
                 setText((value) => `${value}${value ? " " : ""}${emoji}`)
               }
