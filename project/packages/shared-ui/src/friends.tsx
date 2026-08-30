@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { DmConversation, FriendUser } from "@echoverse/contracts";
+import type { DmConversation, DmRequest, FriendUser } from "@echoverse/contracts";
 import { displayInitials } from "./text.js";
 
 export type FriendsModalLabels = {
@@ -31,6 +31,10 @@ export type FriendsModalLabels = {
   promoteGroupAdmin?: string;
   removeFromGroup?: string;
   leaveGroup?: string;
+  messageRequests?: string;
+  messageRequestAccept?: string;
+  messageRequestDecline?: string;
+  messageRequestSpam?: string;
 };
 
 /** Shared friends, request, and direct-message entrypoint modal. */
@@ -38,6 +42,8 @@ export function FriendsModal({
   friends,
   incomingRequests,
   outgoingRequests,
+  incomingMessageRequests = [],
+  outgoingMessageRequests = [],
   friendSearchResults,
   conversations,
   unreadDm,
@@ -57,11 +63,14 @@ export function FriendsModal({
   currentAccountId,
   onGroupPromote,
   onGroupRemove,
-  onGroupLeave
+  onGroupLeave,
+  onRespondMessageRequest
 }: {
   friends: FriendUser[];
   incomingRequests: FriendUser[];
   outgoingRequests: FriendUser[];
+  incomingMessageRequests?: DmRequest[];
+  outgoingMessageRequests?: DmRequest[];
   friendSearchResults: FriendUser[];
   conversations?: DmConversation[];
   unreadDm: Record<string, number>;
@@ -82,6 +91,7 @@ export function FriendsModal({
   onGroupPromote?: (conversationId: string, accountId: string) => void;
   onGroupRemove?: (conversationId: string, accountId: string) => void;
   onGroupLeave?: (conversationId: string) => void;
+  onRespondMessageRequest?: (requestId: string, action: "accept" | "decline" | "spam") => void;
 }) {
   return (
     <div className="modal-backdrop">
@@ -212,8 +222,80 @@ export function FriendsModal({
                     {labels.pending || labels.outgoingRequests}
                   </small>
                 ) : (
-                  <button onClick={() => onSendFriendRequest(friend.id)}>＋ {labels.add}</button>
+                  <div className="friend-actions">
+                    <button onClick={() => onSendFriendRequest(friend.id)}>＋ {labels.add}</button>
+                    {friend.relationship !== "blocked" && (
+                      <button
+                        className="dm-open-button"
+                        aria-label={labels.openDirectMessage}
+                        onClick={() => onOpenDm(friend)}
+                      >
+                        💬
+                      </button>
+                    )}
+                  </div>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(incomingMessageRequests.length > 0 || outgoingMessageRequests.length > 0) && (
+          <div className="friend-section message-request-section">
+            <h3>{labels.messageRequests || labels.incomingRequests}</h3>
+            {incomingMessageRequests.map((request) => (
+              <div className="friend-row" key={request.id}>
+                <div className="friend-user">
+                  <div className="avatar">
+                    {request.senderAvatarData ? (
+                      <img src={request.senderAvatarData} alt="" />
+                    ) : (
+                      displayInitials(request.senderUsername)
+                    )}
+                  </div>
+                  <div>
+                    <b>{request.senderUsername}</b>
+                    <small className="friend-request-preview">{request.body}</small>
+                  </div>
+                </div>
+                <div className="friend-actions">
+                  <button
+                    aria-label={labels.messageRequestAccept || labels.accept}
+                    onClick={() => onRespondMessageRequest?.(request.id, "accept")}
+                  >
+                    ✓
+                  </button>
+                  <button
+                    aria-label={labels.messageRequestDecline || labels.decline}
+                    onClick={() => onRespondMessageRequest?.(request.id, "decline")}
+                  >
+                    ✕
+                  </button>
+                  <button
+                    aria-label={labels.messageRequestSpam || labels.decline}
+                    onClick={() => onRespondMessageRequest?.(request.id, "spam")}
+                  >
+                    ⚑
+                  </button>
+                </div>
+              </div>
+            ))}
+            {outgoingMessageRequests.map((request) => (
+              <div className="friend-row" key={request.id}>
+                <div className="friend-user">
+                  <div className="avatar">
+                    {request.recipientAvatarData ? (
+                      <img src={request.recipientAvatarData} alt="" />
+                    ) : (
+                      displayInitials(request.recipientUsername)
+                    )}
+                  </div>
+                  <div>
+                    <b>{request.recipientUsername}</b>
+                    <small className="friend-request-preview">{request.body}</small>
+                  </div>
+                </div>
+                <small className="friend-pending">{labels.messageRequests || labels.pending}</small>
               </div>
             ))}
           </div>

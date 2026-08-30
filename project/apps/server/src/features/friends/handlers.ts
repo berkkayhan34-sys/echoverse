@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { socketEventPayloadSchemas, type Locale } from "@echoverse/contracts";
-import type { Account, StoredDm, User } from "../../domain/types.js";
+import type { Account, StoredDm, StoredDmRequest, User } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 import type { MemoryFriendship } from "./service.js";
 import { serverLogger } from "../../runtime/observability.js";
@@ -24,6 +24,22 @@ export type FriendHandlerDependencies = {
   findUsersByUsername(query: string, selfId: string, locale: Locale): Promise<unknown[]>;
   listFriendState(accountId: string): Promise<unknown>;
   listConversations(accountId: string): Promise<unknown>;
+  listDmRequests(accountId: string): Promise<{ incoming: any[]; outgoing: any[] }>;
+  createDmRequest(
+    senderId: string,
+    recipientId: string,
+    body: string
+  ): Promise<{ created: boolean; request: StoredDmRequest }>;
+  dmRequestBetween(senderId: string, recipientId: string): Promise<StoredDmRequest | null>;
+  updateDmRequestStatus(
+    accountId: string,
+    requestId: string,
+    status: "declined" | "spam"
+  ): Promise<StoredDmRequest | null>;
+  acceptDmRequest(
+    accountId: string,
+    requestId: string
+  ): Promise<{ request: StoredDmRequest; message: StoredDm } | null>;
   conversationFor(accountId: string, conversationId: string): Promise<any>;
   conversationMembers(conversationId: string): Promise<any[]>;
   createGroupConversation(createdBy: string, memberIds: string[], name?: string): Promise<any>;
@@ -76,6 +92,11 @@ export function registerFriendHandlers({
   findUsersByUsername,
   listFriendState,
   listConversations,
+  listDmRequests,
+  createDmRequest,
+  dmRequestBetween,
+  updateDmRequestStatus,
+  acceptDmRequest,
   conversationFor,
   conversationMembers,
   createGroupConversation,
@@ -423,6 +444,68 @@ export function registerFriendHandlers({
     callback?.({ ok: true, conversations: await listConversations(account.id) });
   });
 
+  onValidatedSocketEvent(socket, "dm:requests", async (_payload, callback) => {
+    const account = socket.data.account;
+    if (!account)
+      return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+    try {
+      callback?.({ ok: true, ...(await listDmRequests(account.id)) });
+    } catch (error) {
+      serverLogger.error("echoverse.dm.requests_list_failed", {
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+    }
+  });
+
+  onValidatedSocketEvent(socket, "dm:request-respond", async ({ requestId, action }, callback) => {
+    const account = socket.data.account;
+    if (!account)
+      return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+
+    if (action === "decline" || action === "spam") {
+      const request = await updateDmRequestStatus(
+        account.id,
+        requestId,
+        action === "spam" ? "spam" : "declined"
+      );
+      if (!request) {
+        callback?.({ ok: false, error: socketError(socket, "server.messageRequestNotFound") });
+        return;
+      }
+      emitToAccount(request.senderId, "dm:requests-changed", {});
+      socket.emit("dm:requests-changed", {});
+      callback?.({ ok: true, request });
+      return;
+    }
+
+    try {
+      const result = await acceptDmRequest(account.id, requestId);
+      if (!result) {
+        callback?.({ ok: false, error: socketError(socket, "server.messageRequestNotFound") });
+        return;
+      }
+      const sender = await accountById(result.message.senderId);
+      const payload = {
+        ...result.message,
+        senderUsername: sender?.username || "",
+        senderAvatarData: sender?.avatarData || null
+      };
+      emitDmPair(result.message, "dm:message", payload);
+      emitToAccount(result.request.senderId, "friends:changed", {});
+      socket.emit("friends:changed");
+      emitToAccount(result.request.senderId, "dm:requests-changed", {});
+      socket.emit("dm:requests-changed", {});
+      callback?.({ ok: true, request: result.request, message: payload });
+    } catch (error) {
+      serverLogger.error("echoverse.dm.request_accept_failed", {
+        requestId,
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+    }
+  });
+
   onValidatedSocketEvent(socket, "dm:group-create", async ({ memberIds, name }, callback) => {
     const account = socket.data.account;
     if (!account || memberIds.includes(account.id)) {
@@ -578,10 +661,6 @@ export function registerFriendHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
         return;
       }
-      if (!conversationId && !(await areFriends(user.accountId, friend))) {
-        callback?.({ ok: false, error: socketError(socket, "server.notFriends") });
-        return;
-      }
 
       const checkedAttachment = validateAttachment(attachment);
       if (!checkedAttachment.ok) {
@@ -591,6 +670,69 @@ export function registerFriendHandlers({
       if (!clean && !checkedAttachment.value) {
         callback?.({ ok: false, error: socketError(socket, "server.emptyMessage") });
         return;
+      }
+
+      if (!conversationId) {
+        const target = await accountById(friend);
+        if (!target || target.id === user.accountId) {
+          callback?.({ ok: false, error: socketError(socket, "server.userNotFound") });
+          return;
+        }
+        const friendship = await friendshipBetween(user.accountId, friend);
+        const isAcceptedFriend = friendship?.status === "accepted";
+        const blocked = friendship?.status === "blocked";
+        if (blocked) {
+          callback?.({ ok: false, error: socketError(socket, "server.userBlocked") });
+          return;
+        }
+        if (!isAcceptedFriend) {
+          if (checkedAttachment.value) {
+            callback?.({
+              ok: false,
+              error: socketError(socket, "server.messageRequestAttachmentsNotAllowed")
+            });
+            return;
+          }
+          const request = await dmRequestBetween(user.accountId, friend);
+          if (request?.status === "pending") {
+            callback?.({ ok: false, error: socketError(socket, "server.messageRequestPending") });
+            return;
+          }
+          if (request && request.status !== "accepted") {
+            callback?.({ ok: false, error: socketError(socket, "server.messageRequestClosed") });
+            return;
+          }
+          let created: Awaited<ReturnType<typeof createDmRequest>>;
+          try {
+            created = await createDmRequest(user.accountId, friend, clean);
+          } catch (error) {
+            // A concurrent send may win the unique directional-request race.
+            const current = await dmRequestBetween(user.accountId, friend);
+            if (current?.status === "pending") {
+              callback?.({ ok: false, error: socketError(socket, "server.messageRequestPending") });
+              return;
+            }
+            serverLogger.error("echoverse.dm.request_create_failed", {
+              error: error instanceof Error ? error.message : "unknown"
+            });
+            callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+            return;
+          }
+          if (!created.created) {
+            callback?.({ ok: false, error: socketError(socket, "server.messageRequestPending") });
+            return;
+          }
+          const requestPayload = {
+            ...created.request,
+            senderUsername: user.username,
+            senderAvatarData: user.avatarData
+          };
+          emitToAccount(friend, "dm:request-received", requestPayload);
+          emitToAccount(friend, "dm:requests-changed", {});
+          socket.emit("dm:requests-changed", {});
+          callback?.({ ok: true, request: requestPayload });
+          return;
+        }
       }
 
       const message = await storeDm(user.accountId, friend || conversationId!, clean, {

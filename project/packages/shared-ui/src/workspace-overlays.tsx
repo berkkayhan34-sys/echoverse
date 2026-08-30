@@ -5,6 +5,7 @@
 
 import type {
   DmConversation,
+  DmRequest,
   FriendUser,
   IncomingCall,
   PeerInfo,
@@ -58,6 +59,8 @@ export function WorkspaceOverlays({
   friends,
   incomingRequests,
   outgoingRequests,
+  incomingMessageRequests,
+  outgoingMessageRequests,
   friendSearchResults,
   conversations,
   unreadDm,
@@ -102,6 +105,7 @@ export function WorkspaceOverlays({
   onGroupPromote,
   onGroupRemove,
   onGroupLeave,
+  onRespondMessageRequest,
   onAnswerCall,
   onEndCall,
   onCloseScreenPicker,
@@ -138,6 +142,8 @@ export function WorkspaceOverlays({
   friends: FriendUser[];
   incomingRequests: FriendUser[];
   outgoingRequests: FriendUser[];
+  incomingMessageRequests?: DmRequest[];
+  outgoingMessageRequests?: DmRequest[];
   friendSearchResults: FriendUser[];
   conversations?: DmConversation[];
   unreadDm: Record<string, number>;
@@ -182,6 +188,7 @@ export function WorkspaceOverlays({
   onGroupPromote?: (conversationId: string, accountId: string) => void;
   onGroupRemove?: (conversationId: string, accountId: string) => void;
   onGroupLeave?: (conversationId: string) => void;
+  onRespondMessageRequest?: (requestId: string, action: "accept" | "decline" | "spam") => void;
   onAnswerCall: (accepted: boolean) => void | Promise<void>;
   onEndCall: () => void | Promise<void>;
   onCloseScreenPicker: () => void;
@@ -240,6 +247,8 @@ export function WorkspaceOverlays({
           friends={friends}
           incomingRequests={incomingRequests}
           outgoingRequests={outgoingRequests}
+          incomingMessageRequests={incomingMessageRequests}
+          outgoingMessageRequests={outgoingMessageRequests}
           friendSearchResults={friendSearchResults}
           conversations={conversations}
           unreadDm={unreadDm}
@@ -260,6 +269,7 @@ export function WorkspaceOverlays({
           onGroupPromote={onGroupPromote}
           onGroupRemove={onGroupRemove}
           onGroupLeave={onGroupLeave}
+          onRespondMessageRequest={onRespondMessageRequest}
         />
       )}
 

@@ -17,6 +17,9 @@ export type ChatHandlerDependencies = {
   users: Map<string, User>;
   guildChat: ReturnType<typeof import("./guild-service.js").createGuildChatService>;
   isMember(guildId: string, accountId?: string): boolean;
+  membersFor(
+    guildId: string
+  ): Promise<Array<{ accountId: string; username: string; avatarData?: string | null }>>;
   listChannels(guildId: string): Array<{ id: string; categoryId?: string | null }>;
   hasScopedPermission(
     guildId: string,
@@ -41,6 +44,7 @@ export function registerChatHandlers({
   users,
   guildChat,
   isMember,
+  membersFor,
   listChannels,
   hasScopedPermission,
   socketError,
@@ -101,6 +105,20 @@ export function registerChatHandlers({
       return;
     }
 
+    const replyToId = parsed.data.replyToId || null;
+    if (replyToId) {
+      const parent = await guildChat.byId(replyToId);
+      if (
+        !parent ||
+        parent.guildId !== guildId ||
+        parent.channelId !== channelId ||
+        !canAccessChannel(guildId, user.accountId, "channel:view", parent.channelId)
+      ) {
+        callback?.({ ok: false, error: socketError(socket, "server.messageSendFailed") });
+        return;
+      }
+    }
+
     let stored: Awaited<ReturnType<typeof guildChat.store>>;
     try {
       stored = await guildChat.store({
@@ -108,7 +126,7 @@ export function registerChatHandlers({
         channelId,
         senderId: user.userId,
         body: safeText,
-        replyToId: parsed.data.replyToId || null
+        replyToId
       });
     } catch (error) {
       // Persistence failures must not reject an async Socket.IO handler and
@@ -136,6 +154,46 @@ export function registerChatHandlers({
 
     io.to(`guild:${guildId}:text`).emit("chat-message", message);
     callback?.({ ok: true, message });
+
+    const mentionNames = new Set<string>();
+    for (const match of safeText.matchAll(/(^|\s)@([^\s@]{1,80})/gu)) {
+      const username = match[2]?.trim().toLocaleLowerCase();
+      if (username) mentionNames.add(username);
+    }
+    if (mentionNames.size > 0) {
+      try {
+        const guildMembers = await membersFor(guildId);
+        const targets = guildMembers.filter((member) =>
+          mentionNames.has(member.username.toLocaleLowerCase())
+        );
+        for (const peer of io.sockets.sockets.values()) {
+          const peerUser = users.get(peer.id);
+          if (
+            !peerUser?.accountId ||
+            peerUser.activeGuildId !== guildId ||
+            !targets.some((target) => target.accountId === peerUser.accountId) ||
+            !canAccessChannel(guildId, peerUser.accountId, "channel:view", channelId)
+          ) {
+            continue;
+          }
+          peer.emit("chat:mention", {
+            guildId,
+            channelId,
+            messageId: message.id,
+            senderUsername: message.username,
+            senderAvatarData: message.avatarData,
+            text: message.text,
+            createdAt: message.createdAt
+          });
+        }
+      } catch (error) {
+        serverLogger.error("echoverse.chat.mention_delivery_failed", {
+          guildId,
+          channelId,
+          error: error instanceof Error ? error.message : "unknown"
+        });
+      }
+    }
 
     const botText = utilityBotResponse(
       safeText.toLowerCase(),

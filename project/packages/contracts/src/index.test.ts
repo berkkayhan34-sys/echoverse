@@ -177,6 +177,8 @@ describe("protocol contracts", () => {
       "friends:unblock",
       "dm:history",
       "dm:send",
+      "dm:requests",
+      "dm:request-respond",
       "dm:edit",
       "dm:delete",
       "call:start",
@@ -239,6 +241,18 @@ describe("protocol contracts", () => {
       socketEventPayloadSchemas["dm:send"].safeParse({ friendId: "x", body: "x", attachment: null })
         .success
     ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["dm:request-respond"].safeParse({
+        requestId: "request",
+        action: "spam"
+      }).success
+    ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["dm:request-respond"].safeParse({
+        requestId: "request",
+        action: "delete"
+      }).success
+    ).toBe(false);
     expect(
       socketEventPayloadSchemas["guild:rename-lobby"].safeParse({
         guildId: "guild",

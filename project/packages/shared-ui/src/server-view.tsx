@@ -5,7 +5,13 @@
 
 import type { ChatMessage } from "@echoverse/contracts";
 import type { RefObject } from "react";
-import { ChannelMessageList, ChatComposer, type ChannelMessageLabels } from "./chat.js";
+import {
+  ChannelMessageList,
+  ChannelThreadPanel,
+  ChatComposer,
+  type ChannelMessageLabels,
+  type ChatMentionCandidate
+} from "./chat.js";
 import { ServerTopbar, type PresenceStatus, type ServerTopbarLabels } from "./topbar.js";
 import {
   VideoStage,
@@ -26,11 +32,15 @@ export type ServerViewLabels = {
     placeholder: string;
     emojiLabel: string;
     sendLabel: string;
+    mentionLabel?: string;
   };
   chat?: ChannelMessageLabels & {
     searchPlaceholder: string;
     search: string;
     clearSearch: string;
+    threadTitle?: string;
+    closeThread?: string;
+    noThreadReplies?: string;
   };
   voice: VoiceControlsLabels;
 };
@@ -54,6 +64,8 @@ export function ServerView({
   searchQuery,
   searchResults,
   canManageMessages = false,
+  replyTo,
+  threadRoot,
   text,
   error,
   labels,
@@ -66,9 +78,14 @@ export function ServerView({
   onSearchQueryChange,
   onSearch,
   onClearSearch,
+  onReplyMessage,
+  onClearReply,
+  onOpenThread,
+  onCloseThread,
   onPinMessage,
   onCopyMessageLink,
   onAddEmoji,
+  mentionCandidates,
   onSendMessage,
   onToggleMute,
   onToggleCamera,
@@ -93,6 +110,8 @@ export function ServerView({
   searchQuery?: string;
   searchResults?: ChatMessage[] | null;
   canManageMessages?: boolean;
+  replyTo?: ChatMessage | null;
+  threadRoot?: ChatMessage | null;
   text: string;
   error?: string;
   labels: ServerViewLabels;
@@ -105,9 +124,14 @@ export function ServerView({
   onSearchQueryChange?: (value: string) => void;
   onSearch?: () => void;
   onClearSearch?: () => void;
+  onReplyMessage?: (message: ChatMessage) => void;
+  onClearReply?: () => void;
+  onOpenThread?: (message: ChatMessage) => void;
+  onCloseThread?: () => void;
   onPinMessage?: (message: ChatMessage) => void;
   onCopyMessageLink?: (message: ChatMessage) => void;
   onAddEmoji: () => void;
+  mentionCandidates?: ChatMentionCandidate[];
   onSendMessage: () => void;
   onToggleMute: () => void;
   onToggleCamera: () => void | Promise<void>;
@@ -176,9 +200,27 @@ export function ServerView({
         formatDate={formatDate}
         labels={labels.chat}
         canManageMessages={canManageMessages}
+        onReply={onReplyMessage}
+        onOpenThread={onOpenThread}
         onPin={onPinMessage}
         onCopyLink={onCopyMessageLink}
       />
+
+      {threadRoot && onCloseThread && (
+        <ChannelThreadPanel
+          root={threadRoot}
+          messages={messages}
+          labels={{
+            title: labels.chat?.threadTitle || "Thread",
+            close: labels.chat?.closeThread || "Close thread",
+            reply: labels.chat?.reply || "Reply",
+            noReplies: labels.chat?.noThreadReplies || "No replies yet"
+          }}
+          formatDate={formatDate}
+          onReply={onReplyMessage || (() => undefined)}
+          onClose={onCloseThread}
+        />
+      )}
 
       <ChatComposer
         text={text}
@@ -186,8 +228,13 @@ export function ServerView({
         placeholder={labels.composer.placeholder}
         emojiLabel={labels.composer.emojiLabel}
         sendLabel={labels.composer.sendLabel}
+        replyingTo={replyTo ? { username: replyTo.username, text: replyTo.text } : undefined}
+        clearReplyLabel={labels.chat?.clearReply}
+        onClearReply={onClearReply}
         onTextChange={onTextChange}
         onAddEmoji={onAddEmoji}
+        mentionCandidates={mentionCandidates}
+        mentionLabel={labels.composer.mentionLabel}
         onSend={onSendMessage}
       />
 

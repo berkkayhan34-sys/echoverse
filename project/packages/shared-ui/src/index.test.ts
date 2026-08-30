@@ -9,6 +9,7 @@ import {
   ActionButton,
   CallAlerts,
   ChannelMessageList,
+  ChannelThreadPanel,
   ChatComposer,
   CreateGuildDialog,
   DirectMessageComposer,
@@ -154,15 +155,158 @@ describe("shared chat UI", () => {
       onAddEmoji: vi.fn(),
       onSend
     });
-    const children = Children.toArray(element.props.children) as Array<{
-      props: Record<string, unknown>;
-    }>;
+    const input = elementsOfType(element, "input")[0];
+    const emoji = elementsOfType(element, "summary")[0];
+    const send = elementsOfType(element, ActionButton).find(
+      (button) => buttonText(button) === "Send"
+    );
 
-    expect(children[0]?.props["aria-label"]).toBe("Message");
-    expect(children[1]?.props["aria-label"]).toBe("Add emoji");
-    expect(children[2]?.props.children).toBe("Send");
-    (children[2]?.props.onClick as () => void)();
+    expect(input?.props["aria-label"]).toBe("Message");
+    expect(emoji?.props["aria-label"]).toBe("Add emoji");
+    expect(send).toBeDefined();
+    (send?.props.onClick as () => void)();
     expect(onSend).toHaveBeenCalledOnce();
+  });
+
+  it("offers authorized member suggestions for a trailing mention", () => {
+    const onTextChange = vi.fn();
+    const element = ChatComposer({
+      text: "hello @Al",
+      inputLabel: "Message",
+      placeholder: "Write a message",
+      emojiLabel: "Add emoji",
+      mentionLabel: "Mention a member",
+      sendLabel: "Send",
+      mentionCandidates: [
+        { accountId: "account-1", username: "Alice", avatarData: null },
+        { accountId: "account-2", username: "Bob", avatarData: null }
+      ],
+      onTextChange,
+      onAddEmoji: vi.fn(),
+      onSend: vi.fn()
+    });
+    const suggestions = elementsOfType(element, "button").filter(
+      (button) => button.props.className === "mention-suggestion"
+    );
+
+    expect(suggestions).toHaveLength(1);
+    expect(textContent(suggestions[0])).toContain("@Alice");
+    (suggestions[0]?.props.onClick as () => void)();
+    expect(onTextChange).toHaveBeenCalledWith("hello @Alice ");
+  });
+
+  it("renders a channel reply context and delegates clear/reply actions", () => {
+    const onReply = vi.fn();
+    const onClearReply = vi.fn();
+    const parent = {
+      id: "message-1",
+      username: "Ada",
+      text: "Original message",
+      createdAt: "2026-08-27T00:00:00.000Z"
+    };
+    const reply = {
+      id: "message-2",
+      username: "Lin",
+      text: "Reply message",
+      createdAt: "2026-08-27T00:01:00.000Z",
+      replyToId: parent.id
+    };
+    const list = ChannelMessageList({
+      messages: [parent, reply],
+      welcomeTitle: "Welcome",
+      channelBeginning: "Beginning",
+      formatDate: () => "formatted",
+      labels: {
+        reply: "Reply",
+        pin: "Pin message",
+        unpin: "Unpin message",
+        copyLink: "Copy message link",
+        pinned: "Pinned",
+        searchResults: "Search results",
+        noSearchResults: "No messages found"
+      },
+      onReply
+    });
+    const replyButtons = elementsOfType(list, "button").filter(
+      (button) => button.props["aria-label"] === "Reply"
+    );
+
+    expect(textContent(list)).toContain("Ada: Original message");
+    expect(replyButtons).toHaveLength(2);
+    (replyButtons[1]?.props.onClick as () => void)();
+    expect(onReply).toHaveBeenCalledWith(reply);
+
+    const composer = ChatComposer({
+      text: "",
+      inputLabel: "Message",
+      placeholder: "Write a message",
+      emojiLabel: "Add emoji",
+      sendLabel: "Send",
+      replyingTo: { username: parent.username, text: parent.text },
+      clearReplyLabel: "Clear reply",
+      onClearReply,
+      onTextChange: vi.fn(),
+      onAddEmoji: vi.fn(),
+      onSend: vi.fn()
+    });
+    const clearButton = elementsOfType(composer, "button").find(
+      (button) => button.props["aria-label"] === "Clear reply"
+    );
+    expect(textContent(composer)).toContain("Ada: Original message");
+    (clearButton?.props.onClick as () => void)();
+    expect(onClearReply).toHaveBeenCalledOnce();
+  });
+
+  it("groups persisted replies in a focused thread panel", () => {
+    const onReply = vi.fn();
+    const onClose = vi.fn();
+    const root = {
+      id: "root",
+      username: "Ada",
+      text: "Root message",
+      createdAt: "2026-08-27T00:00:00.000Z"
+    };
+    const reply = {
+      id: "reply",
+      username: "Lin",
+      text: "First reply",
+      createdAt: "2026-08-27T00:01:00.000Z",
+      replyToId: root.id
+    };
+    const nested = {
+      id: "nested",
+      username: "Ada",
+      text: "Nested reply",
+      createdAt: "2026-08-27T00:02:00.000Z",
+      replyToId: reply.id
+    };
+    const panel = ChannelThreadPanel({
+      root,
+      messages: [root, reply, nested],
+      labels: {
+        title: "Thread",
+        close: "Close thread",
+        reply: "Reply",
+        noReplies: "No replies yet"
+      },
+      formatDate: () => "formatted",
+      onReply,
+      onClose
+    });
+    const buttons = elementsOfType(panel, "button");
+
+    expect(textContent(panel)).toContain("Root message");
+    expect(textContent(panel)).toContain("First reply");
+    expect(textContent(panel)).toContain("Nested reply");
+    expect(buttons).toHaveLength(4);
+    (buttons[0]?.props.onClick as () => void)();
+    (buttons[1]?.props.onClick as () => void)();
+    (buttons[2]?.props.onClick as () => void)();
+    (buttons[3]?.props.onClick as () => void)();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onReply).toHaveBeenCalledWith(root);
+    expect(onReply).toHaveBeenCalledWith(reply);
+    expect(onReply).toHaveBeenCalledWith(nested);
   });
 
   it("keeps direct-message actions and search rendering inside the shared boundary", () => {
@@ -462,6 +606,84 @@ describe("shared chat UI", () => {
     expect(onRemove).toHaveBeenCalledWith("account-2");
   });
 
+  it("renders message requests and delegates accept, decline, and spam", () => {
+    const onRespondMessageRequest = vi.fn();
+    const element = FriendsModal({
+      friends: [],
+      incomingRequests: [],
+      outgoingRequests: [],
+      incomingMessageRequests: [
+        {
+          id: "dm-request-1",
+          senderId: "account-2",
+          recipientId: "account-1",
+          senderUsername: "Lin",
+          senderAvatarData: null,
+          recipientUsername: "Berk",
+          recipientAvatarData: null,
+          body: "hello",
+          status: "pending",
+          createdAt: "2026-08-31T00:00:00.000Z",
+          updatedAt: "2026-08-31T00:00:00.000Z"
+        }
+      ],
+      outgoingMessageRequests: [],
+      friendSearchResults: [],
+      unreadDm: {},
+      searchQuery: "",
+      labels: {
+        title: "Friends",
+        close: "Close",
+        searchPlaceholder: "Search by username",
+        search: "Search",
+        searchResults: "Search results",
+        incomingRequests: "Incoming requests",
+        outgoingRequests: "Pending requests",
+        messageRequests: "Message requests",
+        messageRequestAccept: "Accept message",
+        messageRequestDecline: "Decline message",
+        messageRequestSpam: "Mark as spam",
+        myFriends: "My friends",
+        noFriends: "No friends",
+        add: "Add",
+        accept: "Accept",
+        decline: "Reject",
+        openDirectMessage: "Open direct message",
+        call: "Call",
+        remove: "Remove"
+      },
+      onClose: vi.fn(),
+      onSearchQueryChange: vi.fn(),
+      onSearch: vi.fn(),
+      onSendFriendRequest: vi.fn(),
+      onRespondFriendRequest: vi.fn(),
+      onCancelFriendRequest: vi.fn(),
+      onOpenDm: vi.fn(),
+      onCallFriend: vi.fn(),
+      onRemoveFriend: vi.fn(),
+      onRespondMessageRequest
+    });
+
+    const buttons = elementsOfType(element, "button");
+    (
+      buttons.find((button) => button.props["aria-label"] === "Accept message")?.props
+        .onClick as () => void
+    )();
+    (
+      buttons.find((button) => button.props["aria-label"] === "Decline message")?.props
+        .onClick as () => void
+    )();
+    (
+      buttons.find((button) => button.props["aria-label"] === "Mark as spam")?.props
+        .onClick as () => void
+    )();
+
+    expect(textContent(element)).toContain("hello");
+    expect(onRespondMessageRequest).toHaveBeenNthCalledWith(1, "dm-request-1", "accept");
+    expect(onRespondMessageRequest).toHaveBeenNthCalledWith(2, "dm-request-1", "decline");
+    expect(onRespondMessageRequest).toHaveBeenNthCalledWith(3, "dm-request-1", "spam");
+  });
+
   it("keeps screen-source selection and permission actions renderer-owned", () => {
     const onSelectSource = vi.fn();
     const source = { id: "screen-1", name: "Main display" };
@@ -532,6 +754,7 @@ describe("shared chat UI", () => {
     const onSelectGuild = vi.fn();
     const onCreateGuild = vi.fn();
     const onLeaveGuild = vi.fn();
+    const onOpenSettings = vi.fn();
     const onTogglePeerMute = vi.fn();
     const onPeerVolumeChange = vi.fn();
     const guild = { id: "echoverse", name: "EchoVerse", createdBy: "account-1", createdAt: "now" };
@@ -570,6 +793,7 @@ describe("shared chat UI", () => {
         changeAvatar: "Change profile photo",
         voiceConnected: (version) => `Voice connected · v${version}`,
         microphone: "Microphone",
+        settings: "Settings",
         logout: "Sign out",
         createGuild: "New server",
         leaveGuild: "Leave server",
@@ -582,6 +806,7 @@ describe("shared chat UI", () => {
       onPeerVolumeChange,
       onChangeAvatar: vi.fn(),
       onToggleMute: vi.fn(),
+      onOpenSettings,
       onLogout: vi.fn()
     });
     const buttons = elementsOfType(element, "button");
@@ -592,13 +817,16 @@ describe("shared chat UI", () => {
     const peerVolume = elementsOfType(element, "input").find(
       (input) => input.props["aria-label"] === "Lin"
     );
+    const settingsButton = buttons.find((button) => button.props["aria-label"] === "Settings");
 
     (createButton?.props.onClick as () => void)();
+    (settingsButton?.props.onClick as () => void)();
     (peerMuteButton?.props.onClick as () => void)();
     (peerVolume?.props.onChange as (event: { target: { value: string } }) => void)({
       target: { value: "150" }
     });
     expect(onCreateGuild).toHaveBeenCalledOnce();
+    expect(onOpenSettings).toHaveBeenCalledOnce();
     expect(onTogglePeerMute).toHaveBeenCalledWith("socket-2");
     expect(onPeerVolumeChange).toHaveBeenCalledWith("socket-2", 150);
 

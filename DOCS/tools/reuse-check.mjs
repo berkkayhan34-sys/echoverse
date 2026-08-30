@@ -42,9 +42,29 @@ function stageRepository() {
 }
 
 stageRepository();
-const result = spawnSync("reuse", ["lint"], { cwd: stagingRoot, stdio: "inherit" });
+// Node does not resolve a .cmd shim when spawning without a shell on Windows.
+// Prefer a PATH-installed CLI, then use the pinned Python module so the local
+// gate also works on Windows hosts where Python's Scripts directory is not on
+// PATH yet.
+const reuseOnPath =
+  process.platform === "win32"
+    ? spawnSync("reuse.cmd", ["--version"], { stdio: "ignore" }).status === 0
+    : spawnSync("reuse", ["--version"], { stdio: "ignore" }).status === 0;
+const reuseCommand = reuseOnPath
+  ? process.platform === "win32"
+    ? process.env.ComSpec || "cmd.exe"
+    : "reuse"
+  : process.platform === "win32"
+    ? "py"
+    : "reuse";
+const reuseArgs = reuseOnPath
+  ? process.platform === "win32"
+    ? ["/d", "/s", "/c", "reuse.cmd lint"]
+    : ["lint"]
+  : ["-m", "reuse", "lint"];
+const result = spawnSync(reuseCommand, reuseArgs, { cwd: stagingRoot, stdio: "inherit" });
 if (result.error) {
-  console.error("REUSE is required; install it with `brew install reuse`.");
+  console.error("REUSE is required; install it with the repository tooling instructions.");
   process.exitCode = 1;
 } else {
   process.exitCode = result.status ?? 1;

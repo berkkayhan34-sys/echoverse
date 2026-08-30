@@ -159,13 +159,13 @@ denied signaling.
 ```yaml
 id: BUG-002
 type: runtime_bugfix
-status: in_progress
+status: complete
 evidence: evidence/BUG-002.md
 blocks_roadmap: false
 decision: null
 ```
 
-[-] Correct the client-side regressions reported after the 1.9.3 baseline:
+[x] Correct the client-side regressions reported after the 1.9.3 baseline:
 
 1. Expose an accessible three-dot menu for leaving non-owner private guilds;
    selecting Leave removes the guild from the server rail while the public
@@ -184,13 +184,13 @@ Acceptance evidence is recorded in [`evidence/BUG-002.md`](evidence/BUG-002.md).
 ```yaml
 id: BUG-003
 type: runtime_feature
-status: in_progress
+status: complete
 evidence: evidence/BUG-003.md
 blocks_roadmap: false
 decision: null
 ```
 
-[-] Add a server-authorized private-guild lifecycle action and make the left
+[x] Add a server-authorized private-guild lifecycle action and make the left
 server-rail plus action complete:
 
 1. Permit permanent deletion only to the guild owner, never for the public
@@ -378,10 +378,23 @@ without claiming the parent parity item is complete:
   pin/unpin actions, pinned-message rendering, and copyable message links.
   Search and pin controls remain renderer-owned while authorization stays on
   the server boundary.
+- `CHAT-001.6` — same-channel guild replies with server-side parent-message
+  authorization, shared web/desktop reply actions, composer context, and inline
+  parent previews. Full threaded conversations remain deferred.
+- `CHAT-001.7` — focused thread panel derived from persisted same-channel reply
+  links, with localized open/close/reply actions and nested reply rendering;
+  authenticated browser evidence is recorded in `evidence/CHAT-001.md`.
+- `CHAT-001.8` — server-authorized guild member mention suggestions and
+  isolated `chat:mention` notifications, with offline-member name resolution
+  and two-account browser evidence recorded in `evidence/CHAT-001.md`.
+- `CHAT-001.9` — server-enforced text-only DM requests for non-friends,
+  pending-request deduplication, recipient accept/decline/spam actions,
+  attachment quarantine, block precedence, and friendship conversion on
+  acceptance; evidence is recorded in `evidence/CHAT-001.md`.
 
-Still deferred under `CHAT-001`: threads, mention autocomplete,
-message-request and spam workflows, attachment policy UI, and notification
-controls. The group-call UI supports converting an active one-to-one call
+Still deferred under `CHAT-001`: full threaded conversation lifecycle,
+attachment policy UI, and notification controls beyond mention delivery. The
+group-call UI supports converting an active one-to-one call
 while creating a group; in-place participant renegotiation without that
 conversion remains a follow-up item.
 
@@ -479,6 +492,257 @@ seconds, logs failures, catches UI-cache preparation errors, and retries the
 bundled renderer when a cached entrypoint fails. The Windows NSIS artifact was
 installed silently and launched successfully; macOS and cross-platform update
 acceptance remain deferred to the parent gate.
+
+## Discord parity execution children from the 2026-08-30 desktop audit
+
+The following children turn the latest Discord/EchoVerse comparison into an
+implementation-ready queue. They refine `AUDIT-003` and the existing parent
+items above; they do not claim Discord compatibility, authorize a native mobile
+client, or authorize production deployment. Each child must retain its own
+requirements, server-side authorization, negative tests, visual evidence, and
+release impact. The order is deliberate: durable domain/security boundaries
+come before UI polish and rich media.
+
+### parity-channel-administration-surface
+
+```yaml
+id: PARITY-001
+type: channel_and_member_ui
+sequence: 410
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [ARCH-002, SEC-001, MOD-001]
+```
+
+[ ] Expose the existing category/channel and member permission model as a
+usable server surface: collapsible categories, channel type badges, channel
+creation/rename/archive actions, per-channel notification controls, unread
+markers, role-grouped members, and an owner/admin management entrypoint.
+Client controls remain advisory; every mutation and visibility decision stays
+server-authorized.
+
+Acceptance: authorized owner/admin actions persist and broadcast; members see
+only permitted channels; unauthorized users cannot mutate or enumerate hidden
+channels; keyboard and narrow-screen interactions have rendered evidence.
+
+### parity-dm-navigation-and-inbox
+
+```yaml
+id: PARITY-002
+type: dm_information_architecture
+sequence: 510
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [CHAT-001]
+```
+
+[ ] Replace the modal-only DM entrypoint with a persistent DM rail containing
+Friends, Message Requests, group conversations, unread state, search, and a
+unified inbox for unreads and mentions. Keep the existing friendship and group
+membership authorization boundary; do not expose message bodies in logs or
+notification payloads beyond the documented product policy.
+
+Acceptance: direct and group conversations remain available after restart;
+unread counts reconcile across web and desktop; opening a conversation cannot
+grant access to a non-member; mobile navigation has an equivalent reachable
+path.
+
+### parity-message-threads-and-mentions
+
+```yaml
+id: PARITY-003
+type: messaging_parity
+sequence: 520
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [CHAT-001, ARCH-002]
+```
+
+[ ] Add channel/DM message search that can scope by author/channel/date,
+thread creation and reply context, mention autocomplete and mention events,
+message links that restore the original location, and a documented
+attachment/markdown/embed policy.
+
+Acceptance: search and thread results enforce membership and pagination;
+mentions notify only authorized recipients; malformed, oversized, or hostile
+rich content is rejected; thread/reply state survives reconnect and reload.
+
+### parity-dm-safety-and-privacy
+
+```yaml
+id: PARITY-004
+type: dm_safety
+sequence: 530
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [PARITY-002, MOD-001]
+```
+
+[ ] Add message requests, spam quarantine, block/mute/archive preferences,
+per-user DM privacy controls, report intake, and retention/deletion behavior.
+All decisions must be enforced by the server and covered by wrong-user,
+blocked-user, replay, and rate-limit tests.
+
+- `PARITY-004.1` — message-request inbox, text-only quarantine, recipient
+  accept/decline/spam actions, block precedence, and replay-safe friendship
+  conversion are complete; see `evidence/CHAT-001.md` and ADR-0023.
+
+### parity-guild-voice-reliability-gate
+
+```yaml
+id: PARITY-005
+type: voice_reliability
+sequence: 610
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [VOICE-001]
+```
+
+[ ] Close the current guild-voice regression before scaling: two independent
+authenticated clients must join the same lobby, exchange microphone audio,
+leave, rejoin, and remain isolated from private calls. Cover deterministic
+offer/answer ordering, early ICE, microphone acquisition, reconnect,
+background/foreground transitions, device failure, and explicit disconnect.
+
+Acceptance requires a repeatable two-client browser test, a desktop smoke
+check, audio-path evidence (not only a connected badge), and failure evidence
+for a non-member and a stale socket.
+
+### parity-voice-scale-and-stage-boundary
+
+```yaml
+id: PARITY-006
+type: realtime_media_architecture
+sequence: 620
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [PARITY-005, SEC-001]
+decision: pending owner choice of P2P-only, provider-neutral SFU boundary, or
+immediate SFU integration
+```
+
+[ ] Decide and document the scale boundary for persistent voice: participant
+limits, region selection, stage speakers/audience, stream permissions,
+quality telemetry, and recovery when the media provider is unavailable. Do not
+select a provider or add native mobile media code until the decision record and
+rollback/forward-recovery plan exist.
+
+### parity-emoji-and-rich-media
+
+```yaml
+id: PARITY-007
+type: emoji_and_rich_media
+sequence: 630
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [MEDIA-001, MOD-001]
+```
+
+[ ] Version the Unicode emoji catalog and fallback policy, improve accessible
+category/search/recent behavior, then make a separate owner decision on custom
+guild emoji, GIFs, stickers, and previews. Any approved upload/provider path
+must define licensing, MIME/size limits, sanitization, moderation, and
+cross-platform rendering tests.
+
+### parity-settings-accessibility-and-localization
+
+```yaml
+id: PARITY-008
+type: settings_and_accessibility
+sequence: 710
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [PLATFORM-001, CHAT-001, VOICE-001]
+```
+
+[ ] Build a discoverable settings surface covering account/session security,
+privacy and messaging permissions, notifications, appearance, accessibility,
+voice/video devices, system/startup behavior, language/time, and reduced
+motion. Ensure the packaged desktop renderer, browser renderer, and responsive
+mobile path expose the same supported controls and that source/build/cache
+versions cannot silently diverge.
+
+Acceptance: every setting has an accessible name, keyboard/touch path,
+localized label, explicit loading/error/success state, and a test proving the
+setting is applied or safely rejected; sensitive settings require the correct
+server/native boundary.
+
+### parity-mobile-and-platform-surface
+
+```yaml
+id: PARITY-009
+type: responsive_platform_delivery
+sequence: 720
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [PARITY-002, PARITY-005, PARITY-008]
+decision: decisions/0021-discord-parity-execution-profile.md
+```
+
+[ ] Complete the PWA-first mobile experience: Discord-style server/channel/DM
+navigation, touch-sized controls, safe-area composer spacing, push/deep-link
+policy, background voice/reconnect behavior, and mobile accessibility. Keep
+native iOS/Android binaries out of scope until a separate platform decision is
+approved.
+
+### parity-integrations-and-bot-boundary
+
+```yaml
+id: PARITY-010
+type: integrations_and_bots
+sequence: 730
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [SEC-001, MOD-001]
+```
+
+[ ] Define the bot/app contract before adding an App Directory: installation
+consent, scoped permissions, revocation, rate limits, audit events, bot
+identity, and connected-app privacy. The existing EchoBot remains a bounded
+first-party capability until this boundary is approved.
+
+### parity-release-evidence-and-version-reconciliation
+
+```yaml
+id: PARITY-011
+type: release_readiness_and_documentation
+sequence: 900
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on:
+  [
+    PARITY-001,
+    PARITY-002,
+    PARITY-003,
+    PARITY-004,
+    PARITY-005,
+    PARITY-007,
+    PARITY-008,
+    PARITY-009,
+    PARITY-010
+  ]
+```
+
+[ ] Reconcile the current root `VERSION`, package mirrors, roadmap baseline,
+evidence revisions, changelog, and web `webRevision`. Add cross-client
+authenticated E2E, visual acceptance, security scans, artifact/checksum
+checks, installer startup/recovery, and deployment health evidence to the
+release gate. A successful build or deploy alone is not acceptance evidence.
+
+The latest audit observed `VERSION=1.9.5` while older roadmap/evidence entries
+still reference `1.9.2`/`1.9.4`; this child must resolve that documentation
+drift before a parity release is called complete.
 
 ### reliability-and-public-release-gate
 

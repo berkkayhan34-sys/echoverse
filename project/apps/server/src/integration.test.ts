@@ -477,7 +477,7 @@ describe("server HTTP and Socket.IO boundaries", () => {
     });
   });
 
-  it("blocks cross-user direct-message access before persistence", async () => {
+  it("quarantines non-friend direct messages until the recipient accepts", async () => {
     const sender = await connectClient();
     const recipient = await connectClient();
     const timestamp = Date.now();
@@ -495,14 +495,99 @@ describe("server HTTP and Socket.IO boundaries", () => {
     expect(senderResult.ok).toBe(true);
     expect(recipientResult.ok).toBe(true);
 
+    const requestReceived = waitForEvent<any>(recipient, "dm:request-received");
     const response = await emitWithAck(sender, "dm:send", {
       friendId: recipientAccount.id,
       body: "private message"
     });
-    expect(response).toEqual({ ok: false, error: tr("server.notFriends") });
+    expect(response).toMatchObject({ ok: true, request: { body: "private message" } });
+    await expect(requestReceived).resolves.toMatchObject({
+      senderUsername: expect.any(String),
+      body: "private message",
+      status: "pending"
+    });
+
+    expect(
+      await emitWithAck(sender, "dm:send", {
+        friendId: recipientAccount.id,
+        body: "second attempt"
+      })
+    ).toEqual({ ok: false, error: tr("server.messageRequestPending") });
+
+    const requests = await emitWithAck(recipient, "dm:requests", {});
+    expect(requests.incoming).toEqual(
+      expect.arrayContaining([expect.objectContaining({ body: "private message" })])
+    );
+    const requestId = (requests.incoming as Array<{ id: string }>)[0]?.id;
+    expect(
+      await emitWithAck(sender, "dm:request-respond", { requestId, action: "accept" })
+    ).toEqual({ ok: false, error: tr("server.messageRequestNotFound") });
+    const delivered = waitForEvent<any>(sender, "dm:message");
+    const accepted = await emitWithAck(recipient, "dm:request-respond", {
+      requestId,
+      action: "accept"
+    });
+    expect(accepted).toMatchObject({ ok: true, message: { body: "private message" } });
+    await expect(delivered).resolves.toMatchObject({ body: "private message" });
 
     const history = await emitWithAck(sender, "dm:history", { friendId: recipientAccount.id });
-    expect(history).toEqual({ ok: false, error: tr("server.notFriends") });
+    expect(history).toMatchObject({
+      ok: true,
+      messages: [expect.objectContaining({ body: "private message" })]
+    });
+  });
+
+  it("does not deliver quarantined messages after a recipient marks the request as spam", async () => {
+    const sender = await registerClient(await connectClient(), "spam-sender");
+    const recipient = await registerClient(await connectClient(), "spam-target");
+    expect(
+      await emitWithAck(sender.socket, "dm:send", {
+        friendId: recipient.accountId,
+        body: "unwanted"
+      })
+    ).toMatchObject({ ok: true });
+    const requests = await emitWithAck(recipient.socket, "dm:requests", {});
+    const requestId = (requests.incoming as Array<{ id: string }>)[0]?.id;
+    expect(
+      await emitWithAck(recipient.socket, "dm:request-respond", {
+        requestId,
+        action: "spam"
+      })
+    ).toEqual({ ok: true, request: expect.objectContaining({ status: "spam" }) });
+    expect(
+      await emitWithAck(sender.socket, "dm:send", {
+        friendId: recipient.accountId,
+        body: "again"
+      })
+    ).toEqual({ ok: false, error: tr("server.messageRequestClosed") });
+  });
+
+  it("cannot accept a request after the recipient blocks the sender", async () => {
+    const sender = await registerClient(await connectClient(), "brsender");
+    const recipient = await registerClient(await connectClient(), "brtarget");
+    expect(
+      await emitWithAck(sender.socket, "dm:send", {
+        friendId: recipient.accountId,
+        body: "please ignore"
+      })
+    ).toMatchObject({ ok: true });
+    const requests = await emitWithAck(recipient.socket, "dm:requests", {});
+    const requestId = (requests.incoming as Array<{ id: string }>)[0]?.id;
+    expect(
+      await emitWithAck(recipient.socket, "friends:block", { targetId: sender.accountId })
+    ).toEqual({ ok: true });
+    expect(
+      await emitWithAck(recipient.socket, "dm:request-respond", {
+        requestId,
+        action: "accept"
+      })
+    ).toEqual({ ok: false, error: tr("server.messageRequestNotFound") });
+    expect(
+      await emitWithAck(sender.socket, "dm:send", {
+        friendId: recipient.accountId,
+        body: "retry"
+      })
+    ).toEqual({ ok: false, error: tr("server.userBlocked") });
   });
 
   it("rejects oversized direct-message attachments at the socket boundary", async () => {
@@ -953,6 +1038,23 @@ describe("server HTTP and Socket.IO boundaries", () => {
     ).toMatchObject({ ok: true, channel: expect.objectContaining({ name: "announcements" }) });
     await emitWithAck(owner.socket, "guild:select", { guildId: created.guild.id });
     await emitWithAck(member.socket, "guild:select", { guildId: created.guild.id });
+    const memberDirectory = (await emitWithAck(owner.socket, "guild:members", {
+      guildId: created.guild.id
+    })) as any;
+    const memberName = memberDirectory.members.find(
+      (entry: any) => entry.accountId === member.accountId
+    )?.username;
+    expect(memberName).toBeTruthy();
+    const mention = waitForEvent<any>(member.socket, "chat:mention");
+    owner.socket.emit("chat-message", {
+      guildId: created.guild.id,
+      channelId: `${created.guild.id}:general`,
+      text: `hello @${memberName}`
+    });
+    await expect(mention).resolves.toMatchObject({
+      channelId: `${created.guild.id}:general`,
+      text: `hello @${memberName}`
+    });
     const message = waitForEvent<any>(owner.socket, "chat-message");
     owner.socket.emit("chat-message", {
       guildId: created.guild.id,
@@ -971,6 +1073,25 @@ describe("server HTTP and Socket.IO boundaries", () => {
       ok: true,
       messages: expect.arrayContaining([expect.objectContaining({ body: "persist me" })])
     });
+    const parent = history.messages.find((entry: any) => entry.body === "persist me");
+    expect(parent).toBeDefined();
+    const reply = await emitWithAck(owner.socket, "chat-message", {
+      guildId: created.guild.id,
+      channelId: `${created.guild.id}:general`,
+      text: "reply in the same channel",
+      replyToId: parent.id
+    });
+    expect(reply).toMatchObject({
+      ok: true,
+      message: { replyToId: parent.id, channelId: `${created.guild.id}:general` }
+    });
+    const crossChannelReply = await emitWithAck(owner.socket, "chat-message", {
+      guildId: created.guild.id,
+      channelId: `${created.guild.id}:announcements`,
+      text: "cross-channel reply must fail",
+      replyToId: parent.id
+    });
+    expect(crossChannelReply).toMatchObject({ ok: false });
     expect(
       await emitWithAck(owner.socket, "chat-search", {
         guildId: created.guild.id,

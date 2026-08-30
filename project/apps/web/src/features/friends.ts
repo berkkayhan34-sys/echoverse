@@ -4,7 +4,7 @@
  */
 
 import type { Socket } from "socket.io-client";
-import type { DmMessage, FriendUser } from "@echoverse/contracts";
+import type { DmMessage, DmRequest, FriendUser } from "@echoverse/contracts";
 
 type StateSetter<T> = (value: T | ((previous: T) => T)) => void;
 
@@ -18,6 +18,8 @@ export type FriendsFeatureDeps = {
   setFriends: StateSetter<FriendUser[]>;
   setIncomingRequests: StateSetter<FriendUser[]>;
   setOutgoingRequests: StateSetter<FriendUser[]>;
+  setIncomingMessageRequests: StateSetter<DmRequest[]>;
+  setOutgoingMessageRequests: StateSetter<DmRequest[]>;
   setFriendSearch: (value: string) => void;
   setFriendSearchResults: StateSetter<FriendUser[]>;
   setActiveFriend: (friend: FriendUser | null) => void;
@@ -44,6 +46,16 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
       deps.setFriends(result.accepted || []);
       deps.setIncomingRequests(result.incoming || []);
       deps.setOutgoingRequests(result.outgoing || []);
+    });
+    loadMessageRequests(socket);
+  }
+
+  function loadMessageRequests(socket = deps.getSocket()) {
+    if (!socket) return;
+    socket.emit("dm:requests", {}, (result: any) => {
+      if (!result?.ok) return;
+      deps.setIncomingMessageRequests(result.incoming || []);
+      deps.setOutgoingMessageRequests(result.outgoing || []);
     });
   }
 
@@ -153,6 +165,7 @@ export function createFriendsFeature(deps: FriendsFeatureDeps) {
     respondFriendRequest,
     cancelFriendRequest,
     removeFriend,
-    openDm
+    openDm,
+    loadMessageRequests
   };
 }

@@ -7,6 +7,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.6
+
+- Add server-authorized message requests for non-friends with pending-request
+  deduplication, recipient accept/decline/spam actions, attachment quarantine,
+  and friendship conversion on acceptance.
+- Add channel replies, focused thread panels, authorized member mention
+  suggestions, and isolated mention notifications across the shared renderer.
+
 ## 1.9.5
 
 - Add server-authorized private-guild deletion for owners when only the owner

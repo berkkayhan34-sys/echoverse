@@ -1,6 +1,6 @@
 {
   "name": "echoverse-workspace",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -20,7 +20,7 @@
     "lint": "node -e \"require('fs').mkdirSync('tmp/test-results',{recursive:true})\" && eslint . --format json --output-file tmp/test-results/eslint.json",
     "dependency:check": "npm audit --audit-level=high",
     "reuse:check": "node DOCS/tools/reuse-check.mjs",
-    "secret-scan": "gitleaks detect --source . --no-banner --redact --exit-code 1",
+    "secret-scan": "node DOCS/tools/secret-scan.mjs",
     "localization:check": "node DOCS/tools/check-localization.mjs",
     "ui:manifest": "node DOCS/tools/create-ui-manifest.mjs",
     "version:check": "node -e \"const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) throw new Error('Invalid VERSION'); console.log(v)\""

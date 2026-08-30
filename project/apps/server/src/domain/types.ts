@@ -105,3 +105,14 @@ export type StoredDm = {
   attachmentData?: string | null;
   reactions?: Record<string, string[]>;
 };
+
+export type StoredDmRequest = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  status: "pending" | "accepted" | "declined" | "spam";
+  messageId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};

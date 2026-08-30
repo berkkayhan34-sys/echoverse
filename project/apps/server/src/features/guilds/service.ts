@@ -630,12 +630,18 @@ export function createGuildService({
         avatarData: row.avatar_data || null
       }));
     }
-    return [...(guildMembers.get(guildId) || [])].map((accountId) => ({
-      accountId,
-      role: roleFor(guildId, accountId) || "member",
-      username: users.get(accountId)?.username || accountId,
-      avatarData: users.get(accountId)?.avatarData || null
-    }));
+    return Promise.all(
+      [...(guildMembers.get(guildId) || [])].map(async (accountId) => {
+        const online = [...users.values()].find((user) => user.accountId === accountId);
+        const account = online ? null : await accountById?.(accountId);
+        return {
+          accountId,
+          role: roleFor(guildId, accountId) || "member",
+          username: online?.username || account?.username || accountId,
+          avatarData: online?.avatarData || account?.avatarData || null
+        };
+      })
+    );
   }
 
   async function reportMember(

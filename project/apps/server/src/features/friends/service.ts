@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { attachmentSchema, truncateGraphemes, type Locale } from "@echoverse/contracts";
-import type { Account, StoredDm } from "../../domain/types.js";
+import type { Account, StoredDm, StoredDmRequest } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 
 export type MemoryFriendship = {
@@ -40,6 +40,7 @@ export type FriendServiceDependencies = {
   memoryAccounts: Map<string, Account>;
   memoryFriendships: Map<string, MemoryFriendship>;
   memoryDmMessages: StoredDm[];
+  memoryDmRequests: Map<string, StoredDmRequest>;
   memoryDmConversations: Map<string, MemoryDmConversation>;
   publicUserById(id: string): Promise<{
     id: string;
@@ -54,6 +55,7 @@ export function createFriendService({
   memoryAccounts,
   memoryFriendships,
   memoryDmMessages,
+  memoryDmRequests,
   memoryDmConversations,
   publicUserById
 }: FriendServiceDependencies) {
@@ -266,11 +268,258 @@ export function createFriendService({
     return friendship?.status === "accepted";
   }
 
+  function dmRequestKey(senderId: string, recipientId: string) {
+    return `${senderId}:${recipientId}`;
+  }
+
+  function mapDmRequest(row: any): StoredDmRequest {
+    return {
+      id: String(row.id),
+      senderId: String(row.sender_id ?? row.senderId),
+      recipientId: String(row.recipient_id ?? row.recipientId),
+      body: String(row.body || ""),
+      status: row.status,
+      messageId: row.message_id ?? row.messageId ?? null,
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at || row.createdAt),
+      updatedAt: row.updated_at?.toISOString?.() || String(row.updated_at || row.updatedAt)
+    };
+  }
+
+  async function dmRequestBetween(senderId: string, recipientId: string) {
+    if (!pool) return memoryDmRequests.get(dmRequestKey(senderId, recipientId)) || null;
+    const result = await pool.query(
+      `SELECT id, sender_id, recipient_id, body, status, message_id, created_at, updated_at
+       FROM echoverse_dm_requests
+       WHERE sender_id=$1 AND recipient_id=$2
+       LIMIT 1`,
+      [senderId, recipientId]
+    );
+    return result.rows[0] ? mapDmRequest(result.rows[0]) : null;
+  }
+
+  async function listDmRequests(accountId: string) {
+    if (!pool) {
+      const pending = [...memoryDmRequests.values()].filter(
+        (request) =>
+          request.status === "pending" &&
+          (request.senderId === accountId || request.recipientId === accountId)
+      );
+      const incoming = [];
+      const outgoing = [];
+      for (const request of pending) {
+        const sender = await publicUserById(request.senderId);
+        const recipient = await publicUserById(request.recipientId);
+        if (!sender || !recipient) continue;
+        const decorated = {
+          ...request,
+          senderUsername: sender.username,
+          senderAvatarData: sender.avatarData,
+          recipientUsername: recipient.username,
+          recipientAvatarData: recipient.avatarData
+        };
+        if (request.recipientId === accountId) incoming.push(decorated);
+        else outgoing.push(decorated);
+      }
+      return { incoming, outgoing };
+    }
+
+    const result = await pool.query(
+      `SELECT r.id, r.sender_id, r.recipient_id, r.body, r.status, r.created_at, r.updated_at,
+              u1.username AS sender_username, u1.avatar_data AS sender_avatar,
+              u2.username AS recipient_username, u2.avatar_data AS recipient_avatar
+       FROM echoverse_dm_requests r
+       JOIN echoverse_users u1 ON u1.id=r.sender_id
+       JOIN echoverse_users u2 ON u2.id=r.recipient_id
+       WHERE r.status='pending' AND (r.sender_id=$1 OR r.recipient_id=$1)
+       ORDER BY r.created_at ASC`,
+      [accountId]
+    );
+    const incoming: any[] = [];
+    const outgoing: any[] = [];
+    for (const row of result.rows) {
+      const request = {
+        id: String(row.id),
+        senderId: String(row.sender_id),
+        recipientId: String(row.recipient_id),
+        body: String(row.body || ""),
+        status: row.status,
+        senderUsername: String(row.sender_username),
+        senderAvatarData: row.sender_avatar || null,
+        recipientUsername: String(row.recipient_username),
+        recipientAvatarData: row.recipient_avatar || null,
+        createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+        updatedAt: row.updated_at?.toISOString?.() || String(row.updated_at)
+      };
+      if (request.recipientId === accountId) incoming.push(request);
+      else outgoing.push(request);
+    }
+    return { incoming, outgoing };
+  }
+
+  async function createDmRequest(senderId: string, recipientId: string, body: string) {
+    const existing = await dmRequestBetween(senderId, recipientId);
+    if (existing) return { created: false, request: existing };
+    const request: StoredDmRequest = {
+      id: crypto.randomUUID(),
+      senderId,
+      recipientId,
+      body,
+      status: "pending",
+      messageId: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (!pool) {
+      memoryDmRequests.set(dmRequestKey(senderId, recipientId), request);
+      return { created: true, request };
+    }
+    await pool.query(
+      `INSERT INTO echoverse_dm_requests
+        (id, sender_id, recipient_id, body, status, message_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,'pending',NULL,$5,$5)`,
+      [request.id, senderId, recipientId, body, request.createdAt]
+    );
+    return { created: true, request };
+  }
+
+  async function updateDmRequestStatus(
+    accountId: string,
+    requestId: string,
+    status: "declined" | "spam"
+  ) {
+    if (!pool) {
+      const request = [...memoryDmRequests.values()].find(
+        (candidate) => candidate.id === requestId && candidate.recipientId === accountId
+      );
+      if (!request || request.status !== "pending") return null;
+      request.status = status;
+      request.updatedAt = new Date().toISOString();
+      return request;
+    }
+    const result = await pool.query(
+      `UPDATE echoverse_dm_requests
+       SET status=$1, updated_at=NOW()
+       WHERE id=$2 AND recipient_id=$3 AND status='pending'`,
+      [status, requestId, accountId]
+    );
+    if (!result.rowCount) return null;
+    const updated = await pool.query(
+      `SELECT id, sender_id, recipient_id, body, status, message_id, created_at, updated_at
+       FROM echoverse_dm_requests WHERE id=$1`,
+      [requestId]
+    );
+    return updated.rows[0] ? mapDmRequest(updated.rows[0]) : null;
+  }
+
+  async function acceptDmRequest(accountId: string, requestId: string) {
+    let request = !pool
+      ? [...memoryDmRequests.values()].find(
+          (candidate) => candidate.id === requestId && candidate.recipientId === accountId
+        ) || null
+      : await (async () => {
+          const result = await pool.query(
+            `SELECT id, sender_id, recipient_id, body, status, message_id, created_at, updated_at
+             FROM echoverse_dm_requests WHERE id=$1 AND recipient_id=$2 LIMIT 1`,
+            [requestId, accountId]
+          );
+          return result.rows[0] ? mapDmRequest(result.rows[0]) : null;
+        })();
+    if (!request || request.status !== "pending") return null;
+
+    const existingFriendship = await friendshipBetween(request.senderId, request.recipientId);
+    // A block created after the request must remain a hard authorization boundary.
+    if (existingFriendship?.status === "blocked") return null;
+
+    let messageId = request.messageId;
+    if (!messageId) {
+      const candidateMessageId = crypto.randomUUID();
+      if (!pool) {
+        request.messageId = candidateMessageId;
+        messageId = candidateMessageId;
+      } else {
+        await pool.query(
+          `UPDATE echoverse_dm_requests SET message_id=COALESCE(message_id,$1), updated_at=NOW()
+           WHERE id=$2 AND recipient_id=$3 AND status='pending'`,
+          [candidateMessageId, request.id, accountId]
+        );
+        const canonical = await pool.query(
+          `SELECT id, sender_id, recipient_id, body, status, message_id, created_at, updated_at
+           FROM echoverse_dm_requests WHERE id=$1 AND recipient_id=$2 LIMIT 1`,
+          [request.id, accountId]
+        );
+        if (!canonical.rows[0]) return null;
+        request = mapDmRequest(canonical.rows[0]);
+        if (request.status !== "pending" || !request.messageId) return null;
+        messageId = request.messageId;
+      }
+    }
+
+    let message = await dmById(messageId);
+    if (!message) {
+      try {
+        message = await storeDm(request.senderId, request.recipientId, request.body, {
+          id: messageId
+        });
+      } catch (error) {
+        message = await dmById(messageId);
+        if (!message) throw error;
+      }
+    }
+
+    if (!existingFriendship || existingFriendship.status !== "accepted") {
+      if (!pool) {
+        memoryFriendships.set(friendshipKey(request.senderId, request.recipientId), {
+          id: existingFriendship?.id || crypto.randomUUID(),
+          requesterId: request.senderId,
+          addresseeId: request.recipientId,
+          status: "accepted",
+          createdAt: existingFriendship?.createdAt || new Date().toISOString()
+        });
+      } else if (existingFriendship) {
+        await pool.query(
+          `UPDATE echoverse_friendships SET requester_id=$1, addressee_id=$2,
+             status='accepted', updated_at=NOW() WHERE id=$3 AND status <> 'blocked'`,
+          [request.senderId, request.recipientId, existingFriendship.id]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO echoverse_friendships
+            (id, requester_id, addressee_id, status, created_at, updated_at)
+           VALUES ($1,$2,$3,'accepted',NOW(),NOW())
+           ON CONFLICT DO NOTHING`,
+          [crypto.randomUUID(), request.senderId, request.recipientId]
+        );
+        const currentFriendship = await friendshipBetween(request.senderId, request.recipientId);
+        if (currentFriendship?.status === "blocked") return null;
+        if (currentFriendship && currentFriendship.status !== "accepted") {
+          await pool.query(
+            `UPDATE echoverse_friendships SET status='accepted', updated_at=NOW()
+             WHERE id=$1 AND status <> 'blocked'`,
+            [currentFriendship.id]
+          );
+        }
+      }
+    }
+
+    if (!pool) {
+      request.status = "accepted";
+      request.updatedAt = new Date().toISOString();
+    } else {
+      await pool.query(
+        `UPDATE echoverse_dm_requests SET status='accepted', updated_at=NOW()
+         WHERE id=$1 AND recipient_id=$2 AND status='pending'`,
+        [request.id, accountId]
+      );
+    }
+    return { request, message };
+  }
+
   async function storeDm(
     senderId: string,
     recipientId: string,
     body: string,
     options: {
+      id?: string;
       conversationId?: string | null;
       replyToId?: string | null;
       attachmentName?: string | null;
@@ -279,7 +528,7 @@ export function createFriendService({
     } = {}
   ) {
     const message: StoredDm = {
-      id: crypto.randomUUID(),
+      id: options.id || crypto.randomUUID(),
       senderId,
       recipientId,
       conversationId: options.conversationId || null,
@@ -673,6 +922,7 @@ export function createFriendService({
 
   return {
     areFriends,
+    acceptDmRequest,
     conversationFor,
     conversationMembers,
     createGroupConversation,
@@ -683,10 +933,14 @@ export function createFriendService({
     relationshipFor,
     listFriendState,
     listConversations,
+    listDmRequests,
     loadConversationHistory,
     loadDmHistory,
     leaveGroupConversation,
     mutateGroupMember,
+    createDmRequest,
+    dmRequestBetween,
+    updateDmRequestStatus,
     parseReactions,
     storeDm,
     validateAttachment

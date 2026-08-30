@@ -19,6 +19,11 @@ GNU Make 4.4.1 is used for the repository targets. On Windows, install it with
 the WinGet package `ezwinports.make` and restart the terminal so the updated
 PATH is loaded.
 
+The validation tools are installed with `make tools-install`. On Windows this
+uses the official WinGet Gitleaks package and the repository-pinned Python
+requirements; on macOS it uses Homebrew. The REUSE gate can use Python's
+`py -m reuse` fallback when the Python Scripts directory is not yet on PATH.
+
 ## Current workspaces
 
 - `project/apps/server/` — backend development and start scripts;

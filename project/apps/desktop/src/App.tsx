@@ -42,8 +42,10 @@ import type {
   ChatMessage,
   DmConversation,
   DmMessage,
+  DmRequest,
   FriendUser,
   Guild,
+  GuildMember,
   IncomingCall,
   PeerInfo,
   ScreenSource,
@@ -135,8 +137,11 @@ export default function App() {
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [activeChannelId, setActiveChannelId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [guildMembers, setGuildMembers] = useState<GuildMember[]>([]);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [chatSearchResults, setChatSearchResults] = useState<ChatMessage[] | null>(null);
+  const [channelReplyTo, setChannelReplyTo] = useState<ChatMessage | null>(null);
+  const [channelThreadRoot, setChannelThreadRoot] = useState<ChatMessage | null>(null);
   const [presence, setPresence] = useState<PeerInfo[]>([]);
   const [text, setText] = useState("");
   const [muted, setMuted] = useState(false);
@@ -214,6 +219,8 @@ export default function App() {
   const [dmConversations, setDmConversations] = useState<DmConversation[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
+  const [incomingMessageRequests, setIncomingMessageRequests] = useState<DmRequest[]>([]);
+  const [outgoingMessageRequests, setOutgoingMessageRequests] = useState<DmRequest[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState<FriendUser[]>([]);
   const [activeDmFriend, setActiveDmFriend] = useState<FriendUser | null>(null);
@@ -319,6 +326,8 @@ export default function App() {
     setFriends,
     setIncomingRequests,
     setOutgoingRequests,
+    setIncomingMessageRequests,
+    setOutgoingMessageRequests,
     setFriendSearch,
     setFriendSearchResults,
     setActiveFriend: setActiveDmFriend,
@@ -339,7 +348,8 @@ export default function App() {
     respondFriendRequest,
     cancelFriendRequest,
     removeFriend,
-    openDm
+    openDm,
+    loadMessageRequests
   } = friendsFeature;
 
   const directMessagesFeature = createDirectMessagesFeature({
@@ -714,6 +724,7 @@ export default function App() {
           setGuildChannels([]);
           setGuildCategories([]);
           setMessages([]);
+          setGuildMembers([]);
         }
         return null;
       });
@@ -728,6 +739,15 @@ export default function App() {
     s.on("friends:changed", () => {
       loadFriends(s);
       loadDmConversations();
+    });
+    s.on("dm:requests-changed", () => loadMessageRequests(s));
+    s.on("dm:request-received", (request: DmRequest) => {
+      loadMessageRequests(s);
+      window.echoverse?.notify?.({
+        title: translatorRef.current("friends.messageRequests"),
+        body: request.senderUsername,
+        icon: request.senderAvatarData || undefined
+      });
     });
     s.on("dm:conversation-created", (conversation: DmConversation) => {
       setDmConversations((current) =>
@@ -890,14 +910,6 @@ export default function App() {
     s.on("chat-message", (msg: ChatMessage) => {
       setMessages((prev) => appendChatMessage(prev, msg));
       const currentAccount = accountRef.current;
-      if (
-        currentAccount &&
-        msg.username !== currentAccount.username &&
-        currentAccount.username &&
-        msg.text.includes(`@${currentAccount.username}`)
-      ) {
-        playEvSound("mention", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
-      }
       if (currentAccount && msg.username !== currentAccount.username) {
         window.echoverse?.notify?.({
           title: `${translatorRef.current("app.name")} · ${msg.username}`,
@@ -906,6 +918,27 @@ export default function App() {
         });
       }
     });
+
+    s.on(
+      "chat:mention",
+      (mention: {
+        guildId: string;
+        channelId: string;
+        messageId: string;
+        senderUsername: string;
+        senderAvatarData?: string | null;
+        text: string;
+      }) => {
+        if (mention.guildId !== activeGuildRef.current?.id) return;
+        const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
+        playEvSound("mention", volume);
+        window.echoverse?.notify?.({
+          title: `${translatorRef.current("app.name")} · ${mention.senderUsername}`,
+          body: mention.text,
+          icon: mention.senderAvatarData
+        });
+      }
+    );
 
     s.on("chat:pinned", (message: ChatMessage) => {
       if (!message?.id) return;
@@ -1668,8 +1701,11 @@ export default function App() {
     setActiveChannelId("");
     setPresence([]);
     setMessages([]);
+    setGuildMembers([]);
     setChatSearchQuery("");
     setChatSearchResults(null);
+    setChannelReplyTo(null);
+    setChannelThreadRoot(null);
   }
 
   async function resizeAvatar(file: File) {
@@ -1761,8 +1797,11 @@ export default function App() {
     setViewMode("server");
     setActiveDmFriend(null);
     setMessages([]);
+    setGuildMembers([]);
     setChatSearchQuery("");
     setChatSearchResults(null);
+    setChannelReplyTo(null);
+    setChannelThreadRoot(null);
     setActiveChannelId(`${guild.id}:general`);
     setPresence([]);
 
@@ -1775,6 +1814,18 @@ export default function App() {
         setError(result?.error || t("error.guildJoinFailed"));
         return;
       }
+      socket.emit("guild:members", { guildId: guild.id }, (membersResult: any) => {
+        setGuildMembers(
+          Array.isArray(membersResult?.members)
+            ? membersResult.members.map((member: GuildMember) => ({
+                accountId: String(member.accountId),
+                username: String(member.username),
+                avatarData: member.avatarData || null,
+                role: member.role
+              }))
+            : []
+        );
+      });
       socket.emit(
         "chat-history",
         { guildId: guild.id, channelId: `${guild.id}:general` },
@@ -1818,6 +1869,7 @@ export default function App() {
         setActiveGuild(null);
         setActiveChannelId("");
         setMessages([]);
+        setGuildMembers([]);
         setChatSearchQuery("");
         setChatSearchResults(null);
         setPresence([]);
@@ -1841,6 +1893,7 @@ export default function App() {
         setActiveGuild(null);
         setActiveChannelId("");
         setMessages([]);
+        setGuildMembers([]);
         setChatSearchQuery("");
         setChatSearchResults(null);
         setPresence([]);
@@ -2018,7 +2071,8 @@ export default function App() {
       {
         guildId: activeGuild.id,
         ...(activeChannelId ? { channelId: activeChannelId } : {}),
-        text: value
+        text: value,
+        ...(channelReplyTo ? { replyToId: channelReplyTo.id } : {})
       },
       (timeoutError: Error | null, result: any) => {
         if (timeoutError || !result?.ok) {
@@ -2026,6 +2080,7 @@ export default function App() {
           return;
         }
         setText("");
+        setChannelReplyTo(null);
       }
     );
   }
@@ -2517,6 +2572,7 @@ export default function App() {
           changeAvatar: t("profile.changeAvatar"),
           voiceConnected: (version) => t("profile.voiceConnected", { version }),
           microphone: t("media.microphone"),
+          settings: t("common.settings"),
           logout: t("auth.logout"),
           createGuild: t("guild.new"),
           joinGuild: t("guild.join"),
@@ -2547,6 +2603,10 @@ export default function App() {
         onOpenFriends={() => {
           setViewMode("server");
           setShowFriends(true);
+        }}
+        onOpenSettings={() => {
+          refreshAudioDevices();
+          setShowAudioSettings(true);
         }}
         onCreateInvite={createGuildInvite}
         onLeaveGuild={leaveGuild}
@@ -2769,6 +2829,12 @@ export default function App() {
                   pin: t("chat.pin"),
                   unpin: t("chat.unpin"),
                   copyLink: t("chat.copyLink"),
+                  reply: t("common.reply"),
+                  clearReply: t("chat.clearComposerContext"),
+                  thread: t("chat.openThread"),
+                  threadTitle: t("chat.threadTitle"),
+                  closeThread: t("chat.closeThread"),
+                  noThreadReplies: t("chat.noThreadReplies"),
                   pinned: t("chat.pinned"),
                   searchResults: t("chat.searchResults"),
                   noSearchResults: t("chat.noSearchResults")
@@ -2777,6 +2843,7 @@ export default function App() {
                   inputLabel: t("chat.message"),
                   placeholder: t("chat.sendPlaceholder"),
                   emojiLabel: t("chat.emoji"),
+                  mentionLabel: t("chat.mentionLabel"),
                   sendLabel: t("common.send")
                 },
                 voice: {
@@ -2803,9 +2870,16 @@ export default function App() {
               onStatusChange={setPresenceStatus}
               onVideoLayoutChange={setVideoLayout}
               onTextChange={setText}
+              mentionCandidates={guildMembers}
               onSearchQueryChange={setChatSearchQuery}
               onSearch={searchMessages}
               onClearSearch={clearChatSearch}
+              replyTo={channelReplyTo}
+              onReplyMessage={setChannelReplyTo}
+              onClearReply={() => setChannelReplyTo(null)}
+              threadRoot={channelThreadRoot}
+              onOpenThread={setChannelThreadRoot}
+              onCloseThread={() => setChannelThreadRoot(null)}
               onPinMessage={pinMessage}
               onCopyMessageLink={copyMessageLink}
               onAddEmoji={(emoji = "😂") =>
@@ -2845,6 +2919,8 @@ export default function App() {
         friends={friends}
         incomingRequests={incomingRequests}
         outgoingRequests={outgoingRequests}
+        incomingMessageRequests={incomingMessageRequests}
+        outgoingMessageRequests={outgoingMessageRequests}
         friendSearchResults={friendSearchResults}
         conversations={dmConversations}
         unreadDm={unreadDm}
@@ -2903,6 +2979,10 @@ export default function App() {
             searchResults: t("ui.searchResults"),
             incomingRequests: t("ui.incomingRequests"),
             outgoingRequests: t("ui.outgoingRequests"),
+            messageRequests: t("friends.messageRequests"),
+            messageRequestAccept: t("friends.messageRequestAccept"),
+            messageRequestDecline: t("friends.messageRequestDecline"),
+            messageRequestSpam: t("friends.messageRequestSpam"),
             myFriends: t("ui.myFriends"),
             noFriends: t("ui.noFriends"),
             add: t("friends.add"),
@@ -2987,6 +3067,16 @@ export default function App() {
         onOpenDm={openDm}
         onCallFriend={callFriend}
         onRemoveFriend={removeFriend}
+        onRespondMessageRequest={(requestId, action) => {
+          socket?.emit("dm:request-respond", { requestId, action }, (result: any) => {
+            if (!result?.ok) {
+              setError(result?.error || t("error.requestFailed"));
+              return;
+            }
+            loadFriends();
+            loadMessageRequests();
+          });
+        }}
         onOpenConversation={openDmConversation}
         onCreateGroup={createDmGroup}
         currentAccountId={account?.id}

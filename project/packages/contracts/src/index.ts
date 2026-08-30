@@ -233,6 +233,13 @@ export const socketEventPayloadSchemas = {
     })
     .strict()
     .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
+  "dm:requests": optionalEmptyPayloadSchema,
+  "dm:request-respond": z
+    .object({
+      requestId: identifierSchema,
+      action: z.enum(["accept", "decline", "spam"])
+    })
+    .strict(),
   "dm:edit": z.object({ messageId: identifierSchema, body: z.string().max(2500) }).strict(),
   "dm:delete": z.object({ messageId: identifierSchema }).strict(),
   "call:start": z
@@ -444,6 +451,19 @@ export type DmMessage = {
   reactions?: Record<string, string[]>;
   deletedAt?: string | null;
 };
+export type DmRequest = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  senderUsername: string;
+  senderAvatarData?: string | null;
+  recipientUsername: string;
+  recipientAvatarData?: string | null;
+  body: string;
+  status: "pending" | "accepted" | "declined" | "spam";
+  createdAt: string;
+  updatedAt: string;
+};
 export type DmConversationMember = {
   accountId: string;
   username: string;
@@ -484,6 +504,12 @@ export type ChatMessage = {
   reactions?: Record<string, string[]>;
 };
 export type GuildRole = "owner" | "admin" | "moderator" | "member";
+export type GuildMember = {
+  accountId: string;
+  username: string;
+  avatarData?: string | null;
+  role: GuildRole;
+};
 export type GuildChannelType = "text" | "voice" | "stage" | "forum";
 export type GuildChannel = {
   id: string;

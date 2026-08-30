@@ -26,6 +26,7 @@ export type WorkspaceSidebarLabels = {
   changeAvatar: string;
   voiceConnected: (version: string) => string;
   microphone: string;
+  settings?: string;
   logout: string;
   createGuild: string;
   joinGuild?: string;
@@ -55,6 +56,7 @@ type MobileWorkspaceNavigationProps = {
   onRenameLobby?: (guild: Guild, name: string) => void;
   onOpenDms?: () => void;
   onOpenFriends?: () => void;
+  onOpenSettings?: () => void;
   onCreateGuild: () => void;
   onJoinGuild?: () => void;
   onLeaveGuild?: (guild: Guild) => void;
@@ -74,6 +76,7 @@ function MobileWorkspaceNavigation({
   onRenameLobby,
   onOpenDms,
   onOpenFriends,
+  onOpenSettings,
   onCreateGuild,
   onJoinGuild,
   onLeaveGuild,
@@ -96,6 +99,10 @@ function MobileWorkspaceNavigation({
   };
   const openFriends = () => {
     onOpenFriends?.();
+    setMobileMenuOpen(false);
+  };
+  const openSettings = () => {
+    onOpenSettings?.();
     setMobileMenuOpen(false);
   };
   const createGuild = () => {
@@ -232,6 +239,11 @@ function MobileWorkspaceNavigation({
           <button className="mobile-action-row" onClick={openFriends}>
             👥 <span>{labels.openDms || labels.directMessages || "Friends"}</span>
           </button>
+          {onOpenSettings && (
+            <button className="mobile-action-row" onClick={openSettings}>
+              ⚙ <span>{labels.settings || "Settings"}</span>
+            </button>
+          )}
           <div className="mobile-server-actions">
             <button
               className="mobile-action-row add"
@@ -378,6 +390,7 @@ export function WorkspaceSidebar({
   activeDmFriend,
   onOpenDms,
   onOpenFriends,
+  onOpenSettings,
   brandIconSrc,
   onCreateInvite,
   onCreateGuild,
@@ -416,6 +429,7 @@ export function WorkspaceSidebar({
   activeDmFriend?: FriendUser | null;
   onOpenDms?: () => void;
   onOpenFriends?: () => void;
+  onOpenSettings?: () => void;
   brandIconSrc?: string;
   onCreateInvite?: (guild: Guild) => void;
   onCreateGuild: () => void;
@@ -699,6 +713,17 @@ export function WorkspaceSidebar({
             <small>{labels.voiceConnected(appVersion)}</small>
           </div>
 
+          {onOpenSettings && (
+            <button
+              className="user-settings-button"
+              aria-label={labels.settings || "Settings"}
+              onClick={onOpenSettings}
+              title={labels.settings || "Settings"}
+            >
+              ⚙
+            </button>
+          )}
+
           <button aria-label={labels.microphone} onClick={onToggleMute} title={labels.microphone}>
             {muted ? "🔇" : "🎙️"}
           </button>
@@ -719,6 +744,7 @@ export function WorkspaceSidebar({
         onRenameLobby={onRenameLobby}
         onOpenDms={onOpenDms}
         onOpenFriends={onOpenFriends}
+        onOpenSettings={onOpenSettings}
         onCreateGuild={onCreateGuild}
         onJoinGuild={onJoinGuild}
         onLeaveGuild={onLeaveGuild}

@@ -10,7 +10,7 @@
 	dependency-check localization-check coverage db-test work-init typecheck test e2e quality security-check
 
 help:
-	@node -e "console.log('make version-check      Verify VERSION and package mirrors'); console.log('make roadmap-check      Validate roadmap status and audit lifecycle'); console.log('make docs-check         Check documentation inventory and whitespace'); console.log('make ai-check           Safe repository docs and metadata gate'); console.log('make ai-server-test     Health-check an already running local server'); console.log('make server-run         Start the local server in the foreground'); console.log('make install-deps       Install project dependencies'); console.log('make tools-install      Install Homebrew validation gates'); console.log('make setup              Prepare dependencies, tools, and metadata'); console.log('make tooling-check      Verify Node.js 22 LTS'); console.log('make format-check       Verify Prettier formatting'); console.log('make lint               Run ESLint'); console.log('make reuse-check        Run REUSE metadata validation'); console.log('make secret-scan        Run Gitleaks secret scanning'); console.log('make dependency-check   Run npm dependency audit'); console.log('make coverage           Run Vitest with coverage'); console.log('make db-test            Run PostgreSQL migration tests'); console.log('make web-build          Build the web client'); console.log('make desktop-build     Build the desktop renderer'); console.log('make release-check      Validate release metadata only'); console.log('make release-win        Build the Windows installer'); console.log('make release-mac-intel  Build the macOS Intel artifacts'); console.log('make release-mac-arm64  Build the macOS Apple Silicon artifacts'); console.log('make release             Windows release alias'); console.log('make work-init          Create ignored tmp directories')"
+	@node -e "console.log('make version-check      Verify VERSION and package mirrors'); console.log('make roadmap-check      Validate roadmap status and audit lifecycle'); console.log('make docs-check         Check documentation inventory and whitespace'); console.log('make ai-check           Safe repository docs and metadata gate'); console.log('make ai-server-test     Health-check an already running local server'); console.log('make server-run         Start the local server in the foreground'); console.log('make install-deps       Install project dependencies'); console.log('make tools-install      Install platform validation tools'); console.log('make setup              Prepare dependencies, tools, and metadata'); console.log('make tooling-check      Verify Node.js 22 LTS'); console.log('make format-check       Verify Prettier formatting'); console.log('make lint               Run ESLint'); console.log('make reuse-check        Run REUSE metadata validation'); console.log('make secret-scan        Run Gitleaks secret scanning'); console.log('make dependency-check   Run npm dependency audit'); console.log('make coverage           Run Vitest with coverage'); console.log('make db-test            Run PostgreSQL migration tests'); console.log('make web-build          Build the web client'); console.log('make desktop-build     Build the desktop renderer'); console.log('make release-check      Validate release metadata only'); console.log('make release-win        Build the Windows installer'); console.log('make release-mac-intel  Build the macOS Intel artifacts'); console.log('make release-mac-arm64  Build the macOS Apple Silicon artifacts'); console.log('make release             Windows release alias'); console.log('make work-init          Create ignored tmp directories')"
 
 version-check:
 	@node -e "const fs=require('fs'); const v=fs.readFileSync('VERSION','utf8').trim(); if(!/^\d+\.\d+\.\d+$$/.test(v)) throw new Error('Invalid VERSION: '+v); for(const p of ['package.json','project/apps/server/package.json','project/apps/web/package.json','project/apps/desktop/package.json']) { const j=JSON.parse(fs.readFileSync(p,'utf8')); if(j.version!==v) throw new Error(p+' version '+j.version+' does not match '+v); } console.log('Canonical version '+v+' verified')"
@@ -46,11 +46,9 @@ lint:
 	@npm run lint
 
 reuse-check:
-	@if ! command -v reuse >/dev/null 2>&1; then echo "REUSE is required; install it with brew install reuse or use the CI action"; exit 1; fi
 	@npm run reuse:check
 
 secret-scan:
-	@if ! command -v gitleaks >/dev/null 2>&1; then echo "Gitleaks is required; install it or use the CI action"; exit 1; fi
 	@npm run secret-scan
 
 localization-check:
@@ -79,9 +77,14 @@ tooling-check:
 install-deps:
 	@npm ci
 
+ifeq ($(OS),Windows_NT)
+tools-install:
+	@powershell -NoProfile -Command "$$ErrorActionPreference='Stop'; if (-not (Get-Command gitleaks -ErrorAction SilentlyContinue)) { winget install --id Gitleaks.Gitleaks --exact --source winget --accept-source-agreements --accept-package-agreements }; if (-not (Get-Command py -ErrorAction SilentlyContinue)) { winget install --id Python.Python.3.12 --exact --source winget --accept-source-agreements --accept-package-agreements }; py -3 -m pip install --user --disable-pip-version-check --requirement requirements-dev.txt"
+else
 tools-install:
 	@if ! command -v brew >/dev/null 2>&1; then echo "Homebrew is required on macOS to install validation tools"; exit 1; fi
 	@brew install reuse gitleaks node@22
+endif
 
 setup: version-check install-deps tools-install
 

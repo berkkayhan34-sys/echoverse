@@ -12,6 +12,7 @@ import type {
   GuildCategory,
   GuildRole,
   StoredDm,
+  StoredDmRequest,
   StoredGuildMessage,
   User
 } from "../domain/types.js";
@@ -67,6 +68,7 @@ export const memoryFriendships = new Map<
   }
 >();
 export const memoryDmMessages: StoredDm[] = [];
+export const memoryDmRequests = new Map<string, StoredDmRequest>();
 export const memoryDmConversations = new Map<
   string,
   import("../features/friends/service.js").MemoryDmConversation
