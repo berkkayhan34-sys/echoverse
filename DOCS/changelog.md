@@ -7,6 +7,15 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.4
+
+- Stabilize first-time guild voice joins with deterministic peer setup,
+  serialized connection creation, and early ICE candidate queuing.
+- Add a visible leave action for non-owner private guilds and remove the guild
+  from the server rail after a successful leave.
+- Make the direct-message composer responsive with a flexible message field and
+  compact send control across desktop and mobile layouts.
+
 ## 1.9.3
 
 - Add shared guild-chat search, server-authorized pin/unpin controls, pinned

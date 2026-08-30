@@ -1,6 +1,6 @@
 {
   "name": "@echoverse/server",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
