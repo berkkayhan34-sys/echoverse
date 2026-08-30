@@ -27,6 +27,11 @@ persistence, and other side effects remain in the owning renderer.
 entry and includes the persistent Direct Messages navigation; at mobile
 breakpoints the same commands are exposed through a server/channel drawer and
 bottom navigation bar, including explicit DM, friends, and voice-lobby entry.
+The server rail's plus action exposes both New server and Join with server code.
+Private guilds expose a three-dot menu: members receive Leave, while owners
+receive the server-authorized Delete action; the public main guild is never
+offered either destructive action. Owners also see the delete affordance in the
+guild header.
 The drawer uses the renderer's brand asset so web/PWA and desktop retain the
 same visual identity.
 For guild owners and admins it also exposes the localized lobby-name editor;

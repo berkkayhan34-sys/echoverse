@@ -189,6 +189,7 @@ describe("protocol contracts", () => {
       "guild:set-role",
       "guild:rename-lobby",
       "guild:leave",
+      "guild:delete",
       "guild:select",
       "join-room",
       "voice:sync-request",

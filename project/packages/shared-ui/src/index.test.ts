@@ -603,8 +603,10 @@ describe("shared chat UI", () => {
     expect(onPeerVolumeChange).toHaveBeenCalledWith("socket-2", 150);
 
     const summaries = elementsOfType(element, "summary");
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0]?.props["aria-label"]).toContain("Private room");
+    expect(summaries).toHaveLength(2);
+    expect(
+      summaries.find((summary) => summary.props["aria-label"]?.includes("Private room"))
+    ).toBeTruthy();
     const leaveButton = buttons.find((button) => buttonText(button) === "Leave server");
     const removeAttribute = vi.fn();
     (leaveButton?.props.onClick as (event: unknown) => void)({
@@ -1161,7 +1163,9 @@ describe("shared server chrome", () => {
       screenSources: [],
       screenPermission: "denied",
       showCreate: true,
+      showJoin: false,
       newGuildName: "",
+      joinCode: "",
       inviteGuildName: "",
       inviteToken: "",
       inviteCopied: false,
@@ -1230,6 +1234,12 @@ describe("shared server chrome", () => {
           openSystemSettings: "Settings"
         },
         guild: { title: "Guild", namePlaceholder: "Name", cancel: "Cancel", create: "Create" },
+        joinGuild: {
+          title: "Join guild",
+          codePlaceholder: "Invite code",
+          cancel: "Cancel",
+          join: "Join"
+        },
         invite: {
           title: "Invite {{guild}}",
           description: "Description",
@@ -1265,6 +1275,9 @@ describe("shared server chrome", () => {
       onGuildNameChange: vi.fn(),
       onCancelCreate,
       onCreateGuild: vi.fn(),
+      onJoinCodeChange: vi.fn(),
+      onCancelJoin: vi.fn(),
+      onJoinGuild: vi.fn(),
       onCopyInvite: vi.fn(),
       onCloseInvite: vi.fn()
     });

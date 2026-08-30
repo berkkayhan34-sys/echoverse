@@ -4,7 +4,7 @@
  */
 
 import type { Guild } from "@echoverse/contracts";
-import { CreateGuildDialog } from "./guild-dialog.js";
+import { CreateGuildDialog, JoinGuildDialog } from "./guild-dialog.js";
 import { displayInitials } from "./text.js";
 
 export type GuildPickerLabels = {
@@ -110,29 +110,18 @@ export function GuildPicker({
         )}
 
         {showJoin && (
-          <div className="modal-backdrop">
-            <div className="modal">
-              <h2>{labels.joinGuild}</h2>
-
-              <input
-                autoFocus
-                placeholder={labels.codePlaceholder}
-                value={joinCode}
-                onChange={(event) => onJoinCodeChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onJoinGuildByCode();
-                }}
-              />
-
-              <div className="modal-actions">
-                <button onClick={onJoinClose}>{labels.cancel}</button>
-
-                <button className="primary-small" onClick={onJoinGuildByCode}>
-                  {labels.joinAction}
-                </button>
-              </div>
-            </div>
-          </div>
+          <JoinGuildDialog
+            code={joinCode}
+            labels={{
+              title: labels.joinGuild,
+              codePlaceholder: labels.codePlaceholder,
+              cancel: labels.cancel,
+              join: labels.joinAction
+            }}
+            onCodeChange={onJoinCodeChange}
+            onCancel={onJoinClose}
+            onJoin={onJoinGuildByCode}
+          />
         )}
 
         {error && <div className="error-box">{error}</div>}

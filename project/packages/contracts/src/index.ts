@@ -333,6 +333,7 @@ export const socketEventPayloadSchemas = {
     .object({ guildId: identifierSchema, limit: z.number().int().min(1).max(100).optional() })
     .strict(),
   "guild:leave": z.object({ guildId: identifierSchema }).strict(),
+  "guild:delete": z.object({ guildId: identifierSchema }).strict(),
   "guild:select": z.object({ guildId: identifierSchema }).strict(),
   "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
   "voice:sync-request": optionalEmptyPayloadSchema,

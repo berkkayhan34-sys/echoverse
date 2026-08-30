@@ -51,6 +51,15 @@ the fixed main-guild identifier and its
 No account is promoted to owner/admin without the configured founder identity,
 and the identity value is never stored in source or logs.
 
+Private guild owners can permanently delete their guild through the
+`guild:delete` socket event. The server rejects the public `echoverse` guild,
+non-owners, and any private guild that has a member other than the owner or the
+two explicitly allowlisted test accounts (`test@test.com` and
+`test2@test2.com`). The persisted guild row is deleted in one operation so the
+database foreign-key cascades remove channels, messages, invites, memberships,
+moderation, audit, and permission-override records; connected members receive
+an updated guild list and are removed from the deleted guild's rooms.
+
 WebRTC signaling is authorized per transport boundary: active private calls
 may relay only between their two call participants, while guild voice offers,
 answers, and ICE candidates may relay only between authenticated sockets that

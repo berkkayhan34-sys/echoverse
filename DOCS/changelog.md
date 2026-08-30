@@ -7,6 +7,16 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.5
+
+- Add server-authorized private-guild deletion for owners when only the owner
+  and approved test accounts remain; protect the public EchoVerse guild and
+  clean persisted guild data through foreign-key cascades.
+- Add owner delete and member leave controls to the shared server rail and
+  guild header, with connected-member cleanup after deletion.
+- Add New server and Join with server code actions to the server-rail plus
+  control on desktop and responsive layouts.
+
 ## 1.9.4
 
 - Stabilize first-time guild voice joins with deterministic peer setup,

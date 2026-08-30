@@ -25,6 +25,10 @@ export type GuildHandlerDependencies = {
   ): Promise<{ token: string; guildId: string; expiresAt: string }>;
   joinByInvite(token: string, accountId: string): Promise<Guild | null>;
   leaveGuild(guildId: string, accountId: string): Promise<boolean>;
+  deleteGuild(
+    guildId: string,
+    accountId: string
+  ): Promise<{ ok: true } | { ok: false; reason: "not_allowed" | "members_present" }>;
   roleFor(guildId: string, accountId?: string): GuildRole | undefined;
   isMember(guildId: string, accountId?: string): boolean;
   setRole(guildId: string, accountId: string, role: Exclude<GuildRole, "owner">): Promise<boolean>;
@@ -104,6 +108,7 @@ export function registerGuildHandlers({
   createInvite,
   joinByInvite,
   leaveGuild,
+  deleteGuild,
   roleFor,
   isMember,
   setRole,
@@ -629,6 +634,54 @@ export function registerGuildHandlers({
           ? { ok: true }
           : { ok: false, error: socketError(socket, "server.guildOwnerCannotLeave") }
       );
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "guild:delete",
+    async ({ guildId }: { guildId: string }, callback: any) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.loginRequired") });
+        return;
+      }
+      const affectedPeers = [...io.sockets.sockets.values()].filter((peer) => {
+        const accountId = peer.data.account?.id;
+        return Boolean(accountId && isMember(guildId, accountId));
+      });
+      let result: Awaited<ReturnType<GuildHandlerDependencies["deleteGuild"]>>;
+      try {
+        result = await deleteGuild(guildId, user.accountId);
+      } catch {
+        callback?.({ ok: false, error: socketError(socket, "error.operationFailed") });
+        return;
+      }
+      if (!result.ok) {
+        callback?.({
+          ok: false,
+          error: socketError(
+            socket,
+            result.reason === "members_present"
+              ? "server.guildDeleteMembersPresent"
+              : "server.guildDeleteNotAllowed"
+          )
+        });
+        return;
+      }
+
+      for (const peer of affectedPeers) {
+        const peerUser = users.get(peer.id);
+        const accountId = peer.data.account?.id;
+        if (peerUser?.guildId === guildId) leaveCurrentRoom(peer, peerUser);
+        if (peerUser?.activeGuildId === guildId) {
+          peer.leave(textRoomFor(guildId));
+          peerUser.activeGuildId = undefined;
+          users.set(peer.id, peerUser);
+        }
+        if (accountId) peer.emit("guild:list", guildList(accountId));
+      }
+      callback?.({ ok: true });
     }
   );
 

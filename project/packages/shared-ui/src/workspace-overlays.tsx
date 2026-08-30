@@ -11,7 +11,12 @@ import type {
   ScreenSource
 } from "@echoverse/contracts";
 import { CallAlerts, type CallAlertLabels } from "./calls.js";
-import { CreateGuildDialog, type CreateGuildDialogLabels } from "./guild-dialog.js";
+import {
+  CreateGuildDialog,
+  JoinGuildDialog,
+  type CreateGuildDialogLabels,
+  type JoinGuildDialogLabels
+} from "./guild-dialog.js";
 import { FriendsModal, type FriendsModalLabels } from "./friends.js";
 import { MediaSettingsModal, type MediaSettingsLabels } from "./media-settings.js";
 import { MembersPanel, type MembersPanelLabels } from "./members.js";
@@ -25,6 +30,7 @@ export type WorkspaceOverlayLabels = {
   calls: CallAlertLabels;
   screen: ScreenPickerLabels;
   guild: CreateGuildDialogLabels;
+  joinGuild: JoinGuildDialogLabels;
   invite: InviteDialogLabels;
 };
 
@@ -64,7 +70,9 @@ export function WorkspaceOverlays({
   screenSources,
   screenPermission,
   showCreate,
+  showJoin,
   newGuildName,
+  joinCode,
   inviteGuildName,
   inviteToken,
   inviteCopied,
@@ -102,6 +110,9 @@ export function WorkspaceOverlays({
   onGuildNameChange,
   onCancelCreate,
   onCreateGuild,
+  onJoinCodeChange,
+  onCancelJoin,
+  onJoinGuild,
   onCopyInvite,
   onCloseInvite
 }: {
@@ -139,7 +150,9 @@ export function WorkspaceOverlays({
   screenSources: ScreenSource[];
   screenPermission: string;
   showCreate: boolean;
+  showJoin: boolean;
   newGuildName: string;
+  joinCode: string;
   inviteGuildName: string;
   inviteToken: string;
   inviteCopied: boolean;
@@ -177,6 +190,9 @@ export function WorkspaceOverlays({
   onGuildNameChange: (name: string) => void;
   onCancelCreate: () => void;
   onCreateGuild: () => void | Promise<void>;
+  onJoinCodeChange: (code: string) => void;
+  onCancelJoin: () => void;
+  onJoinGuild: () => void | Promise<void>;
   onCopyInvite: () => void | Promise<void>;
   onCloseInvite: () => void;
 }) {
@@ -275,6 +291,16 @@ export function WorkspaceOverlays({
           onNameChange={onGuildNameChange}
           onCancel={onCancelCreate}
           onCreate={onCreateGuild}
+        />
+      )}
+
+      {showJoin && (
+        <JoinGuildDialog
+          code={joinCode}
+          labels={labels.joinGuild}
+          onCodeChange={onJoinCodeChange}
+          onCancel={onCancelJoin}
+          onJoin={onJoinGuild}
         />
       )}
 

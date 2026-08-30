@@ -269,6 +269,7 @@ const {
 const guildService = createGuildService({
   io,
   pool,
+  accountById,
   guilds,
   guildMembers,
   guildRoles,
@@ -292,6 +293,7 @@ const {
   joinByInvite,
   leaveCurrentRoom,
   leaveGuild,
+  deleteGuild,
   loadGuilds,
   ensureMainGuildMembership,
   ensureMainGuildOwner,
@@ -540,6 +542,7 @@ io.on("connection", (socket) => {
     isMember,
     joinByInvite,
     leaveGuild,
+    deleteGuild,
     roleFor,
     setRole,
     revokeInvite,

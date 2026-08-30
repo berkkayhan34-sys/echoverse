@@ -220,6 +220,68 @@ details.guild-options[open] > .guild-options-trigger,
   color: #ffc1c9;
 }
 
+.guild-delete-button {
+  flex: none;
+  border: 1px solid rgba(220, 101, 117, 0.45);
+  border-radius: var(--ev-radius-sm);
+  background: var(--ev-danger-soft);
+  color: #ffc1c9;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.guild-delete-button:hover,
+.guild-delete-button:focus-visible {
+  border-color: var(--ev-danger);
+  background: rgba(220, 101, 117, 0.22);
+}
+
+.server-add-details {
+  position: relative;
+  display: block;
+}
+
+.server-add-details > summary {
+  list-style: none;
+}
+
+.server-add-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.server-add-menu {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  z-index: 8;
+  display: grid;
+  min-width: 170px;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--ev-border-strong);
+  border-radius: var(--ev-radius-sm);
+  background: var(--ev-surface);
+  box-shadow: var(--ev-shadow-popover);
+}
+
+.server-add-menu button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ev-text);
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.server-add-menu button:hover,
+.server-add-menu button:focus-visible {
+  background: var(--ev-surface-hover);
+}
+
 .server-logo,
 .server-circle {
   border-radius: var(--ev-radius-md);
@@ -1112,6 +1174,16 @@ details.guild-options[open] > .guild-options-trigger,
   top: calc(100% + 4px);
   right: 0;
   left: auto;
+}
+
+.mobile-server-actions {
+  position: relative;
+}
+
+.mobile-server-actions .server-add-menu {
+  right: 12px;
+  bottom: calc(100% + 4px);
+  left: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {

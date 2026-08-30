@@ -24,6 +24,7 @@ import {
 export type GuildServiceDependencies = {
   io: any;
   pool?: PersistenceDatabase | null;
+  accountById?: (id: string) => Promise<Account | null>;
   guilds: Map<string, Guild>;
   guildMembers: Map<string, Set<string>>;
   guildRoles?: Map<string, Map<string, GuildRole>>;
@@ -59,9 +60,12 @@ export const MAIN_GUILD_NAME = "EchoVerse";
 export const MAIN_GUILD_OWNER_EMAIL =
   process.env.ECHO_VERSE_MAIN_OWNER_EMAIL?.trim().toLocaleLowerCase("en-US") || null;
 
+const TEST_GUILD_DELETE_EMAILS = new Set(["test@test.com", "test2@test2.com"]);
+
 export function createGuildService({
   io,
   pool,
+  accountById,
   guilds,
   guildMembers,
   guildRoles: providedGuildRoles,
@@ -865,6 +869,69 @@ export function createGuildService({
     return true;
   }
 
+  type GuildDeleteResult = { ok: true } | { ok: false; reason: "not_allowed" | "members_present" };
+
+  async function deleteGuild(guildId: string, accountId: string): Promise<GuildDeleteResult> {
+    const guild = guilds.get(guildId);
+    if (
+      !guild ||
+      guildId === MAIN_GUILD_ID ||
+      (guild.ownerId !== accountId && roleFor(guildId, accountId) !== "owner")
+    ) {
+      return { ok: false, reason: "not_allowed" };
+    }
+
+    let memberRecords: Array<{ accountId: string; email: string }>;
+    if (pool) {
+      const result = await pool.query(
+        `SELECT m.account_id, u.email
+         FROM echoverse_guild_members m
+         JOIN echoverse_users u ON u.id = m.account_id
+         WHERE m.guild_id = $1`,
+        [guildId]
+      );
+      memberRecords = result.rows.map((row) => ({
+        accountId: String(row.account_id),
+        email: String(row.email).trim().toLocaleLowerCase("en-US")
+      }));
+    } else {
+      if (!accountById) return { ok: false, reason: "not_allowed" };
+      const memberIds = [...(guildMembers.get(guildId) || [])];
+      const accounts = await Promise.all(memberIds.map((id) => accountById(id)));
+      if (accounts.some((account) => !account)) return { ok: false, reason: "members_present" };
+      memberRecords = accounts.map((account) => ({
+        accountId: account!.id,
+        email: account!.email.trim().toLocaleLowerCase("en-US")
+      }));
+    }
+
+    const hasUnapprovedMember = memberRecords.some(
+      (member) => member.accountId !== accountId && !TEST_GUILD_DELETE_EMAILS.has(member.email)
+    );
+    if (hasUnapprovedMember) return { ok: false, reason: "members_present" };
+
+    if (pool) await pool.query("DELETE FROM echoverse_guilds WHERE id = $1", [guildId]);
+
+    guilds.delete(guildId);
+    guildMembers.delete(guildId);
+    guildRoles.delete(guildId);
+    guildChannels.delete(guildId);
+    guildCategories.delete(guildId);
+    guildPermissionOverrides.delete(guildId);
+    guildModeration.delete(guildId);
+    guildAuditEvents.delete(guildId);
+    for (const [tokenHash, invite] of guildInvites) {
+      if (invite.guildId === guildId) guildInvites.delete(tokenHash);
+    }
+    for (const key of moderationAttempts.keys()) {
+      if (key.startsWith(`${guildId}:`)) moderationAttempts.delete(key);
+    }
+    for (const key of reportAttempts.keys()) {
+      if (key.startsWith(`${guildId}:`)) reportAttempts.delete(key);
+    }
+    return { ok: true };
+  }
+
   function moderationFor(guildId: string, accountId: string) {
     const entry = guildModeration.get(guildId)?.get(accountId);
     if (!entry) return null;
@@ -989,6 +1056,7 @@ export function createGuildService({
     joinByInvite,
     leaveCurrentRoom,
     leaveGuild,
+    deleteGuild,
     loadGuilds,
     roleFor,
     roomFor,

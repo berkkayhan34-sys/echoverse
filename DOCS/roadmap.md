@@ -179,6 +179,38 @@ decision: null
 
 Acceptance evidence is recorded in [`evidence/BUG-002.md`](evidence/BUG-002.md).
 
+### owner-test-guild-deletion-and-join-action
+
+```yaml
+id: BUG-003
+type: runtime_feature
+status: in_progress
+evidence: evidence/BUG-003.md
+blocks_roadmap: false
+decision: null
+```
+
+[-] Add a server-authorized private-guild lifecycle action and make the left
+server-rail plus action complete:
+
+1. Permit permanent deletion only to the guild owner, never for the public
+   `echoverse` guild, and only when every other member is one of the two
+   explicitly allowlisted test accounts (`test@test.com` or
+   `test2@test2.com`).
+2. Delete the guild row in one persisted operation so foreign-key cascades
+   remove its channels, messages, invites, memberships, moderation records,
+   audit records, and permission overrides; clear the corresponding in-memory
+   state and notify connected members.
+3. Expose the delete action both in the private guild three-dot menu and the
+   guild header/settings affordance; non-owners retain Leave and cannot delete.
+4. Make the server-rail plus action offer both New server and Join with server
+   code on desktop and responsive mobile layouts.
+
+Acceptance requires positive and negative service/transport tests, localization
+parity, type/build checks, and rendered shared-UI verification. The owner,
+main-guild protection, member allowlist, and persisted cascade are server-side
+invariants; client visibility is not an authority boundary.
+
 ## Release/version rule
 
 The root [`VERSION`](../VERSION) file remains the canonical desktop-shell and

@@ -67,6 +67,17 @@ async function registerClient(socket: Socket, prefix: string) {
   return { accountId: account.id, socket };
 }
 
+async function registerExactClient(socket: Socket, email: string, username: string) {
+  const result = await emitWithAck(socket, "auth:register", {
+    email,
+    username,
+    password: "secret123"
+  });
+  expect(result.ok).toBe(true);
+  const account = result.account as { id: string };
+  return { accountId: account.id, socket };
+}
+
 async function establishFriendship(
   requester: { accountId: string; socket: Socket },
   addressee: { accountId: string; socket: Socket }
@@ -760,6 +771,50 @@ describe("server HTTP and Socket.IO boundaries", () => {
     const ended = waitForEvent<AckResponse>(owner.socket, "call:ended");
     member.socket.emit("call:end", { callId, toSocketId: owner.socket.id });
     await expect(ended).resolves.toMatchObject({ callId });
+  });
+
+  it("deletes a private guild only for the owner and approved test members", async () => {
+    const owner = await registerExactClient(await connectClient(), "test@test.com", "DeleteOwner");
+    const approved = await registerExactClient(
+      await connectClient(),
+      "test2@test2.com",
+      "DeleteTest"
+    );
+    const outsider = await registerClient(await connectClient(), "outsider");
+    const created = (await emitWithAck(owner.socket, "guild:create", {
+      name: "Delete Guild"
+    })) as { ok: boolean; guild: { id: string }; invite: { token: string } };
+    expect(created.ok).toBe(true);
+
+    expect(
+      await emitWithAck(approved.socket, "guild:join-code", { code: created.invite.token })
+    ).toMatchObject({
+      ok: true,
+      guild: { id: created.guild.id }
+    });
+    expect(
+      await emitWithAck(outsider.socket, "guild:join-code", { code: created.invite.token })
+    ).toMatchObject({
+      ok: true,
+      guild: { id: created.guild.id }
+    });
+    expect(await emitWithAck(owner.socket, "guild:delete", { guildId: created.guild.id })).toEqual({
+      ok: false,
+      error: tr("server.guildDeleteMembersPresent")
+    });
+
+    expect(
+      await emitWithAck(outsider.socket, "guild:leave", { guildId: created.guild.id })
+    ).toEqual({
+      ok: true
+    });
+    expect(await emitWithAck(owner.socket, "guild:delete", { guildId: created.guild.id })).toEqual({
+      ok: true
+    });
+    expect(await emitWithAck(owner.socket, "guild:select", { guildId: created.guild.id })).toEqual({
+      ok: false,
+      error: tr("server.guildMembershipRequired")
+    });
   });
 
   it("rejects malformed and stale WebRTC signals and cleans calls on disconnect", async () => {

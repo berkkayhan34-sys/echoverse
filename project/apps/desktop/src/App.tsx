@@ -705,9 +705,18 @@ export default function App() {
 
     s.on("guild:list", (list: Guild[]) => {
       setGuilds(list);
-      setActiveGuild((current) =>
-        current && list.some((guild) => guild.id === current.id) ? current : null
-      );
+      setActiveGuild((current) => {
+        if (current && list.some((guild) => guild.id === current.id)) return current;
+        if (current) {
+          activeGuildRef.current = null;
+          setJoined(false);
+          setActiveChannelId("");
+          setGuildChannels([]);
+          setGuildCategories([]);
+          setMessages([]);
+        }
+        return null;
+      });
     });
     s.on("guild:updated", (updated: Guild) => {
       setGuilds((prev) =>
@@ -1817,6 +1826,29 @@ export default function App() {
     });
   }
 
+  function deleteGuild(guild: Guild) {
+    if (!socket || guild.id === "echoverse" || guild.role !== "owner") return;
+    if (!window.confirm(t("guild.deleteConfirm", { guild: guild.name }))) return;
+
+    socket.emit("guild:delete", { guildId: guild.id }, async (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.operationFailed"));
+        return;
+      }
+      setGuilds((current) => current.filter((entry) => entry.id !== guild.id));
+      if (activeGuildRef.current?.id === guild.id) {
+        if (joined) await leaveVoice();
+        setActiveGuild(null);
+        setActiveChannelId("");
+        setMessages([]);
+        setChatSearchQuery("");
+        setChatSearchResults(null);
+        setPresence([]);
+        setViewMode("server");
+      }
+    });
+  }
+
   function joinVoiceGuild(guild: Guild) {
     if (!socket) return;
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
@@ -2487,6 +2519,7 @@ export default function App() {
           microphone: t("media.microphone"),
           logout: t("auth.logout"),
           createGuild: t("guild.new"),
+          joinGuild: t("guild.join"),
           directMessages: t("ui.directMessages"),
           openDms: t("friends.list"),
           servers: t("guild.list"),
@@ -2494,6 +2527,7 @@ export default function App() {
           joinVoice: t("guild.joinVoice"),
           invite: t("guild.invite"),
           leaveGuild: t("guild.leave"),
+          deleteGuild: t("guild.delete"),
           moreOptions: t("guild.moreOptions"),
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
@@ -2516,9 +2550,14 @@ export default function App() {
         }}
         onCreateInvite={createGuildInvite}
         onLeaveGuild={leaveGuild}
+        onDeleteGuild={deleteGuild}
         onCreateGuild={() => {
           setJoined(false);
           setShowCreate(true);
+        }}
+        onJoinGuild={() => {
+          setJoined(false);
+          setShowJoin(true);
         }}
         onTogglePeerMute={togglePeerMute}
         onPeerVolumeChange={setPeerVolume}
@@ -2818,7 +2857,9 @@ export default function App() {
         screenSources={screenSources}
         screenPermission={screenPermission}
         showCreate={showCreate}
+        showJoin={showJoin}
         newGuildName={newGuildName}
+        joinCode={joinCode}
         inviteGuildName={inviteGuildName}
         inviteToken={inviteToken}
         inviteCopied={inviteCopied}
@@ -2901,6 +2942,12 @@ export default function App() {
             cancel: t("guild.cancel"),
             create: t("guild.create")
           },
+          joinGuild: {
+            title: t("guild.join"),
+            codePlaceholder: t("guild.codePlaceholder"),
+            cancel: t("guild.cancel"),
+            join: t("guild.joinAction")
+          },
           invite: {
             title: t("guild.inviteTitle"),
             description: t("guild.inviteDescription"),
@@ -2974,6 +3021,9 @@ export default function App() {
         onGuildNameChange={setNewGuildName}
         onCancelCreate={() => setShowCreate(false)}
         onCreateGuild={createGuild}
+        onJoinCodeChange={setJoinCode}
+        onCancelJoin={() => setShowJoin(false)}
+        onJoinGuild={joinGuildByCode}
         onCopyInvite={copyInvite}
         onCloseInvite={closeInvite}
       />

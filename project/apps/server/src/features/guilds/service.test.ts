@@ -139,6 +139,230 @@ describe("guild and presence service", () => {
     );
   });
 
+  it("allows an owner to permanently delete a guild with only the owner", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const guildMembers = new Map([["guild", new Set(["owner"])]]);
+    const owner: Account = {
+      id: "owner",
+      email: "owner@example.test",
+      username: "Owner",
+      passwordHash: "hash",
+      avatarData: null,
+      createdAt: "now"
+    };
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      users: new Map(),
+      accountById: async (id) => (id === owner.id ? owner : null)
+    });
+
+    expect(await service.deleteGuild("guild", "owner")).toEqual({ ok: true });
+    expect(guilds.has("guild")).toBe(false);
+    expect(guildMembers.has("guild")).toBe(false);
+  });
+
+  it("allows the owner when the only other members are the two test accounts", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const guildMembers = new Map([["guild", new Set(["owner", "test-1", "test-2"])]]);
+    const accounts = new Map<string, Account>([
+      [
+        "owner",
+        {
+          id: "owner",
+          email: "owner@example.test",
+          username: "Owner",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ],
+      [
+        "test-1",
+        {
+          id: "test-1",
+          email: "TEST@TEST.COM",
+          username: "Test",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ],
+      [
+        "test-2",
+        {
+          id: "test-2",
+          email: "test2@test2.com",
+          username: "Test 2",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      users: new Map(),
+      accountById: async (id) => accounts.get(id) || null
+    });
+
+    expect(await service.deleteGuild("guild", "owner")).toEqual({ ok: true });
+  });
+
+  it("deletes the persisted guild row after the same server-side guard", async () => {
+    const queries: string[] = [];
+    const pool = {
+      query: vi.fn(async (sql: string) => {
+        queries.push(sql);
+        if (sql.startsWith("SELECT m.account_id")) {
+          return { rows: [{ account_id: "owner", email: "owner@example.test" }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      })
+    };
+    const guilds = new Map<string, Guild>([
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      pool,
+      guilds,
+      guildMembers: new Map(),
+      users: new Map()
+    });
+
+    expect(await service.deleteGuild("guild", "owner")).toEqual({ ok: true });
+    expect(queries.some((sql) => sql.startsWith("DELETE FROM echoverse_guilds"))).toBe(true);
+  });
+
+  it("blocks deletion when a non-test member remains", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const guildMembers = new Map([["guild", new Set(["owner", "member"])]]);
+    const accounts = new Map<string, Account>([
+      [
+        "owner",
+        {
+          id: "owner",
+          email: "owner@example.test",
+          username: "Owner",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ],
+      [
+        "member",
+        {
+          id: "member",
+          email: "member@example.test",
+          username: "Member",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      users: new Map(),
+      accountById: async (id) => accounts.get(id) || null
+    });
+
+    expect(await service.deleteGuild("guild", "owner")).toEqual({
+      ok: false,
+      reason: "members_present"
+    });
+    expect(guilds.has("guild")).toBe(true);
+  });
+
+  it("never deletes the public main guild or allows a non-owner", async () => {
+    const guilds = new Map<string, Guild>([
+      [
+        "echoverse",
+        {
+          id: "echoverse",
+          name: "EchoVerse",
+          createdBy: "owner",
+          ownerId: "owner",
+          createdAt: "now"
+        }
+      ],
+      [
+        "guild",
+        { id: "guild", name: "Guild", createdBy: "owner", ownerId: "owner", createdAt: "now" }
+      ]
+    ]);
+    const guildMembers = new Map([
+      ["echoverse", new Set(["owner"])],
+      ["guild", new Set(["owner", "member"])]
+    ]);
+    const accounts = new Map<string, Account>([
+      [
+        "owner",
+        {
+          id: "owner",
+          email: "owner@example.test",
+          username: "Owner",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ],
+      [
+        "member",
+        {
+          id: "member",
+          email: "member@example.test",
+          username: "Member",
+          passwordHash: "hash",
+          avatarData: null,
+          createdAt: "now"
+        }
+      ]
+    ]);
+    const service = createGuildService({
+      io: { to: vi.fn() },
+      guilds,
+      guildMembers,
+      users: new Map(),
+      accountById: async (id) => accounts.get(id) || null
+    });
+
+    expect(await service.deleteGuild("echoverse", "owner")).toEqual({
+      ok: false,
+      reason: "not_allowed"
+    });
+    expect(await service.deleteGuild("guild", "member")).toEqual({
+      ok: false,
+      reason: "not_allowed"
+    });
+    expect(guilds.has("echoverse")).toBe(true);
+    expect(guilds.has("guild")).toBe(true);
+  });
+
   it("creates categories and enforces report budgets in memory", async () => {
     const guilds = new Map<string, Guild>([
       [
