@@ -154,6 +154,31 @@ guild lobby, private-call relays remain friendship-scoped, and outsiders are
 denied. The regression is covered by an integration test for both allowed and
 denied signaling.
 
+### guild-voice-client-and-dm-composer-regression
+
+```yaml
+id: BUG-002
+type: runtime_bugfix
+status: in_progress
+evidence: evidence/BUG-002.md
+blocks_roadmap: false
+decision: null
+```
+
+[-] Correct the client-side regressions reported after the 1.9.3 baseline:
+
+1. Expose an accessible three-dot menu for leaving non-owner private guilds;
+   selecting Leave removes the guild from the server rail while the public
+   `echoverse` guild and owners remain protected.
+2. Make first-time guild voice joins establish a deterministic, serialized
+   WebRTC graph with queued early ICE candidates and a usable local microphone;
+   private calls and guild voice must remain isolated and rejoining must not
+   leave stale peers behind.
+3. Make the direct-message composer use the available width for the message
+   field and a compact, touch-friendly send control on desktop and mobile.
+
+Acceptance evidence is recorded in [`evidence/BUG-002.md`](evidence/BUG-002.md).
+
 ## Release/version rule
 
 The root [`VERSION`](../VERSION) file remains the canonical desktop-shell and

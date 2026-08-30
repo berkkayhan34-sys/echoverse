@@ -143,8 +143,8 @@ select:focus {
 }
 
 .server-entry .guild-options {
-  top: -5px;
-  right: -5px;
+  top: -7px;
+  right: -7px;
 }
 
 .guild-options-trigger {
@@ -160,8 +160,8 @@ select:focus {
   cursor: pointer;
   font-size: 17px;
   line-height: 1;
-  opacity: 0;
-  transform: scale(0.8);
+  opacity: 1;
+  transform: scale(1);
   transition:
     opacity 140ms ease,
     transform 140ms ease,
@@ -856,6 +856,8 @@ details.guild-options[open] > .guild-options-trigger,
 }
 
 .dm-message-input {
+  width: 100%;
+  min-width: 0;
   flex: 1;
   min-height: 42px;
   max-height: 140px;

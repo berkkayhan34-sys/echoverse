@@ -257,6 +257,8 @@ export default function App() {
   const screenTrack = useRef<MediaStreamTrack | null>(null);
   const outgoingVideoTrack = useRef<MediaStreamTrack | null>(null);
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerSetupPromises = useRef<Map<string, Promise<RTCPeerConnection>>>(new Map());
+  const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const videoSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteAudio = useRef<Map<string, HTMLAudioElement>>(new Map());
   const remoteVideoHost = useRef<HTMLDivElement>(null);
@@ -801,7 +803,7 @@ export default function App() {
         setCallState("connected");
         if (result.responderSocketId && result.responderSocketId !== s.id) {
           privateCallPeerIds.current.add(result.responderSocketId);
-          await createPeer(s, result.responderSocketId, true);
+          await ensurePeer(s, result.responderSocketId, true);
         }
         return;
       }
@@ -809,7 +811,7 @@ export default function App() {
       setPrivateCallSocketId(result.responderSocketId);
       setCallState("connected");
       playEvSound("connected", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
-      await createPeer(s, result.responderSocketId, true);
+      await ensurePeer(s, result.responderSocketId, true);
     });
 
     s.on("call:ended", (result: any) => {
@@ -872,7 +874,7 @@ export default function App() {
       for (const member of next) {
         if (member.socketId === selfId) continue;
         if (!pcs.current.has(member.socketId)) {
-          await createPeer(s, member.socketId, true);
+          await ensurePeer(s, member.socketId, shouldInitiateGuildPeer(s, member.socketId));
         }
       }
 
@@ -885,12 +887,12 @@ export default function App() {
 
     s.on("room-peers", async (peers: PeerInfo[]) => {
       for (const peer of peers) {
-        await createPeer(s, peer.socketId, true);
+        await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       }
     });
 
     s.on("peer-joined", async (peer: PeerInfo) => {
-      await createPeer(s, peer.socketId, false);
+      await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       s.emit("voice:sync-request");
     });
 
@@ -900,34 +902,55 @@ export default function App() {
     });
 
     s.on("webrtc-offer", async ({ from, sdp }) => {
-      const pc = await createPeer(s, from, false);
+      const pc = await ensurePeer(s, from, false);
+      if (!pc) return;
 
       try {
-        if (pc.signalingState !== "stable") {
+        if (pc.signalingState === "have-local-offer") {
           await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
         }
-      } catch {}
+        if (pc.signalingState !== "stable") return;
+      } catch {
+        return;
+      }
 
-      await pc.setRemoteDescription(sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      s.emit("webrtc-answer", { to: from, sdp: answer });
+      try {
+        await pc.setRemoteDescription(sdp);
+        await flushPendingIceCandidates(from, pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        s.emit("webrtc-answer", { to: from, sdp: answer });
+      } catch (error) {
+        console.warn("[echoverse.webrtc_offer_failed]", from, error);
+      }
     });
 
     s.on("webrtc-answer", async ({ from, sdp }) => {
       const pc = pcs.current.get(from);
       if (pc && pc.signalingState === "have-local-offer") {
-        await pc.setRemoteDescription(sdp);
+        try {
+          await pc.setRemoteDescription(sdp);
+          await flushPendingIceCandidates(from, pc);
+        } catch (error) {
+          console.warn("[echoverse.webrtc_answer_failed]", from, error);
+        }
       }
     });
 
     s.on("webrtc-ice", async ({ from, candidate }) => {
       const pc = pcs.current.get(from);
-      if (!pc) return;
+      if (!pc || !pc.remoteDescription) {
+        const queued = pendingIceCandidates.current.get(from) || [];
+        queued.push(candidate);
+        pendingIceCandidates.current.set(from, queued);
+        return;
+      }
 
       try {
         await pc.addIceCandidate(candidate);
-      } catch {}
+      } catch (error) {
+        console.warn("[echoverse.webrtc_ice_failed]", from, error);
+      }
     });
 
     return () => {
@@ -971,6 +994,9 @@ export default function App() {
   function getAudioContext() {
     if (!audioContext.current) {
       audioContext.current = new AudioContext();
+    }
+    if (audioContext.current.state === "suspended") {
+      void audioContext.current.resume().catch(() => {});
     }
     return audioContext.current;
   }
@@ -1215,6 +1241,8 @@ export default function App() {
 
     pcs.current.forEach((pc) => pc.close());
     pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
     videoSenders.current.clear();
 
     remoteAudio.current.forEach((audio) => {
@@ -1290,7 +1318,7 @@ export default function App() {
       privateCallPeerIds.current.add(incomingCall.fromSocketId);
       setPrivateCallSocketId(incomingCall.fromSocketId);
       setPrivateCallId(incomingCall.callId);
-      await createPeer(socket, incomingCall.fromSocketId, false);
+      await ensurePeer(socket, incomingCall.fromSocketId, false);
     }
 
     if (!accept) setCallState("idle");
@@ -1320,6 +1348,40 @@ export default function App() {
     playCallEndTone();
   }
 
+  function shouldInitiateGuildPeer(s: Socket, peerId: string) {
+    const localSocketId = s.id || "";
+    return localSocketId.length > 0 && localSocketId.localeCompare(peerId) < 0;
+  }
+
+  async function ensurePeer(s: Socket, peerId: string, initiator: boolean) {
+    try {
+      return await createPeer(s, peerId, initiator);
+    } catch (error: any) {
+      console.warn("[echoverse.voice_peer_setup_failed]", peerId, error);
+      if (joinedRef.current || privateCallPeerIds.current.has(peerId)) {
+        setError(
+          t("auth.microphoneUnavailable", {
+            reason: error?.message || t("media.micPermissionDenied")
+          })
+        );
+      }
+      return null;
+    }
+  }
+
+  async function flushPendingIceCandidates(peerId: string, pc: RTCPeerConnection) {
+    const queued = pendingIceCandidates.current.get(peerId);
+    if (!queued?.length || !pc.remoteDescription) return;
+    pendingIceCandidates.current.delete(peerId);
+    for (const candidate of queued) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.warn("[echoverse.webrtc_queued_ice_failed]", peerId, error);
+      }
+    }
+  }
+
   async function ensureMicrophone() {
     if (localStream.current) return localStream.current;
 
@@ -1340,99 +1402,137 @@ export default function App() {
   }
 
   async function createPeer(s: Socket, peerId: string, initiator: boolean) {
+    const pending = peerSetupPromises.current.get(peerId);
+    if (pending) return pending;
+
     const existing = pcs.current.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS
-    });
-
-    pcs.current.set(peerId, pc);
-
-    const stream = await ensureMicrophone();
-
-    stream.getAudioTracks().forEach((track) => {
-      pc.addTrack(track, stream);
-    });
-
-    const videoTransceiver = pc.addTransceiver("video", {
-      direction: "sendrecv"
-    });
-
-    videoSenders.current.set(peerId, videoTransceiver.sender);
-
-    if (outgoingVideoTrack.current) {
-      await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
-    }
-
-    pc.onicecandidate = (evt) => {
-      if (evt.candidate) {
-        s.emit("webrtc-ice", {
-          to: peerId,
-          candidate: evt.candidate
-        });
-      }
-    };
-
-    pc.ontrack = (evt) => {
-      const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
-
-      if (evt.track.kind === "audio") {
-        let audio = remoteAudio.current.get(peerId);
-
-        if (!audio) {
-          audio = new Audio();
-          audio.autoplay = true;
-          remoteAudio.current.set(peerId, audio);
-        }
-
-        audio.srcObject = streamForTrack;
-
-        const sinkable = audio as HTMLAudioElement & {
-          setSinkId?: (id: string) => Promise<void>;
-        };
-
-        if (selectedOutput && sinkable.setSinkId) {
-          sinkable.setSinkId(selectedOutput).catch(() => {});
-        }
-
-        startSpeakingMonitor(peerId, streamForTrack);
-
-        const volume = peerVolumes[peerId] ?? 100;
-        audio.volume = peerMuted[peerId] ? 0 : volume / 100;
-
-        audio.play().catch(() => {});
-      }
-
-      if (evt.track.kind === "video") {
-        attachRemoteVideo(peerId, evt.track);
-
-        evt.track.onunmute = () => {
-          attachRemoteVideo(peerId, evt.track);
-        };
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (["failed", "closed"].includes(pc.connectionState)) {
-        removePeer(peerId);
-      }
-    };
-
-    if (initiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      s.emit("webrtc-offer", {
-        to: peerId,
-        sdp: offer
+    const setup = (async () => {
+      const pc = new RTCPeerConnection({
+        iceServers: ICE_SERVERS
       });
-    }
 
-    return pc;
+      pcs.current.set(peerId, pc);
+
+      try {
+        const stream = await ensureMicrophone();
+        if (pcs.current.get(peerId) !== pc) {
+          pc.close();
+          throw new Error("peer setup cancelled");
+        }
+
+        stream.getAudioTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+
+        const videoTransceiver = pc.addTransceiver("video", {
+          direction: "sendrecv"
+        });
+
+        videoSenders.current.set(peerId, videoTransceiver.sender);
+
+        if (outgoingVideoTrack.current) {
+          await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
+        }
+
+        pc.onicecandidate = (evt) => {
+          if (evt.candidate) {
+            s.emit("webrtc-ice", {
+              to: peerId,
+              candidate: evt.candidate
+            });
+          }
+        };
+
+        pc.ontrack = (evt) => {
+          const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
+
+          if (evt.track.kind === "audio") {
+            let audio = remoteAudio.current.get(peerId);
+
+            if (!audio) {
+              audio = new Audio();
+              audio.autoplay = true;
+              audio.setAttribute("playsinline", "true");
+              remoteAudio.current.set(peerId, audio);
+            }
+
+            audio.srcObject = streamForTrack;
+
+            const sinkable = audio as HTMLAudioElement & {
+              setSinkId?: (id: string) => Promise<void>;
+            };
+
+            if (selectedOutput && sinkable.setSinkId) {
+              sinkable.setSinkId(selectedOutput).catch(() => {});
+            }
+
+            startSpeakingMonitor(peerId, streamForTrack);
+
+            const volume = peerVolumes[peerId] ?? 100;
+            audio.volume = peerMuted[peerId] ? 0 : volume / 100;
+
+            const playRemoteAudio = () => {
+              void audio?.play().catch(() => {});
+            };
+            playRemoteAudio();
+            if (audio.paused) {
+              window.addEventListener("pointerdown", playRemoteAudio, { once: true });
+              window.addEventListener("keydown", playRemoteAudio, { once: true });
+            }
+          }
+
+          if (evt.track.kind === "video") {
+            attachRemoteVideo(peerId, evt.track);
+
+            evt.track.onunmute = () => {
+              attachRemoteVideo(peerId, evt.track);
+            };
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          if (["failed", "closed"].includes(pc.connectionState)) {
+            removePeer(peerId);
+          }
+        };
+
+        await flushPendingIceCandidates(peerId, pc);
+
+        if (initiator) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          s.emit("webrtc-offer", {
+            to: peerId,
+            sdp: offer
+          });
+        }
+
+        return pc;
+      } catch (error) {
+        if (pcs.current.get(peerId) === pc) {
+          pcs.current.delete(peerId);
+          videoSenders.current.delete(peerId);
+        }
+        pc.close();
+        throw error;
+      }
+    })();
+
+    peerSetupPromises.current.set(peerId, setup);
+    try {
+      return await setup;
+    } finally {
+      if (peerSetupPromises.current.get(peerId) === setup) {
+        peerSetupPromises.current.delete(peerId);
+      }
+    }
   }
 
   function removePeer(peerId: string) {
+    pendingIceCandidates.current.delete(peerId);
     stopSpeakingMonitor(peerId);
     pcs.current.get(peerId)?.close();
     pcs.current.delete(peerId);
@@ -1689,11 +1789,26 @@ export default function App() {
     });
   }
 
-  function joinVoiceGuild(guild: Guild) {
+  async function joinVoiceGuild(guild: Guild) {
     if (!socket || !connected || !identified) {
       setError(t("connection.retrying"));
       return;
     }
+
+    try {
+      // Acquire the microphone from the user's join gesture. Waiting until a
+      // remote peer appears makes permission/autoplay handling browser-dependent
+      // and leaves the first guild connection without a local audio sender.
+      await ensureMicrophone();
+    } catch (error: any) {
+      setError(
+        t("auth.microphoneUnavailable", {
+          reason: error?.message || t("media.micPermissionDenied")
+        })
+      );
+      return;
+    }
+
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
       if (!result?.ok) {
         setError(result?.error || t("error.guildJoinFailed"));
@@ -1804,6 +1919,8 @@ export default function App() {
 
     pcs.current.forEach((pc) => pc.close());
     pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
     videoSenders.current.clear();
 
     stopCameraAndScreen();

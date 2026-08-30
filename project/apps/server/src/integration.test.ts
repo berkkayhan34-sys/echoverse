@@ -844,6 +844,32 @@ describe("server HTTP and Socket.IO boundaries", () => {
       from: owner.socket.id,
       sdp: { type: "offer" }
     });
+
+    const answerRelayed = waitForEvent<{ from: string; sdp: { type: string } }>(
+      owner.socket,
+      "webrtc-answer"
+    );
+    member.socket.emit("webrtc-answer", {
+      to: owner.socket.id,
+      sdp: { type: "answer", sdp: "v=0 guild-answer" }
+    });
+    await expect(answerRelayed).resolves.toMatchObject({
+      from: member.socket.id,
+      sdp: { type: "answer" }
+    });
+
+    const iceRelayed = waitForEvent<{ from: string; candidate: { candidate: string } }>(
+      owner.socket,
+      "webrtc-ice"
+    );
+    member.socket.emit("webrtc-ice", {
+      to: owner.socket.id,
+      candidate: { candidate: "candidate:1 1 UDP 1 127.0.0.1 9 typ host" }
+    });
+    await expect(iceRelayed).resolves.toMatchObject({
+      from: member.socket.id,
+      candidate: { candidate: expect.stringContaining("candidate:1") }
+    });
   });
 
   it("exposes persistent channels, role-protected moderation, and guild chat history", async () => {
