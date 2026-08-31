@@ -23,6 +23,10 @@ voice controls. `WorkspaceOverlays` composes the members, media settings,
 friends, call alerts, screen picker, and guild creation overlays;
 transport, authorization, file processing, media permissions, preference
 persistence, and other side effects remain in the owning renderer.
+`GuildStructurePanel` is the shared owner/admin surface for category and
+channel structure plus non-owner member roles. It uses native form controls,
+collapsible groups, type badges, and archive/rename actions; the renderers
+provide localized labels and dispatch the existing server-authorized events.
 `WorkspaceSidebar` keeps server selection separate from explicit voice-lobby
 entry and includes the persistent Direct Messages navigation; at mobile
 breakpoints the same commands are exposed through a server/channel drawer and

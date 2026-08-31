@@ -45,6 +45,9 @@ import type {
   DmRequest,
   FriendUser,
   Guild,
+  GuildChannel,
+  GuildCategory,
+  GuildChannelType,
   GuildMember,
   IncomingCall,
   PeerInfo,
@@ -134,6 +137,8 @@ export default function App() {
   const [identified, setIdentified] = useState(false);
   const [joined, setJoined] = useState(false);
   const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
+  const [guildCategories, setGuildCategories] = useState<GuildCategory[]>([]);
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [activeChannelId, setActiveChannelId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -735,6 +740,22 @@ export default function App() {
       );
       setActiveGuild((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
     });
+    s.on(
+      "guild:channels",
+      ({
+        guildId,
+        channels,
+        categories
+      }: {
+        guildId: string;
+        channels: GuildChannel[];
+        categories?: GuildCategory[];
+      }) => {
+        if (guildId !== activeGuildRef.current?.id) return;
+        setGuildChannels(Array.isArray(channels) ? channels : []);
+        setGuildCategories(Array.isArray(categories) ? categories : []);
+      }
+    );
 
     s.on("friends:changed", () => {
       loadFriends(s);
@@ -1826,6 +1847,13 @@ export default function App() {
             : []
         );
       });
+      socket.emit("guild:channels", { guildId: guild.id }, (channelsResult: any) => {
+        if (!channelsResult?.ok) return;
+        setGuildChannels(Array.isArray(channelsResult.channels) ? channelsResult.channels : []);
+        setGuildCategories(
+          Array.isArray(channelsResult.categories) ? channelsResult.categories : []
+        );
+      });
       socket.emit(
         "chat-history",
         { guildId: guild.id, channelId: `${guild.id}:general` },
@@ -1987,6 +2015,59 @@ export default function App() {
   function renameLobby(guild: Guild, name: string) {
     socket?.emit("guild:rename-lobby", { guildId: guild.id, name }, (result: any) => {
       if (!result?.ok) setError(result?.error || t("server.lobbyRenameFailed"));
+    });
+  }
+
+  function createGuildCategory(name: string) {
+    if (!socket || !activeGuild) return;
+    socket.emit("guild:create-category", { guildId: activeGuild.id, name }, (result: any) => {
+      if (!result?.ok) setError(result?.error || t("server.guildPermissionRequired"));
+    });
+  }
+
+  function updateGuildCategory(categoryId: string, updates: { name?: string; archived?: boolean }) {
+    if (!socket || !activeGuild) return;
+    socket.emit(
+      "guild:update-category",
+      { guildId: activeGuild.id, categoryId, ...updates },
+      (result: any) => {
+        if (!result?.ok) setError(result?.error || t("server.guildPermissionRequired"));
+      }
+    );
+  }
+
+  function createGuildChannel(name: string, type: GuildChannelType, categoryId?: string | null) {
+    if (!socket || !activeGuild) return;
+    socket.emit(
+      "guild:create-channel",
+      { guildId: activeGuild.id, name, type, categoryId },
+      (result: any) => {
+        if (!result?.ok) setError(result?.error || t("server.guildPermissionRequired"));
+      }
+    );
+  }
+
+  function updateGuildChannel(channelId: string, updates: { name?: string; archived?: boolean }) {
+    if (!socket || !activeGuild) return;
+    socket.emit(
+      "guild:update-channel",
+      { guildId: activeGuild.id, channelId, ...updates },
+      (result: any) => {
+        if (!result?.ok) setError(result?.error || t("server.guildPermissionRequired"));
+      }
+    );
+  }
+
+  function changeGuildRole(accountId: string, role: Exclude<GuildMember["role"], "owner">) {
+    if (!socket || !activeGuild) return;
+    socket.emit("guild:set-role", { guildId: activeGuild.id, accountId, role }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("server.guildPermissionRequired"));
+        return;
+      }
+      setGuildMembers((current) =>
+        current.map((member) => (member.accountId === accountId ? { ...member, role } : member))
+      );
     });
   }
 
@@ -2588,7 +2669,36 @@ export default function App() {
           renameLobby: t("guild.renameLobby"),
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),
-          cancel: t("common.cancel")
+          cancel: t("common.cancel"),
+          manageChannels: t("guild.manageChannels"),
+          structure: {
+            title: t("guild.structureTitle"),
+            close: t("common.close"),
+            categories: t("guild.categories"),
+            channels: t("guild.channels"),
+            members: t("guild.members"),
+            categoryNamePlaceholder: t("guild.categoryNamePlaceholder"),
+            channelNamePlaceholder: t("guild.channelNamePlaceholder"),
+            createCategory: t("guild.createCategory"),
+            createChannel: t("guild.createChannel"),
+            rename: t("guild.rename"),
+            archive: t("guild.archive"),
+            type: t("guild.channelType"),
+            channelTypeText: {
+              text: t("guild.channelType.text"),
+              voice: t("guild.channelType.voice"),
+              stage: t("guild.channelType.stage"),
+              forum: t("guild.channelType.forum")
+            },
+            role: t("guild.role"),
+            roleText: {
+              owner: t("guild.role.owner"),
+              admin: t("guild.role.admin"),
+              moderator: t("guild.role.moderator"),
+              member: t("guild.role.member")
+            },
+            noChannels: t("guild.noChannels")
+          }
         }}
         onSelectGuild={joinGuild}
         onJoinVoice={joinVoiceGuild}
@@ -2611,6 +2721,14 @@ export default function App() {
         onCreateInvite={createGuildInvite}
         onLeaveGuild={leaveGuild}
         onDeleteGuild={deleteGuild}
+        channels={guildChannels}
+        categories={guildCategories}
+        guildMembers={guildMembers}
+        onCreateCategory={createGuildCategory}
+        onUpdateCategory={updateGuildCategory}
+        onCreateChannel={createGuildChannel}
+        onUpdateChannel={updateGuildChannel}
+        onRoleChange={changeGuildRole}
         onCreateGuild={() => {
           setJoined(false);
           setShowCreate(true);

@@ -43,6 +43,8 @@ export { InviteDialog } from "./invite-dialog.js";
 export type { InviteDialogLabels } from "./invite-dialog.js";
 export { GuildAdminPanel } from "./guild-admin.js";
 export type { GuildAdminMember, GuildAdminPanelLabels } from "./guild-admin.js";
+export { GuildStructurePanel } from "./guild-structure.js";
+export type { GuildStructureLabels } from "./guild-structure.js";
 export { ServerTopbar } from "./topbar.js";
 export type { PresenceStatus, ServerTopbarLabels } from "./topbar.js";
 export { displayInitials } from "./text.js";

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 EchoVerse contributors
+# SPDX-License-Identifier: GPL-3.0-only
+
+[Unit]
+Description=EchoVerse server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/actions-runner/_work/echoverse/echoverse/project/apps/server
+Environment=NODE_ENV=production
+Environment=PORT=3001
+EnvironmentFile=%h/.config/echoverse/server.env
+ExecStart=/bin/bash -lc 'exec npm --workspace=@echoverse/server start'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

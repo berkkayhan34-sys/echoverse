@@ -223,6 +223,26 @@ changes publish a signed manifest identified by the latest Git commit and do
 not require a new desktop installer; desktop/native or desktop-relevant shared
 changes still require a new shell release.
 
+### temporary-macbook-self-hosted-deployment
+
+```yaml
+id: OPS-005
+type: self_hosted_deployment
+sequence: 910
+status: incomplete
+evidence: evidence/OPS-005.md
+blocks_roadmap: true
+decision: decisions/0024-macbook-self-hosted-deployment.md
+depends_on: [ARCH-001, SEC-001, MOD-001]
+```
+
+[ ] Provision the temporary Debian/T2 MacBook as a non-root GitHub
+self-hosted runner, run the PostgreSQL-backed server through a user systemd
+service on port `3001`, and deploy only after verification gates pass. Keep
+Cloudflare Tunnel as the only public ingress, keep secrets in the host-owned
+environment file, and record runner registration, health, backup, sleep/
+restart, and recovery evidence before marking this operational item complete.
+
 ## Post-feature parity audit
 
 ### discord-gap-analysis-and-parity-roadmap
@@ -525,6 +545,52 @@ server-authorized.
 Acceptance: authorized owner/admin actions persist and broadcast; members see
 only permitted channels; unauthorized users cannot mutate or enumerate hidden
 channels; keyboard and narrow-screen interactions have rendered evidence.
+
+The parent is intentionally split into independently verifiable slices. The
+first slice below covers the durable structure and role-management surface;
+notification preferences and unread reconciliation remain a separate child.
+
+### parity-channel-structure-management
+
+```yaml
+id: PARITY-001.1
+type: channel_structure_and_role_management
+sequence: 415
+status: complete
+evidence: evidence/PARITY-001.1.md
+blocks_roadmap: false
+depends_on: [ARCH-002, SEC-001, MOD-001]
+```
+
+[x] Add a shared web/desktop management surface for categories, channels, and
+member roles. Categories can be collapsed, channels show their type, owners
+and admins can create/rename/archive channels and categories, and authorized
+administrators can change non-owner member roles. Every action uses the
+existing server authorization boundary and broadcasts the filtered result to
+current guild members.
+
+Acceptance: an owner/admin can complete each structure or role mutation and
+observe the persisted/broadcast result; a regular member cannot see or invoke
+the management surface; unauthorized channel/category visibility remains
+filtered server-side; the surface is keyboard reachable and usable at the
+narrow-screen breakpoint. Per-channel notification controls and unread markers
+are explicitly out of scope for this child and are tracked by the next child.
+
+### parity-channel-notifications-and-unread
+
+```yaml
+id: PARITY-001.2
+type: channel_notifications_and_unread
+sequence: 420
+status: incomplete
+evidence: null
+blocks_roadmap: true
+depends_on: [PARITY-001.1]
+```
+
+[ ] Add server-backed per-channel notification preferences, unread markers,
+and cross-device reconciliation without exposing hidden channels or message
+content in logs/notifications.
 
 ### parity-dm-navigation-and-inbox
 
