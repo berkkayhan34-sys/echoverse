@@ -14,7 +14,9 @@ function defaultServerUrl() {
   // origin. Keeping requests same-origin avoids a second CORS/cookie trust
   // boundary and lets the Cloudflare Tunnel route both HTTP and Socket.IO.
   if (location.hostname === "echoverse.borayarkin.net") return location.origin;
-  return "https://echoverse-c3d5.onrender.com";
+  // Hosted web builds use the same public origin as the self-hosted server.
+  // This keeps API, Socket.IO, and session cookies on one trusted endpoint.
+  return "https://echoverse.borayarkin.net";
 }
 
 function translator() {
