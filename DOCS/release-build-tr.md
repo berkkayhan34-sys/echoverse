@@ -13,15 +13,16 @@ Bu depo yapısında GitHub Actions ile üç çıktı üretilir:
 
 ## Önemli
 
-`project/apps/desktop/config.json` içindeki `serverUrl`, onaylanmış Render adresiniz
-olmalıdır. Dokümana gerçek token, cookie veya gizli environment değeri
+`project/apps/desktop/config.json` içindeki `serverUrl`, onaylanmış HTTPS sunucu
+adresiniz olmalıdır. Bu kurulumda adres `https://echoverse.borayarkin.net`'dir.
+Dokümana gerçek token, cookie veya gizli environment değeri
 eklemeyin.
 
 Örnek:
 
 ```json
 {
-  "serverUrl": "https://<approved-render-host>"
+  "serverUrl": "https://echoverse.borayarkin.net"
 }
 ```
 

@@ -7,6 +7,13 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.8
+
+- Point packaged desktop clients and hosted browser fallbacks at the
+  self-hosted `https://echoverse.borayarkin.net` origin so API, Socket.IO, and
+  session traffic use the deployed EchoVerse server.
+- Document the approved hosted endpoint used by desktop release builds.
+
 ## 1.9.7
 
 - Serve the built web renderer from the self-hosted EchoVerse server so
