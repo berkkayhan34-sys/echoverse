@@ -18,7 +18,9 @@ this package.
 The package also exports the shared bounded realtime retry policy used by both
 renderers. It limits reconnect attempts and delay growth so an unavailable
 server reaches a deliberate user-visible offline state instead of retrying
-forever.
+forever. The hosted `echoverse.borayarkin.net` endpoint uses polling-only
+Socket.IO transport because its Cloudflare Tunnel closes WebSocket upgrades;
+local endpoints retain polling plus WebSocket upgrade support.
 
 Feature-state helpers are pure functions. They preserve message ordering,
 reject duplicate guild-chat and DM delivery by message ID, clear deleted
