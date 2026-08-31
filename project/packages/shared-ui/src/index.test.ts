@@ -757,6 +757,8 @@ describe("shared chat UI", () => {
     const onOpenSettings = vi.fn();
     const onTogglePeerMute = vi.fn();
     const onPeerVolumeChange = vi.fn();
+    const onSetNotificationLevel = vi.fn();
+    const onMarkChannelRead = vi.fn();
     const guild = { id: "echoverse", name: "EchoVerse", createdBy: "account-1", createdAt: "now" };
     const privateGuild = {
       id: "guild-1",
@@ -802,6 +804,22 @@ describe("shared chat UI", () => {
       onSelectGuild,
       onCreateGuild,
       onLeaveGuild,
+      channels: [
+        {
+          id: "echoverse:general",
+          guildId: "echoverse",
+          name: "general",
+          type: "text",
+          categoryId: null,
+          position: 0,
+          archived: false,
+          createdAt: "now"
+        }
+      ],
+      notificationUnread: { "echoverse:general": 4 },
+      notificationLevels: { "echoverse:general": "all" },
+      onSetNotificationLevel,
+      onMarkChannelRead,
       onTogglePeerMute,
       onPeerVolumeChange,
       onChangeAvatar: vi.fn(),
@@ -842,6 +860,20 @@ describe("shared chat UI", () => {
     });
     expect(removeAttribute).toHaveBeenCalledWith("open");
     expect(onLeaveGuild).toHaveBeenCalledWith(privateGuild);
+    const unread = elementsOfType(element, "span").find(
+      (span) => span.props.className === "channel-unread-badge"
+    );
+    expect(unread?.props.children).toBe(4);
+    const notificationButton = buttons.find(
+      (button) => button.props.className === "channel-notification-toggle"
+    );
+    (notificationButton?.props.onClick as (event: { stopPropagation: () => void }) => void)({
+      stopPropagation: vi.fn()
+    });
+    expect(onSetNotificationLevel).toHaveBeenCalledWith("echoverse:general", "none");
+    const channelButton = buttons.find((button) => buttonText(button).includes("# general"));
+    (channelButton?.props.onClick as () => void)();
+    expect(onMarkChannelRead).toHaveBeenCalledWith("echoverse:general");
   });
 });
 

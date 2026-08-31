@@ -74,5 +74,9 @@ export const memoryDmConversations = new Map<
   import("../features/friends/service.js").MemoryDmConversation
 >();
 export const memoryGuildMessages: StoredGuildMessage[] = [];
+export const memoryGuildChannelUserState = new Map<
+  string,
+  { notificationLevel: "all" | "none"; lastReadAt: string | null }
+>();
 export const accountPresence = new Map<string, string>();
 export const dmReadAt = new Map<string, number>();

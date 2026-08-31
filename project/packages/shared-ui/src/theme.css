@@ -335,6 +335,80 @@ details.guild-options[open] > .guild-options-trigger,
   border-radius: var(--ev-radius-sm);
 }
 
+.channel-row,
+.mobile-channel-row-wrapper {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+
+.channel-row .channel,
+.mobile-channel-row-wrapper .mobile-channel-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+  text-align: left;
+}
+
+.channel-row .channel > span:first-child,
+.mobile-channel-row-wrapper .mobile-channel-row > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-unread-badge {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding-inline: 5px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--ev-primary);
+  color: var(--ev-text-on-primary, #fff);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.channel-notification-toggle {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--ev-radius-sm);
+  background: transparent;
+  color: var(--ev-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.channel-row:hover .channel-notification-toggle,
+.channel-row:focus-within .channel-notification-toggle,
+.mobile-channel-row-wrapper:hover .channel-notification-toggle,
+.mobile-channel-row-wrapper:focus-within .channel-notification-toggle,
+.channel-notification-toggle:focus-visible {
+  opacity: 1;
+}
+
+.channel-notification-toggle:hover,
+.channel-notification-toggle[aria-pressed="true"] {
+  background: var(--ev-surface-hover);
+  border-color: var(--ev-border);
+  color: var(--ev-text);
+}
+
 .channel:hover,
 .channel.active {
   background: var(--ev-surface-hover);

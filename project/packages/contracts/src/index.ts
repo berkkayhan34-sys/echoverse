@@ -342,6 +342,17 @@ export const socketEventPayloadSchemas = {
   "guild:leave": z.object({ guildId: identifierSchema }).strict(),
   "guild:delete": z.object({ guildId: identifierSchema }).strict(),
   "guild:select": z.object({ guildId: identifierSchema }).strict(),
+  "guild:notification-state": z.object({ guildId: identifierSchema }).strict(),
+  "guild:set-notification-preference": z
+    .object({
+      guildId: identifierSchema,
+      channelId: identifierSchema,
+      level: z.enum(["all", "none"])
+    })
+    .strict(),
+  "guild:mark-channel-read": z
+    .object({ guildId: identifierSchema, channelId: identifierSchema })
+    .strict(),
   "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
   "voice:sync-request": optionalEmptyPayloadSchema,
   "leave-room": optionalEmptyPayloadSchema,
@@ -528,6 +539,20 @@ export type GuildCategory = {
   position: number;
   archived: boolean;
   createdAt: string;
+};
+export type GuildNotificationLevel = "all" | "none";
+export type GuildNotificationPreference = {
+  channelId: string;
+  level: GuildNotificationLevel;
+};
+export type GuildUnreadChannel = {
+  channelId: string;
+  unreadCount: number;
+};
+export type GuildNotificationState = {
+  guildId: string;
+  preferences: GuildNotificationPreference[];
+  unread: GuildUnreadChannel[];
 };
 export type Guild = {
   id: string;

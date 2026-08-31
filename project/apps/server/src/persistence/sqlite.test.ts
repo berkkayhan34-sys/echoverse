@@ -48,7 +48,8 @@ describe("SQLite persistence adapter", () => {
       "008_spaces_channels_messages",
       "009_guild_governance",
       "010_group_dms",
-      "011_dm_requests"
+      "011_dm_requests",
+      "012_guild_channel_notification_state"
     ]);
 
     const guildColumns = await database.query("PRAGMA table_info(echoverse_guilds)");

@@ -50,6 +50,8 @@ import type {
   GuildCategory,
   GuildChannelType,
   GuildMember,
+  GuildNotificationLevel,
+  GuildNotificationState,
   IncomingCall,
   PeerInfo,
   ScreenSource,
@@ -116,6 +118,12 @@ export default function App() {
   const [guildChannels, setGuildChannels] = useState<GuildChannel[]>([]);
   const [guildCategories, setGuildCategories] = useState<GuildCategory[]>([]);
   const [activeChannelId, setActiveChannelId] = useState("");
+  const [guildNotificationStates, setGuildNotificationStates] = useState<
+    Record<
+      string,
+      { preferences: Record<string, GuildNotificationLevel>; unread: Record<string, number> }
+    >
+  >({});
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [guildMembers, setGuildMembers] = useState<GuildMember[]>([]);
@@ -289,6 +297,13 @@ export default function App() {
   const dmFileInputRef = useRef<HTMLInputElement | null>(null);
   const lobbySoundCooldown = useRef(0);
   const activeGuildRef = useRef<Guild | null>(null);
+  const activeChannelRef = useRef("");
+  const guildNotificationStatesRef = useRef<
+    Record<
+      string,
+      { preferences: Record<string, GuildNotificationLevel>; unread: Record<string, number> }
+    >
+  >({});
   const joinedRef = useRef(false);
   const lobbySoundsEnabledRef = useRef(lobbySoundsEnabled);
   const effectVolumeRef = useRef(effectVolume);
@@ -447,6 +462,14 @@ export default function App() {
     activeGuildRef.current = activeGuild;
     joinedRef.current = joined;
   }, [activeGuild, joined]);
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannelId;
+  }, [activeChannelId]);
+
+  useEffect(() => {
+    guildNotificationStatesRef.current = guildNotificationStates;
+  }, [guildNotificationStates]);
 
   useEffect(() => {
     lobbySoundsEnabledRef.current = lobbySoundsEnabled;
@@ -685,6 +708,49 @@ export default function App() {
           setGuildCategories(Array.isArray(categories) ? categories : []);
       }
     );
+    const applyNotificationState = (state: GuildNotificationState) => {
+      if (!state?.guildId || !Array.isArray(state.preferences) || !Array.isArray(state.unread))
+        return;
+      const preferences = Object.fromEntries(
+        state.preferences
+          .filter((item) => item?.channelId && (item.level === "all" || item.level === "none"))
+          .map((item) => [item.channelId, item.level])
+      );
+      const unread = Object.fromEntries(
+        state.unread
+          .filter((item) => item?.channelId && Number.isFinite(item.unreadCount))
+          .map((item) => [item.channelId, Math.max(0, Math.min(100_000, Number(item.unreadCount)))])
+      );
+      setGuildNotificationStates((current) => ({
+        ...current,
+        [state.guildId]: { preferences, unread }
+      }));
+    };
+    s.on("guild:notification-state", applyNotificationState);
+    s.on(
+      "guild:unread",
+      (payload: { guildId?: string; channelId?: string; unreadCount?: number }) => {
+        if (!payload?.guildId || !payload.channelId || !Number.isFinite(payload.unreadCount))
+          return;
+        const isOpenChannel =
+          viewModeRef.current === "server" &&
+          activeGuildRef.current?.id === payload.guildId &&
+          activeChannelRef.current === payload.channelId;
+        const unreadCount = isOpenChannel
+          ? 0
+          : Math.max(0, Math.min(100_000, Number(payload.unreadCount)));
+        setGuildNotificationStates((current) => {
+          const state = current[payload.guildId!] || { preferences: {}, unread: {} };
+          return {
+            ...current,
+            [payload.guildId!]: {
+              ...state,
+              unread: { ...state.unread, [payload.channelId!]: unreadCount }
+            }
+          };
+        });
+      }
+    );
 
     s.on("friends:changed", () => {
       loadFriends(s);
@@ -854,9 +920,22 @@ export default function App() {
     });
 
     s.on("chat-message", (msg: ChatMessage) => {
-      setMessages((prev) => appendChatMessage(prev, msg));
+      const isCurrentChannel =
+        viewModeRef.current === "server" &&
+        msg.guildId === activeGuildRef.current?.id &&
+        (msg.channelId || `${msg.guildId}:general`) === activeChannelRef.current;
+      if (isCurrentChannel) setMessages((prev) => appendChatMessage(prev, msg));
       const currentAccount = accountRef.current;
-      if (currentAccount && msg.username !== currentAccount.username) {
+      const channelId = msg.channelId || `${msg.guildId}:general`;
+      const notificationState = msg.guildId
+        ? guildNotificationStatesRef.current[msg.guildId]
+        : undefined;
+      if (
+        currentAccount &&
+        msg.username !== currentAccount.username &&
+        !isCurrentChannel &&
+        notificationState?.preferences[channelId] !== "none"
+      ) {
         const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
         playEvSound("message", volume);
         window.echoverse?.notify?.({
@@ -1837,8 +1916,31 @@ export default function App() {
           Array.isArray(channelsResult.categories) ? channelsResult.categories : []
         );
       });
+      socket.emit("guild:notification-state", { guildId: guild.id }, (stateResult: any) => {
+        if (!stateResult?.ok) return;
+        socket.emit("guild:mark-channel-read", {
+          guildId: guild.id,
+          channelId: `${guild.id}:general`
+        });
+      });
     });
     setJoined(false);
+  }
+
+  function markGuildChannelRead(channelId: string) {
+    const guildId = activeGuildRef.current?.id;
+    if (!socket || !guildId || !channelId.includes(":")) return;
+    setGuildNotificationStates((current) => {
+      const state = current[guildId] || { preferences: {}, unread: {} };
+      return { ...current, [guildId]: { ...state, unread: { ...state.unread, [channelId]: 0 } } };
+    });
+    socket.emit("guild:mark-channel-read", { guildId, channelId });
+  }
+
+  function setGuildChannelNotificationLevel(channelId: string, level: GuildNotificationLevel) {
+    const guildId = activeGuildRef.current?.id;
+    if (!socket || !guildId || !channelId.includes(":")) return;
+    socket.emit("guild:set-notification-preference", { guildId, channelId, level });
   }
 
   function leaveGuild(guild: Guild) {
@@ -2656,6 +2758,15 @@ export default function App() {
         channels={guildChannels}
         categories={guildCategories}
         activeGuild={activeGuild}
+        activeChannelId={activeChannelId}
+        notificationUnread={
+          activeGuild ? guildNotificationStates[activeGuild.id]?.unread : undefined
+        }
+        notificationLevels={
+          activeGuild ? guildNotificationStates[activeGuild.id]?.preferences : undefined
+        }
+        onSetNotificationLevel={setGuildChannelNotificationLevel}
+        onMarkChannelRead={markGuildChannelRead}
         presence={presence}
         socketId={socket?.id}
         localSpeaking={localSpeaking}
@@ -2696,6 +2807,9 @@ export default function App() {
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),
           cancel: t("common.cancel"),
+          muteChannel: t("notification.muteChannel"),
+          unmuteChannel: t("notification.unmuteChannel"),
+          unread: t("notification.unread"),
           manageChannels: t("guild.manageChannels"),
           structure: {
             title: t("guild.structureTitle"),
@@ -2727,6 +2841,39 @@ export default function App() {
           }
         }}
         onSelectGuild={joinGuild}
+        onSelectChannel={(channel) => {
+          setActiveChannelId(channel.id);
+          setMessages([]);
+          setChatSearchQuery("");
+          setChatSearchResults(null);
+          setChannelReplyTo(null);
+          setChannelThreadRoot(null);
+          if (activeGuild)
+            socket?.emit(
+              "chat-history",
+              { guildId: activeGuild.id, channelId: channel.id },
+              (result: any) => {
+                if (!result?.ok) return;
+                setMessages(
+                  (result.messages || []).map((message: any) => ({
+                    id: message.id,
+                    guildId: message.guildId,
+                    channelId: message.channelId,
+                    userId: message.senderId || message.userId,
+                    username: message.username,
+                    avatarData: message.avatarData,
+                    text: message.text || message.body,
+                    createdAt: message.createdAt,
+                    replyToId: message.replyToId,
+                    editedAt: message.editedAt,
+                    deletedAt: message.deletedAt,
+                    pinned: message.pinned,
+                    reactions: message.reactions
+                  }))
+                );
+              }
+            );
+        }}
         onJoinVoice={joinVoiceGuild}
         lobbyName={activeGuild?.lobbyName}
         canManageGuild={activeGuild?.role === "owner" || activeGuild?.role === "admin"}

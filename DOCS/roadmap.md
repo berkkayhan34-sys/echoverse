@@ -425,7 +425,7 @@ id: MEDIA-001
 type: client_media
 sequence: 600
 status: incomplete
-evidence: null
+evidence: evidence/PARITY-001.2.md
 blocks_roadmap: true
 depends_on: [CHAT-001, MOD-001]
 ```
@@ -590,7 +590,8 @@ depends_on: [PARITY-001.1]
 
 [ ] Add server-backed per-channel notification preferences, unread markers,
 and cross-device reconciliation without exposing hidden channels or message
-content in logs/notifications.
+content in logs/notifications. Automated acceptance is implemented; the item
+remains incomplete until authenticated rendered UI evidence is captured.
 
 ### parity-dm-navigation-and-inbox
 

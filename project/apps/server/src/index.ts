@@ -29,6 +29,8 @@ import { createGuildService } from "./features/guilds/service.js";
 import { registerCallHandlers } from "./features/calls/handlers.js";
 import { registerGuildHandlers } from "./features/guilds/handlers.js";
 import { registerFriendHandlers } from "./features/friends/handlers.js";
+import { createGuildNotificationService } from "./features/notifications/service.js";
+import { registerGuildNotificationHandlers } from "./features/notifications/handlers.js";
 import {
   allowSocketEvent,
   clearSocketLimits,
@@ -55,6 +57,7 @@ import {
   memoryDmMessages,
   memoryDmRequests,
   memoryGuildMessages,
+  memoryGuildChannelUserState,
   memoryFriendships,
   pendingCalls,
   users
@@ -306,6 +309,11 @@ const guildService = createGuildService({
   guildAuditEvents
 });
 const guildChat = createGuildChatService(pool, memoryGuildMessages);
+const guildNotifications = createGuildNotificationService({
+  pool,
+  memoryState: memoryGuildChannelUserState,
+  memoryMessages: memoryGuildMessages
+});
 const {
   broadcastPresence,
   canManage,
@@ -533,6 +541,19 @@ io.on("connection", (socket) => {
     socketError,
     accountById,
     resolveRequestLocale,
+    notificationService: guildNotifications,
+    onValidatedSocketEvent
+  });
+
+  registerGuildNotificationHandlers({
+    socket,
+    users,
+    notificationService: guildNotifications,
+    isMember,
+    listChannels: listGuildChannels,
+    hasScopedPermission: guildService.hasScopedPermission,
+    emitToAccount,
+    socketError,
     onValidatedSocketEvent
   });
 

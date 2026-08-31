@@ -11,7 +11,8 @@ import type {
   GuildChannel,
   GuildChannelType,
   GuildMember,
-  PeerInfo
+  PeerInfo,
+  GuildNotificationLevel
 } from "@echoverse/contracts";
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
@@ -46,6 +47,9 @@ export type WorkspaceSidebarLabels = {
   lobbyNamePlaceholder?: string;
   save?: string;
   cancel?: string;
+  muteChannel?: string;
+  unmuteChannel?: string;
+  unread?: string;
   manageChannels?: string;
   structure?: GuildStructureLabels;
 };
@@ -54,7 +58,9 @@ type MobileWorkspaceNavigationProps = {
   guilds: Guild[];
   activeGuild: Guild | null;
   activeDmFriend?: FriendUser | null;
+  activeChannelId?: string;
   onSelectGuild: (guild: Guild) => void;
+  onSelectChannel?: (channel: GuildChannel) => void;
   onJoinVoice?: (guild: Guild) => void;
   lobbyName?: string;
   canManageGuild?: boolean;
@@ -74,6 +80,10 @@ type MobileWorkspaceNavigationProps = {
   onCreateChannel?: (name: string, type: GuildChannelType, categoryId?: string | null) => void;
   onUpdateChannel?: (channelId: string, updates: { name?: string; archived?: boolean }) => void;
   onRoleChange?: (accountId: string, role: Exclude<GuildMember["role"], "owner">) => void;
+  notificationUnread?: Record<string, number>;
+  notificationLevels?: Record<string, GuildNotificationLevel>;
+  onSetNotificationLevel?: (channelId: string, level: GuildNotificationLevel) => void;
+  onMarkChannelRead?: (channelId: string) => void;
   brandIconSrc?: string;
   labels: WorkspaceSidebarLabels;
 };
@@ -82,7 +92,9 @@ function MobileWorkspaceNavigation({
   guilds,
   activeGuild,
   activeDmFriend,
+  activeChannelId,
   onSelectGuild,
+  onSelectChannel,
   onJoinVoice,
   lobbyName,
   canManageGuild,
@@ -102,6 +114,10 @@ function MobileWorkspaceNavigation({
   onCreateChannel,
   onUpdateChannel,
   onRoleChange,
+  notificationUnread = {},
+  notificationLevels = {},
+  onSetNotificationLevel,
+  onMarkChannelRead,
   brandIconSrc,
   labels
 }: MobileWorkspaceNavigationProps) {
@@ -136,7 +152,12 @@ function MobileWorkspaceNavigation({
     setServerActionsOpen(false);
     setMobileMenuOpen(false);
   };
-
+  const visibleTextChannels = (channels || []).filter(
+    (channel) => channel.type === "text" && !channel.archived
+  );
+  const visibleVoiceChannels = (channels || []).filter(
+    (channel) => ["voice", "stage"].includes(channel.type) && !channel.archived
+  );
   return (
     <>
       <div
@@ -227,30 +248,102 @@ function MobileWorkspaceNavigation({
           {activeGuild && (
             <div className="mobile-channel-list">
               <div className="mobile-channel-heading">{activeGuild.name}</div>
-              <button className="mobile-channel-row active"># {labels.general}</button>
-              <button className="mobile-channel-row"># {labels.music}</button>
-              <div className="mobile-lobby-channel-row">
-                <button
-                  className="mobile-channel-row voice"
-                  onClick={() => {
-                    onJoinVoice?.(activeGuild);
-                    setMobileMenuOpen(false);
-                  }}
-                >
-                  🔊 {lobbyName || labels.lobby}
-                </button>
-                {canManageGuild && onRenameLobby && (
-                  <LobbyNameEditor
-                    key={`mobile:${activeGuild.id}:${lobbyName || labels.lobby}`}
-                    value={lobbyName || labels.lobby}
-                    renameLabel={labels.renameLobby || "Rename lobby"}
-                    placeholder={labels.lobbyNamePlaceholder || labels.lobby}
-                    saveLabel={labels.save || "Save"}
-                    cancelLabel={labels.cancel || "Cancel"}
-                    onSave={(name) => onRenameLobby(activeGuild, name)}
-                  />
-                )}
-              </div>
+              {(visibleTextChannels.length
+                ? visibleTextChannels
+                : [
+                    {
+                      id: `${activeGuild.id}:general`,
+                      guildId: activeGuild.id,
+                      name: labels.general,
+                      type: "text" as const,
+                      position: 0,
+                      archived: false,
+                      createdAt: ""
+                    }
+                  ]
+              ).map((channel) => (
+                <div className="mobile-channel-row-wrapper" key={channel.id}>
+                  <button
+                    className={`mobile-channel-row ${activeChannelId === channel.id ? "active" : ""}`}
+                    onClick={() => {
+                      onSelectChannel?.(channel as GuildChannel);
+                      onMarkChannelRead?.(channel.id);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <span># {channel.name}</span>
+                    {(notificationUnread[channel.id] || 0) > 0 && (
+                      <span
+                        className="channel-unread-badge"
+                        aria-label={`${notificationUnread[channel.id]} ${labels.unread || "unread"}`}
+                      >
+                        {(notificationUnread[channel.id] || 0) > 99
+                          ? "99+"
+                          : notificationUnread[channel.id]}
+                      </span>
+                    )}
+                  </button>
+                  {onSetNotificationLevel && (
+                    <button
+                      type="button"
+                      className="channel-notification-toggle"
+                      aria-label={
+                        notificationLevels[channel.id] === "none"
+                          ? labels.unmuteChannel || "Unmute channel notifications"
+                          : labels.muteChannel || "Mute channel notifications"
+                      }
+                      aria-pressed={notificationLevels[channel.id] === "none"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSetNotificationLevel(
+                          channel.id,
+                          notificationLevels[channel.id] === "none" ? "all" : "none"
+                        );
+                      }}
+                    >
+                      {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+                    </button>
+                  )}
+                </div>
+              ))}
+              {(visibleVoiceChannels.length
+                ? visibleVoiceChannels
+                : [
+                    {
+                      id: `${activeGuild.id}:lobby`,
+                      guildId: activeGuild.id,
+                      name: lobbyName || labels.lobby,
+                      type: "voice" as const,
+                      position: 0,
+                      archived: false,
+                      createdAt: ""
+                    }
+                  ]
+              ).map((channel) => (
+                <div className="mobile-lobby-channel-row" key={channel.id}>
+                  <button
+                    className="mobile-channel-row voice"
+                    onClick={() => {
+                      onSelectChannel?.(channel as GuildChannel);
+                      onJoinVoice?.(activeGuild);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    🔊 {channel.name}
+                  </button>
+                  {canManageGuild && onRenameLobby && channel.id.endsWith(":lobby") && (
+                    <LobbyNameEditor
+                      key={`mobile:${activeGuild.id}:${lobbyName || labels.lobby}`}
+                      value={lobbyName || labels.lobby}
+                      renameLabel={labels.renameLobby || "Rename lobby"}
+                      placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                      saveLabel={labels.save || "Save"}
+                      cancelLabel={labels.cancel || "Cancel"}
+                      onSave={(name) => onRenameLobby(activeGuild, name)}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -432,6 +525,7 @@ export function WorkspaceSidebar({
   account,
   username,
   appVersion,
+  activeChannelId,
   labels,
   onSelectGuild,
   onJoinVoice,
@@ -456,6 +550,10 @@ export function WorkspaceSidebar({
   channels,
   categories,
   onSelectChannel,
+  notificationUnread = {},
+  notificationLevels = {},
+  onSetNotificationLevel,
+  onMarkChannelRead,
   guildMembers,
   onCreateCategory,
   onUpdateCategory,
@@ -477,6 +575,7 @@ export function WorkspaceSidebar({
   account: Account | null;
   username: string;
   appVersion: string;
+  activeChannelId?: string;
   labels: WorkspaceSidebarLabels;
   onSelectGuild: (guild: Guild) => void;
   onJoinVoice?: (guild: Guild) => void;
@@ -499,6 +598,10 @@ export function WorkspaceSidebar({
   onToggleMute: () => void;
   onLogout: () => void;
   onSelectChannel?: (channel: GuildChannel) => void;
+  notificationUnread?: Record<string, number>;
+  notificationLevels?: Record<string, GuildNotificationLevel>;
+  onSetNotificationLevel?: (channelId: string, level: GuildNotificationLevel) => void;
+  onMarkChannelRead?: (channelId: string) => void;
   guildMembers?: GuildMember[];
   onCreateCategory?: (name: string) => void;
   onUpdateCategory?: (categoryId: string, updates: { name?: string; archived?: boolean }) => void;
@@ -685,13 +788,48 @@ export function WorkspaceSidebar({
             ? channels.filter((channel) => channel.type === "text")
             : [{ id: "legacy-general", name: labels.general, type: "text" as const }]
           ).map((channel, index) => (
-            <button
-              key={channel.id}
-              className={`channel ${index === 0 ? "active" : ""}`}
-              onClick={() => onSelectChannel?.(channel as GuildChannel)}
-            >
-              # {channel.name}
-            </button>
+            <div className="channel-row" key={channel.id}>
+              <button
+                className={`channel ${activeChannelId === channel.id || (!activeChannelId && index === 0) ? "active" : ""}`}
+                onClick={() => {
+                  onSelectChannel?.(channel as GuildChannel);
+                  onMarkChannelRead?.(channel.id);
+                }}
+              >
+                <span># {channel.name}</span>
+                {(notificationUnread[channel.id] || 0) > 0 && (
+                  <span
+                    className="channel-unread-badge"
+                    aria-label={`${notificationUnread[channel.id]} ${labels.unread || "unread"}`}
+                  >
+                    {(notificationUnread[channel.id] || 0) > 99
+                      ? "99+"
+                      : notificationUnread[channel.id]}
+                  </span>
+                )}
+              </button>
+              {onSetNotificationLevel && (
+                <button
+                  type="button"
+                  className="channel-notification-toggle"
+                  aria-label={
+                    notificationLevels[channel.id] === "none"
+                      ? labels.unmuteChannel || "Unmute channel notifications"
+                      : labels.muteChannel || "Mute channel notifications"
+                  }
+                  aria-pressed={notificationLevels[channel.id] === "none"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSetNotificationLevel(
+                      channel.id,
+                      notificationLevels[channel.id] === "none" ? "all" : "none"
+                    );
+                  }}
+                >
+                  {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+                </button>
+              )}
+            </div>
           ))}
         </div>
 
@@ -829,6 +967,7 @@ export function WorkspaceSidebar({
         guilds={guilds}
         activeGuild={activeGuild}
         activeDmFriend={activeDmFriend}
+        activeChannelId={activeChannelId}
         onSelectGuild={onSelectGuild}
         onJoinVoice={onJoinVoice}
         lobbyName={lobbyName}
@@ -849,6 +988,10 @@ export function WorkspaceSidebar({
         onCreateChannel={onCreateChannel}
         onUpdateChannel={onUpdateChannel}
         onRoleChange={onRoleChange}
+        notificationUnread={notificationUnread}
+        notificationLevels={notificationLevels}
+        onSetNotificationLevel={onSetNotificationLevel}
+        onMarkChannelRead={onMarkChannelRead}
         brandIconSrc={brandIconSrc}
         labels={labels}
       />
