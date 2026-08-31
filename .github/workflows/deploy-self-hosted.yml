@@ -55,6 +55,13 @@ jobs:
           npm test
           npm run build
 
+      - name: Build web renderer for public hostname
+        env:
+          ECHO_VERSE_WEB_VERSION: git-${{ github.sha }}
+        run: |
+          npm run build --workspace=@echoverse/web
+          test -s tmp/generated/web/index.html
+
       - name: Verify runtime configuration
         shell: bash
         run: |

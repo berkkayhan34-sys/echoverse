@@ -17,7 +17,9 @@ never stores or receives the AnySCP password.
 - service user: `berkkayhan` (non-root);
 - server port: `3001`;
 - persistence: PostgreSQL through `DATABASE_URL`;
-- public ingress: Cloudflare Tunnel to `http://localhost:3001`.
+- public ingress: Cloudflare Tunnel to `http://localhost:3001`;
+  the same service serves the built web renderer at `/` and the API/Socket.IO
+  endpoints from the same origin.
 
 ## One-time host preparation
 
@@ -87,9 +89,10 @@ administrator: `sudo loginctl enable-linger berkkayhan`.
 ## Cloudflare mapping
 
 After `/health` succeeds locally, create the dashboard tunnel/public hostname
-`echoverse.borayarkin.net` with service `http://localhost:3001`. Do not expose
-the MacBook port directly or disable the server's CORS, cookie, or proxy
-settings.
+`echoverse.borayarkin.net` with service `http://localhost:3001`. Opening the
+hostname must show the EchoVerse web sign-in screen; `/health` remains the
+machine-readable readiness endpoint. Do not expose the MacBook port directly
+or disable the server's CORS, cookie, or proxy settings.
 
 ## Ongoing deployment
 
