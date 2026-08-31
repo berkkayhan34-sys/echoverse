@@ -10,6 +10,10 @@ function defaultServerUrl() {
   if (location.hostname === "[::1]" || location.hostname === "::1") {
     return "http://[::1]:3001";
   }
+  // The self-hosted public hostname serves the renderer and API from one
+  // origin. Keeping requests same-origin avoids a second CORS/cookie trust
+  // boundary and lets the Cloudflare Tunnel route both HTTP and Socket.IO.
+  if (location.hostname === "echoverse.borayarkin.net") return location.origin;
   return "https://echoverse-c3d5.onrender.com";
 }
 

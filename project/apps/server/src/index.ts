@@ -5,7 +5,9 @@ import { Server } from "socket.io";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { dirname, extname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadServerConfig } from "@echoverse/config";
 import {
   PROTOCOL_VERSION,
@@ -62,6 +64,14 @@ import { createCorrelationId, serverLogger, serverMetrics } from "./runtime/obse
 const require = createRequire(import.meta.url);
 const APP_VERSION = String(require("../package.json").version);
 const config = loadServerConfig();
+// The self-hosted service runs from the server workspace while the web build
+// is emitted to the repository-level temporary directory. Keep this path
+// deterministic and allow an explicit override for packaged/alternative
+// deployments without coupling the server to a particular checkout path.
+const webDistPath =
+  process.env.ECHO_VERSE_WEB_DIST_DIR?.trim() ||
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../../../tmp/generated/web");
+const webIndexPath = resolve(webDistPath, "index.html");
 const translators = {
   en: createTranslator("en"),
   tr: createTranslator("tr")
@@ -141,7 +151,14 @@ app.use(
   })
 );
 
-app.get("/", (_req, res) => {
+app.get("/", (_req, res, next) => {
+  if (existsSync(webIndexPath)) {
+    res.sendFile(webIndexPath, (error) => {
+      if (error) next(error);
+    });
+    return;
+  }
+
   res.json({
     name: "EchoVerse Server",
     version: APP_VERSION,
@@ -643,6 +660,30 @@ io.on("connection", (socket) => {
       users.delete(socket.id);
       clearSocketLimits(socket.id);
     }
+  });
+});
+
+// Serve the same built renderer used by the browser and Electron cache. The
+// API and Socket.IO routes are registered first; static files and the SPA
+// fallback therefore cannot shadow protocol endpoints.
+app.use(
+  express.static(webDistPath, {
+    index: "index.html",
+    fallthrough: true,
+    dotfiles: "deny"
+  })
+);
+app.get("*", (req, res, next) => {
+  if (req.method !== "GET" || !req.accepts("html") || extname(req.path)) {
+    next();
+    return;
+  }
+  if (!existsSync(webIndexPath)) {
+    next();
+    return;
+  }
+  res.sendFile(webIndexPath, (error) => {
+    if (error) next(error);
   });
 });
 

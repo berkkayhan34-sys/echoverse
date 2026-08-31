@@ -7,6 +7,14 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+## 1.9.7
+
+- Serve the built web renderer from the self-hosted EchoVerse server so
+  `echoverse.borayarkin.net` provides the browser UI, API, and Socket.IO from
+  one same-origin endpoint.
+- Route the browser renderer to the self-hosted origin on the canonical public
+  hostname and build the web bundle as part of the MacBook deployment gate.
+
 ## 1.9.6
 
 - Add server-authorized message requests for non-friends with pending-request
