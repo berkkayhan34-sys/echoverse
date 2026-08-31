@@ -19,6 +19,7 @@ import {
   isLocalAudioEnabled,
   formatCallTime,
   REALTIME_RETRY_POLICY,
+  resolveRealtimeTransports,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -640,9 +641,10 @@ export default function App() {
   useEffect(() => {
     if (!serverUrl) return;
 
+    const transports = resolveRealtimeTransports(serverUrl);
     const s = io(serverUrl, {
-      transports: ["polling", "websocket"],
-      tryAllTransports: true,
+      transports,
+      tryAllTransports: transports.length > 1,
       ...REALTIME_RETRY_POLICY,
       auth: createSocketAuth(locale, "desktop")
     });

@@ -26,6 +26,7 @@ import {
   readStoredSession,
   isLocalAudioEnabled,
   REALTIME_RETRY_POLICY,
+  resolveRealtimeTransports,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -43,6 +44,12 @@ describe("realtime recovery policy", () => {
       reconnectionDelayMax: 5_000,
       timeout: 10_000
     });
+  });
+
+  it("keeps the hosted endpoint on polling while preserving local upgrades", () => {
+    expect(resolveRealtimeTransports("https://echoverse.borayarkin.net")).toEqual(["polling"]);
+    expect(resolveRealtimeTransports("http://127.0.0.1:3001")).toEqual(["polling", "websocket"]);
+    expect(resolveRealtimeTransports("not a URL")).toEqual(["polling", "websocket"]);
   });
 });
 

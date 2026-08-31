@@ -24,6 +24,24 @@ export const REALTIME_RETRY_POLICY = {
 } as const;
 
 /**
+ * Cloudflare Tunnel currently terminates the Socket.IO WebSocket upgrade for
+ * the hosted EchoVerse endpoint before the polling session is established.
+ * Keep that endpoint on polling so web and desktop clients can establish a
+ * stable session; local/development endpoints retain WebSocket upgrades.
+ */
+export function resolveRealtimeTransports(
+  serverUrl: string
+): ["polling"] | ["polling", "websocket"] {
+  try {
+    if (new URL(serverUrl).hostname === "echoverse.borayarkin.net") return ["polling"];
+  } catch {
+    // An invalid URL will be rejected by Socket.IO; retain the safer transport
+    // choice here so callers do not attempt an upgrade while reporting it.
+  }
+  return ["polling", "websocket"];
+}
+
+/**
  * Compares server-authoritative lobby membership for reconnect repair. The
  * renderer may use the deltas for sound, while the returned IDs reconcile its
  * peer graph even when point events were missed.
