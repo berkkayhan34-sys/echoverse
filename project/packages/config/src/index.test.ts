@@ -18,6 +18,7 @@ describe("server configuration", () => {
     });
     expect(config.corsOrigins).toEqual(["https://example.test"]);
     expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.databaseSsl).toBe(false);
     expect(config.databaseSslRejectUnauthorized).toBe(true);
     expect(config.webCookieSecure).toBe(false);
     expect(config.webCookieSameSite).toBe("lax");
@@ -33,6 +34,18 @@ describe("server configuration", () => {
       DATABASE_SSL_REJECT_UNAUTHORIZED: "false"
     });
     expect(config.databaseSslRejectUnauthorized).toBe(false);
+  });
+
+  it("allows local PostgreSQL to disable TLS explicitly while production defaults stay secure", () => {
+    const localConfig = loadServerConfig({
+      NODE_ENV: "production",
+      JWT_SECRET: "x".repeat(32),
+      DATABASE_SSL: "false"
+    });
+    expect(localConfig.databaseSsl).toBe(false);
+    expect(
+      loadServerConfig({ NODE_ENV: "production", JWT_SECRET: "x".repeat(32) }).databaseSsl
+    ).toBe(true);
   });
 
   it("rejects invalid ports", () => {

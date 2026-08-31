@@ -35,6 +35,7 @@ export type ServerConfig = {
   port: number;
   databaseUrl?: string;
   sqlitePath?: string;
+  databaseSsl: boolean;
   databaseSslRejectUnauthorized: boolean;
   jwtSecret: string;
   corsOrigins: string[];
@@ -62,6 +63,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     throw new Error("DATABASE_URL and SQLITE_PATH cannot be configured together");
   }
 
+  const databaseSsl = booleanValue(env.DATABASE_SSL, nodeEnv === "production", "DATABASE_SSL");
   const databaseSslRejectUnauthorized = env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
   const trustProxy = booleanValue(env.TRUST_PROXY, false, "TRUST_PROXY");
   const webCookieSecure = booleanValue(
@@ -91,6 +93,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     port,
     databaseUrl,
     sqlitePath,
+    databaseSsl,
     databaseSslRejectUnauthorized,
     jwtSecret: jwtSecret || crypto.randomBytes(32).toString("hex"),
     corsOrigins: csv(env.CORS_ORIGINS, localOrigins),
