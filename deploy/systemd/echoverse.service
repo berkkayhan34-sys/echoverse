@@ -10,6 +10,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/actions-runner/_work/echoverse/echoverse/project/apps/server
 Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
 Environment=PORT=3001
 EnvironmentFile=%h/.config/echoverse/server.env
 ExecStart=/bin/bash -lc 'exec npm --workspace=@echoverse/server start'
