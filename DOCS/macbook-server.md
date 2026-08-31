@@ -32,8 +32,20 @@ test "$(id -un)" = "berkkayhan"
 test "$(uname -s)" = "Linux"
 test "$(node -p 'process.versions.node.split(".")[0]')" = "22"
 command -v npm >/dev/null
+command -v make >/dev/null
+command -v g++ >/dev/null
+command -v python3 >/dev/null
 command -v systemctl >/dev/null
 mkdir -p "$HOME/.config/echoverse" "$HOME/actions-runner"
+```
+
+The workspace includes native Node.js modules such as `better-sqlite3`. On a
+minimal Debian installation, install the compiler toolchain before the first
+deployment, then rerun the checks above:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential
 ```
 
 Install and register the runner using the exact current commands displayed by
