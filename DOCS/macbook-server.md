@@ -60,6 +60,9 @@ using the owner-managed values (never commit this file):
 NODE_ENV=production
 PORT=3001
 DATABASE_URL=postgresql://...
+# The MacBook's local PostgreSQL normally does not need TLS.
+DATABASE_SSL=false
+DATABASE_SSL_REJECT_UNAUTHORIZED=true
 JWT_SECRET=...
 ECHO_VERSE_MAIN_OWNER_EMAIL=...
 CORS_ORIGINS=https://echoverse.borayarkin.net,https://berkkayhan34-sys.github.io

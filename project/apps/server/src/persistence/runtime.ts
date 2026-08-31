@@ -12,6 +12,7 @@ import { serverLogger } from "../runtime/observability.js";
 type PersistenceRuntimeConfig = {
   databaseUrl?: string;
   sqlitePath?: string;
+  databaseSsl: boolean;
   databaseSslRejectUnauthorized: boolean;
   nodeEnv: "development" | "test" | "production";
 };
@@ -32,10 +33,9 @@ export function createPersistenceRuntime(config: PersistenceRuntimeConfig): Pers
   const postgresPool = config.databaseUrl
     ? new pg.Pool({
         connectionString: config.databaseUrl,
-        ssl:
-          config.nodeEnv === "production"
-            ? { rejectUnauthorized: config.databaseSslRejectUnauthorized }
-            : undefined
+        ssl: config.databaseSsl
+          ? { rejectUnauthorized: config.databaseSslRejectUnauthorized }
+          : false
       })
     : null;
   const sqliteDatabase = config.sqlitePath ? new SqliteDatabase(config.sqlitePath) : null;
