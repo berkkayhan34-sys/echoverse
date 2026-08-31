@@ -19,6 +19,7 @@ import {
   isLocalAudioEnabled,
   formatCallTime,
   REALTIME_RETRY_POLICY,
+  resolveRealtimeTransports,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -561,12 +562,10 @@ export default function App() {
   useEffect(() => {
     if (!serverUrl) return;
 
+    const transports = resolveRealtimeTransports(serverUrl);
     const s = io(serverUrl, {
-      // Prefer polling so hosted proxies that delay WebSocket upgrades still
-      // establish a usable session; Socket.IO upgrades to WebSocket when it
-      // is available and falls back again after a transport failure.
-      transports: ["polling", "websocket"],
-      tryAllTransports: true,
+      transports,
+      tryAllTransports: transports.length > 1,
       ...REALTIME_RETRY_POLICY,
       withCredentials: true,
       auth: createSocketAuth(locale, "web")

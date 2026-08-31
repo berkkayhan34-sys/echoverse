@@ -5,6 +5,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 1.9.9
+
+- Fix hosted web and desktop realtime connections by keeping the Cloudflare
+  Tunnel endpoint on Socket.IO polling, while local endpoints retain WebSocket
+  upgrades.
+
 ## Unreleased
 
 ## 1.9.8
