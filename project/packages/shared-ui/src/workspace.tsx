@@ -5,6 +5,7 @@
 
 import type {
   Account,
+  DmConversation,
   FriendUser,
   Guild,
   GuildCategory,
@@ -17,6 +18,7 @@ import type {
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
 import { GuildStructurePanel, type GuildStructureLabels } from "./guild-structure.js";
+import { DirectMessageInbox, type DirectMessageInboxLabels } from "./dm-inbox.js";
 
 export type WorkspaceSidebarLabels = {
   appName: string;
@@ -52,6 +54,7 @@ export type WorkspaceSidebarLabels = {
   unread?: string;
   manageChannels?: string;
   structure?: GuildStructureLabels;
+  dmInbox?: DirectMessageInboxLabels;
 };
 
 type MobileWorkspaceNavigationProps = {
@@ -559,7 +562,16 @@ export function WorkspaceSidebar({
   onUpdateCategory,
   onCreateChannel,
   onUpdateChannel,
-  onRoleChange
+  onRoleChange,
+  dmMode,
+  dmFriends = [],
+  dmConversations = [],
+  dmUnread = {},
+  dmMentionCount = 0,
+  dmSearchQuery = "",
+  onDmSearchQueryChange,
+  onOpenDmFriend,
+  onOpenDmConversation
 }: {
   guilds: Guild[];
   channels?: GuildChannel[];
@@ -608,6 +620,15 @@ export function WorkspaceSidebar({
   onCreateChannel?: (name: string, type: GuildChannelType, categoryId?: string | null) => void;
   onUpdateChannel?: (channelId: string, updates: { name?: string; archived?: boolean }) => void;
   onRoleChange?: (accountId: string, role: Exclude<GuildMember["role"], "owner">) => void;
+  dmMode?: boolean;
+  dmFriends?: FriendUser[];
+  dmConversations?: DmConversation[];
+  dmUnread?: Record<string, number>;
+  dmMentionCount?: number;
+  dmSearchQuery?: string;
+  onDmSearchQueryChange?: (value: string) => void;
+  onOpenDmFriend?: (friend: FriendUser) => void;
+  onOpenDmConversation?: (conversation: DmConversation) => void;
 }) {
   return (
     <>
@@ -714,209 +735,233 @@ export function WorkspaceSidebar({
         </details>
       </aside>
 
-      <aside className="channels">
-        <div className="guild-title">
-          <div className="guild-heading-copy">
-            <span>{activeGuild?.name}</span>
-            <small className="guild-code">
-              {activeGuild
-                ? `#${activeGuild.id}${activeGuild.role ? ` · ${activeGuild.role}` : ""}`
-                : ""}
-            </small>
-          </div>
-          {activeGuild &&
-            onCreateInvite &&
-            (activeGuild.role === "owner" || activeGuild.role === "admin") && (
-              <button className="guild-invite-button" onClick={() => onCreateInvite(activeGuild)}>
-                <span aria-hidden="true">↗</span>
-                <span>{labels.invite}</span>
-              </button>
-            )}
-          {activeGuild &&
-            labels.structure &&
-            onCreateCategory &&
-            onUpdateCategory &&
-            onCreateChannel &&
-            onUpdateChannel &&
-            onRoleChange &&
-            (activeGuild.role === "owner" || activeGuild.role === "admin") && (
-              <details className="guild-structure-details">
-                <summary className="guild-manage-button">
-                  ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
-                </summary>
-                <GuildStructurePanel
-                  channels={channels || []}
-                  categories={categories || []}
-                  members={guildMembers || []}
-                  labels={labels.structure}
-                  canManage
-                  onClose={() => {
-                    document.activeElement?.closest("details")?.removeAttribute("open");
-                  }}
-                  onCreateCategory={onCreateCategory}
-                  onUpdateCategory={onUpdateCategory}
-                  onCreateChannel={onCreateChannel}
-                  onUpdateChannel={onUpdateChannel}
-                  onRoleChange={onRoleChange}
-                />
-              </details>
-            )}
-          {activeGuild &&
-            onDeleteGuild &&
-            activeGuild.id !== "echoverse" &&
-            activeGuild.role === "owner" && (
-              <button
-                className="guild-delete-button"
-                type="button"
-                onClick={() => onDeleteGuild(activeGuild)}
-              >
-                {labels.deleteGuild}
-              </button>
-            )}
-        </div>
-
-        <div className="channel-group">
-          <div className="channel-title">{labels.textChannels}</div>
-          {categories
-            ?.filter((category) => !category.archived)
-            .map((category) => (
-              <div className="channel-category-label" key={category.id}>
-                {category.name}
-              </div>
-            ))}
-          {(channels?.length
-            ? channels.filter((channel) => channel.type === "text")
-            : [{ id: "legacy-general", name: labels.general, type: "text" as const }]
-          ).map((channel, index) => (
-            <div className="channel-row" key={channel.id}>
-              <button
-                className={`channel ${activeChannelId === channel.id || (!activeChannelId && index === 0) ? "active" : ""}`}
-                onClick={() => {
-                  onSelectChannel?.(channel as GuildChannel);
-                  onMarkChannelRead?.(channel.id);
-                }}
-              >
-                <span># {channel.name}</span>
-                {(notificationUnread[channel.id] || 0) > 0 && (
-                  <span
-                    className="channel-unread-badge"
-                    aria-label={`${notificationUnread[channel.id]} ${labels.unread || "unread"}`}
-                  >
-                    {(notificationUnread[channel.id] || 0) > 99
-                      ? "99+"
-                      : notificationUnread[channel.id]}
-                  </span>
-                )}
-              </button>
-              {onSetNotificationLevel && (
-                <button
-                  type="button"
-                  className="channel-notification-toggle"
-                  aria-label={
-                    notificationLevels[channel.id] === "none"
-                      ? labels.unmuteChannel || "Unmute channel notifications"
-                      : labels.muteChannel || "Mute channel notifications"
-                  }
-                  aria-pressed={notificationLevels[channel.id] === "none"}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSetNotificationLevel(
-                      channel.id,
-                      notificationLevels[channel.id] === "none" ? "all" : "none"
-                    );
-                  }}
-                >
-                  {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+      <aside className={`channels ${dmMode ? "dm-rail-mode" : ""}`}>
+        {dmMode &&
+          labels.dmInbox &&
+          onDmSearchQueryChange &&
+          onOpenDmFriend &&
+          onOpenDmConversation && (
+            <DirectMessageInbox
+              compact
+              friends={dmFriends}
+              conversations={dmConversations}
+              unread={dmUnread}
+              mentionCount={dmMentionCount}
+              searchQuery={dmSearchQuery}
+              labels={labels.dmInbox}
+              onSearchQueryChange={onDmSearchQueryChange}
+              onOpenFriends={onOpenFriends || (() => {})}
+              onOpenDm={onOpenDmFriend}
+              onOpenConversation={onOpenDmConversation}
+            />
+          )}
+        <div className={dmMode ? "hidden" : undefined}>
+          <div className="guild-title">
+            <div className="guild-heading-copy">
+              <span>{activeGuild?.name}</span>
+              <small className="guild-code">
+                {activeGuild
+                  ? `#${activeGuild.id}${activeGuild.role ? ` · ${activeGuild.role}` : ""}`
+                  : ""}
+              </small>
+            </div>
+            {activeGuild &&
+              onCreateInvite &&
+              (activeGuild.role === "owner" || activeGuild.role === "admin") && (
+                <button className="guild-invite-button" onClick={() => onCreateInvite(activeGuild)}>
+                  <span aria-hidden="true">↗</span>
+                  <span>{labels.invite}</span>
                 </button>
               )}
-            </div>
-          ))}
-        </div>
-
-        <div className="channel-group">
-          <div className="channel-title">{labels.voiceChannels}</div>
-          {(channels?.length
-            ? channels.filter((channel) => ["voice", "stage"].includes(channel.type))
-            : [{ id: "legacy-lobby", name: lobbyName || labels.lobby, type: "voice" as const }]
-          ).map((channel) => (
-            <div className="lobby-channel-row" key={channel.id}>
-              <button
-                className={`channel voice ${onJoinVoice ? "" : "active"}`}
-                disabled={!activeGuild || !onJoinVoice}
-                onClick={() => {
-                  if (activeGuild) {
-                    onSelectChannel?.(channel as GuildChannel);
-                    onJoinVoice?.(activeGuild);
-                  }
-                }}
-              >
-                🔊 {channel.name}
-              </button>
-              {activeGuild &&
-                channel.type === "voice" &&
-                channel.id.endsWith(":lobby") &&
-                canManageGuild &&
-                onRenameLobby && (
-                  <LobbyNameEditor
-                    key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
-                    value={lobbyName || labels.lobby}
-                    renameLabel={labels.renameLobby || "Rename lobby"}
-                    placeholder={labels.lobbyNamePlaceholder || labels.lobby}
-                    saveLabel={labels.save || "Save"}
-                    cancelLabel={labels.cancel || "Cancel"}
-                    onSave={(name) => onRenameLobby(activeGuild, name)}
+            {activeGuild &&
+              labels.structure &&
+              onCreateCategory &&
+              onUpdateCategory &&
+              onCreateChannel &&
+              onUpdateChannel &&
+              onRoleChange &&
+              (activeGuild.role === "owner" || activeGuild.role === "admin") && (
+                <details className="guild-structure-details">
+                  <summary className="guild-manage-button">
+                    ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
+                  </summary>
+                  <GuildStructurePanel
+                    channels={channels || []}
+                    categories={categories || []}
+                    members={guildMembers || []}
+                    labels={labels.structure}
+                    canManage
+                    onClose={() => {
+                      document.activeElement?.closest("details")?.removeAttribute("open");
+                    }}
+                    onCreateCategory={onCreateCategory}
+                    onUpdateCategory={onUpdateCategory}
+                    onCreateChannel={onCreateChannel}
+                    onUpdateChannel={onUpdateChannel}
+                    onRoleChange={onRoleChange}
                   />
-                )}
-            </div>
-          ))}
+                </details>
+              )}
+            {activeGuild &&
+              onDeleteGuild &&
+              activeGuild.id !== "echoverse" &&
+              activeGuild.role === "owner" && (
+                <button
+                  className="guild-delete-button"
+                  type="button"
+                  onClick={() => onDeleteGuild(activeGuild)}
+                >
+                  {labels.deleteGuild}
+                </button>
+              )}
+          </div>
 
-          <div className="voice-users">
-            {presence.map((peer) => {
-              const isSelf = peer.socketId === socketId;
-              const speaking = isSelf
-                ? localSpeaking && !muted
-                : !!speakingPeers[peer.socketId] && !peerMuted[peer.socketId];
-
-              return (
-                <div className={`voice-user-row ${speaking ? "speaking" : ""}`} key={peer.socketId}>
-                  <div className="voice-user">
-                    {peer.avatarData ? (
-                      <img className="voice-avatar" src={peer.avatarData} alt="" />
-                    ) : (
-                      <span className="mini-dot" />
-                    )}
-                    {peer.username}
-                    {isSelf ? labels.self : ""}
-                  </div>
-
-                  {!isSelf && (
-                    <div className="voice-peer-controls">
-                      <button
-                        className={peerMuted[peer.socketId] ? "peer-muted" : ""}
-                        aria-label={labels.muteOnlyYou}
-                        title={labels.muteOnlyYou}
-                        onClick={() => onTogglePeerMute(peer.socketId)}
-                      >
-                        {peerMuted[peer.socketId] ? "🔇" : "🔊"}
-                      </button>
-                      <input
-                        type="range"
-                        min="0"
-                        max="200"
-                        value={peerVolumes[peer.socketId] ?? 100}
-                        aria-label={peer.username}
-                        onChange={(event) =>
-                          onPeerVolumeChange(peer.socketId, Number(event.target.value))
-                        }
-                      />
-                      <span>
-                        {peerMuted[peer.socketId] ? "M" : `${peerVolumes[peer.socketId] ?? 100}%`}
-                      </span>
-                    </div>
-                  )}
+          <div className="channel-group">
+            <div className="channel-title">{labels.textChannels}</div>
+            {categories
+              ?.filter((category) => !category.archived)
+              .map((category) => (
+                <div className="channel-category-label" key={category.id}>
+                  {category.name}
                 </div>
-              );
-            })}
+              ))}
+            {(channels?.length
+              ? channels.filter((channel) => channel.type === "text")
+              : [{ id: "legacy-general", name: labels.general, type: "text" as const }]
+            ).map((channel, index) => (
+              <div className="channel-row" key={channel.id}>
+                <button
+                  className={`channel ${activeChannelId === channel.id || (!activeChannelId && index === 0) ? "active" : ""}`}
+                  onClick={() => {
+                    onSelectChannel?.(channel as GuildChannel);
+                    onMarkChannelRead?.(channel.id);
+                  }}
+                >
+                  <span># {channel.name}</span>
+                  {(notificationUnread[channel.id] || 0) > 0 && (
+                    <span
+                      className="channel-unread-badge"
+                      aria-label={`${notificationUnread[channel.id]} ${labels.unread || "unread"}`}
+                    >
+                      {(notificationUnread[channel.id] || 0) > 99
+                        ? "99+"
+                        : notificationUnread[channel.id]}
+                    </span>
+                  )}
+                </button>
+                {onSetNotificationLevel && (
+                  <button
+                    type="button"
+                    className="channel-notification-toggle"
+                    aria-label={
+                      notificationLevels[channel.id] === "none"
+                        ? labels.unmuteChannel || "Unmute channel notifications"
+                        : labels.muteChannel || "Mute channel notifications"
+                    }
+                    aria-pressed={notificationLevels[channel.id] === "none"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSetNotificationLevel(
+                        channel.id,
+                        notificationLevels[channel.id] === "none" ? "all" : "none"
+                      );
+                    }}
+                  >
+                    {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="channel-group">
+            <div className="channel-title">{labels.voiceChannels}</div>
+            {(channels?.length
+              ? channels.filter((channel) => ["voice", "stage"].includes(channel.type))
+              : [{ id: "legacy-lobby", name: lobbyName || labels.lobby, type: "voice" as const }]
+            ).map((channel) => (
+              <div className="lobby-channel-row" key={channel.id}>
+                <button
+                  className={`channel voice ${onJoinVoice ? "" : "active"}`}
+                  disabled={!activeGuild || !onJoinVoice}
+                  onClick={() => {
+                    if (activeGuild) {
+                      onSelectChannel?.(channel as GuildChannel);
+                      onJoinVoice?.(activeGuild);
+                    }
+                  }}
+                >
+                  🔊 {channel.name}
+                </button>
+                {activeGuild &&
+                  channel.type === "voice" &&
+                  channel.id.endsWith(":lobby") &&
+                  canManageGuild &&
+                  onRenameLobby && (
+                    <LobbyNameEditor
+                      key={`${activeGuild.id}:${lobbyName || labels.lobby}`}
+                      value={lobbyName || labels.lobby}
+                      renameLabel={labels.renameLobby || "Rename lobby"}
+                      placeholder={labels.lobbyNamePlaceholder || labels.lobby}
+                      saveLabel={labels.save || "Save"}
+                      cancelLabel={labels.cancel || "Cancel"}
+                      onSave={(name) => onRenameLobby(activeGuild, name)}
+                    />
+                  )}
+              </div>
+            ))}
+
+            <div className="voice-users">
+              {presence.map((peer) => {
+                const isSelf = peer.socketId === socketId;
+                const speaking = isSelf
+                  ? localSpeaking && !muted
+                  : !!speakingPeers[peer.socketId] && !peerMuted[peer.socketId];
+
+                return (
+                  <div
+                    className={`voice-user-row ${speaking ? "speaking" : ""}`}
+                    key={peer.socketId}
+                  >
+                    <div className="voice-user">
+                      {peer.avatarData ? (
+                        <img className="voice-avatar" src={peer.avatarData} alt="" />
+                      ) : (
+                        <span className="mini-dot" />
+                      )}
+                      {peer.username}
+                      {isSelf ? labels.self : ""}
+                    </div>
+
+                    {!isSelf && (
+                      <div className="voice-peer-controls">
+                        <button
+                          className={peerMuted[peer.socketId] ? "peer-muted" : ""}
+                          aria-label={labels.muteOnlyYou}
+                          title={labels.muteOnlyYou}
+                          onClick={() => onTogglePeerMute(peer.socketId)}
+                        >
+                          {peerMuted[peer.socketId] ? "🔇" : "🔊"}
+                        </button>
+                        <input
+                          type="range"
+                          min="0"
+                          max="200"
+                          value={peerVolumes[peer.socketId] ?? 100}
+                          aria-label={peer.username}
+                          onChange={(event) =>
+                            onPeerVolumeChange(peer.socketId, Number(event.target.value))
+                          }
+                        />
+                        <span>
+                          {peerMuted[peer.socketId] ? "M" : `${peerVolumes[peer.socketId] ?? 100}%`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 

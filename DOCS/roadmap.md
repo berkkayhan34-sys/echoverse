@@ -599,13 +599,13 @@ evidence is recorded in `evidence/PARITY-001.2.md`.
 id: PARITY-002
 type: dm_information_architecture
 sequence: 510
-status: incomplete
-evidence: null
-blocks_roadmap: true
+status: complete
+evidence: evidence/PARITY-002.md
+blocks_roadmap: false
 depends_on: [CHAT-001]
 ```
 
-[ ] Replace the modal-only DM entrypoint with a persistent DM rail containing
+[x] Replace the modal-only DM entrypoint with a persistent DM rail containing
 Friends, Message Requests, group conversations, unread state, search, and a
 unified inbox for unreads and mentions. Keep the existing friendship and group
 membership authorization boundary; do not expose message bodies in logs or

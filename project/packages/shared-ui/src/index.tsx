@@ -10,6 +10,8 @@ export type { ChannelMessageLabels, ChatMentionCandidate } from "./chat.js";
 export { DirectMessageComposer, DirectMessageThread } from "./direct.js";
 export { DirectMessageView } from "./direct-view.js";
 export type { DirectMessageViewLabels } from "./direct-view.js";
+export { DirectMessageInbox } from "./dm-inbox.js";
+export type { DirectMessageInboxLabels } from "./dm-inbox.js";
 export { ServerView } from "./server-view.js";
 export type { ServerViewLabels } from "./server-view.js";
 export { WorkspaceOverlays } from "./workspace-overlays.js";

@@ -28,6 +28,7 @@ import {
 } from "@echoverse/client-core";
 import {
   AuthForm,
+  DirectMessageInbox,
   DirectMessageView,
   GuildPicker,
   LocaleSelect,
@@ -258,6 +259,7 @@ export default function App() {
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
   const [dmText, setDmText] = useState("");
   const [unreadDm, setUnreadDm] = useState<Record<string, number>>({});
+  const [unreadMentions, setUnreadMentions] = useState(0);
   const [dmTyping, setDmTyping] = useState<Record<string, boolean>>({});
   const [myStatus, setMyStatus] = useState<"online" | "idle" | "dnd" | "invisible">("online");
   const [dmSearch, setDmSearch] = useState("");
@@ -417,6 +419,7 @@ export default function App() {
     setViewMode("dm");
     setShowFriends(false);
     setDmMessages([]);
+    setUnreadDm((previous) => markDmRead(previous, conversation.id));
     socket?.emit("dm:history", { conversationId: conversation.id }, (result: any) => {
       if (result?.ok) setDmMessages(result.messages || []);
       else setError(result?.error || t("error.requestFailed"));
@@ -919,7 +922,7 @@ export default function App() {
           playEvSound("mention", volume);
         }
         if (!isOpenConversation) {
-          setUnreadDm((prev) => incrementDmUnread(prev, msg.senderId));
+          setUnreadDm((prev) => incrementDmUnread(prev, msg.conversationId || msg.senderId));
 
           window.echoverse?.notify?.({
             title: `${translatorRef.current("app.name")} · ${msg.senderUsername || translatorRef.current("notification.newMessageTitle")}`,
@@ -1032,6 +1035,9 @@ export default function App() {
         text: string;
       }) => {
         if (mention.guildId !== activeGuildRef.current?.id) return;
+        const isOpenChannel =
+          viewModeRef.current === "server" && activeChannelRef.current === mention.channelId;
+        if (!isOpenChannel) setUnreadMentions((count) => Math.min(100_000, count + 1));
         const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
         playEvSound("mention", volume);
         window.echoverse?.notify?.({
@@ -2177,6 +2183,7 @@ export default function App() {
 
   function selectGuildChannel(channel: GuildChannel) {
     if (!socket || !activeGuild) return;
+    setUnreadMentions(0);
     setActiveChannelId(channel.id);
     setMessages([]);
     setChatSearchQuery("");
@@ -2850,6 +2857,18 @@ export default function App() {
               member: t("guild.role.member")
             },
             noChannels: t("guild.noChannels")
+          },
+          dmInbox: {
+            title: t("ui.directMessages"),
+            searchPlaceholder: t("ui.searchConversations"),
+            friends: t("friends.list"),
+            groups: t("friends.groups"),
+            messageRequests: t("friends.messageRequests"),
+            openFriends: t("friends.list"),
+            noFriends: t("ui.noFriendsInInbox"),
+            noConversations: t("ui.noDmConversations"),
+            memberCount: (count) => t("ui.dmMemberCount", { count }),
+            mentions: t("ui.mentions")
           }
         }}
         onSelectGuild={joinGuild}
@@ -2860,8 +2879,9 @@ export default function App() {
         onRenameLobby={renameLobby}
         activeDmFriend={activeDmFriend}
         onOpenDms={() => {
+          loadDmConversations();
           setViewMode("dm");
-          setShowFriends(true);
+          setShowFriends(false);
         }}
         onOpenFriends={() => {
           setViewMode("server");
@@ -2895,155 +2915,197 @@ export default function App() {
         onChangeAvatar={changeAvatar}
         onToggleMute={toggleMute}
         onLogout={logout}
+        dmMode={viewMode === "dm"}
+        dmFriends={friends}
+        dmConversations={dmConversations}
+        dmUnread={unreadDm}
+        dmMentionCount={unreadMentions}
+        dmSearchQuery={dmSearch}
+        onDmSearchQueryChange={setDmSearch}
+        onOpenDmFriend={openDm}
+        onOpenDmConversation={openDmConversation}
       />
 
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
-        {viewMode === "dm" && activeDmFriend ? (
-          <DirectMessageView
-            peer={activeDmFriend}
-            statusLabel={
-              dmTyping[activeDmFriend.id]
-                ? t("chat.typing")
-                : activeDmFriend.status === "online"
-                  ? t("presence.online")
-                  : activeDmFriend.status === "idle"
-                    ? t("presence.idle")
-                    : activeDmFriend.status === "dnd"
-                      ? t("presence.dnd")
-                      : t("presence.offline")
-            }
-            searchQuery={dmSearch}
-            callState={callState}
-            callTime={formatCallTime(callSeconds)}
-            muted={muted}
-            deafened={deafened}
-            pushToTalk={pushToTalk}
-            pttPressed={pttPressed}
-            messages={dmMessages}
-            currentAccountId={account?.id || ""}
-            currentUsername={username}
-            currentAvatarData={account?.avatarData}
-            text={dmText}
-            editingLabel={editingDm ? `✏ ${t("chat.editing")}` : undefined}
-            replyingLabel={
-              replyTo && !editingDm
-                ? `↩ ${t("chat.replyingTo", {
-                    username: replyTo.senderId === account?.id ? username : activeDmFriend.username
-                  })}`
-                : undefined
-            }
-            attachmentReadyLabel={
-              dmAttachment ? `📎 ${dmAttachment.name} · ${t("chat.attachmentReady")}` : undefined
-            }
-            dragActive={dmDragActive}
-            threadRef={dmThreadRef}
-            fileInputRef={dmFileInputRef}
-            labels={{
-              header: {
-                back: t("common.back"),
-                block: t("friends.block"),
-                searchPlaceholder: t("chat.searchPlaceholder"),
-                calling: t("call.ringing"),
-                call: t("friends.call"),
-                endCall: t("call.end"),
-                addParticipant: t("friends.addParticipant")
-              },
-              call: {
-                incoming: t("call.incoming"),
-                ringing: t("call.ringing"),
-                privateConversation: (time) => t("call.privateConversation", { time }),
-                microphone: t("media.microphone"),
-                mute: t("common.mute"),
-                unmute: t("common.unmute"),
-                deafen: t("common.deafen"),
-                undeafen: t("common.undeafen"),
-                pushToTalkTitle: t("call.pushToTalkTitle"),
-                speaking: t("call.speaking"),
-                pressToTalk: t("call.pressToTalk"),
-                voiceActivity: t("call.voiceActivity"),
-                close: t("common.close")
-              },
-              thread: {
-                today: t("common.today"),
-                emptyConversation: t("chat.startOfConversation", {
-                  username: activeDmFriend.username
-                }),
-                deletedReply: t("common.deleted"),
-                deletedMessage: t("chat.deleted"),
-                message: t("chat.message"),
-                edited: t("chat.edited"),
-                download: t("common.download"),
-                reply: t("common.reply"),
-                edit: t("chat.editButton"),
-                delete: t("chat.delete")
-              },
-              composer: {
-                inputLabel: t("chat.message"),
-                messagePlaceholder: t("chat.messagePlaceholder"),
-                editPlaceholder: t("chat.edit"),
-                fileLabel: t("chat.sendFile"),
-                clearLabel: t("chat.clearComposerContext"),
-                dragHint: t("chat.dropFile"),
-                sendLabel: t("common.send"),
-                saveLabel: t("common.save")
+        {viewMode === "dm" ? (
+          activeDmFriend ? (
+            <DirectMessageView
+              peer={activeDmFriend}
+              statusLabel={
+                dmTyping[activeDmFriend.id]
+                  ? t("chat.typing")
+                  : activeDmFriend.status === "online"
+                    ? t("presence.online")
+                    : activeDmFriend.status === "idle"
+                      ? t("presence.idle")
+                      : activeDmFriend.status === "dnd"
+                        ? t("presence.dnd")
+                        : t("presence.offline")
               }
-            }}
-            formatDate={(value) =>
-              new Date(value).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")
-            }
-            formatTime={(value) =>
-              new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            }
-            onBack={() => {
-              sendTyping(false);
-              setViewMode("server");
-              setActiveDmFriend(null);
-              setDmText("");
-              setReplyTo(null);
-            }}
-            onSearchQueryChange={setDmSearch}
-            onBlock={() => {
-              if (!socket || !activeDmFriend) return;
-              if (!window.confirm(t("friends.blockConfirm", { username: activeDmFriend.username })))
-                return;
-              socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
-                if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
+              searchQuery={dmSearch}
+              callState={callState}
+              callTime={formatCallTime(callSeconds)}
+              muted={muted}
+              deafened={deafened}
+              pushToTalk={pushToTalk}
+              pttPressed={pttPressed}
+              messages={dmMessages}
+              currentAccountId={account?.id || ""}
+              currentUsername={username}
+              currentAvatarData={account?.avatarData}
+              text={dmText}
+              editingLabel={editingDm ? `✏ ${t("chat.editing")}` : undefined}
+              replyingLabel={
+                replyTo && !editingDm
+                  ? `↩ ${t("chat.replyingTo", {
+                      username:
+                        replyTo.senderId === account?.id ? username : activeDmFriend.username
+                    })}`
+                  : undefined
+              }
+              attachmentReadyLabel={
+                dmAttachment ? `📎 ${dmAttachment.name} · ${t("chat.attachmentReady")}` : undefined
+              }
+              dragActive={dmDragActive}
+              threadRef={dmThreadRef}
+              fileInputRef={dmFileInputRef}
+              labels={{
+                header: {
+                  back: t("common.back"),
+                  block: t("friends.block"),
+                  searchPlaceholder: t("chat.searchPlaceholder"),
+                  calling: t("call.ringing"),
+                  call: t("friends.call"),
+                  endCall: t("call.end"),
+                  addParticipant: t("friends.addParticipant")
+                },
+                call: {
+                  incoming: t("call.incoming"),
+                  ringing: t("call.ringing"),
+                  privateConversation: (time) => t("call.privateConversation", { time }),
+                  microphone: t("media.microphone"),
+                  mute: t("common.mute"),
+                  unmute: t("common.unmute"),
+                  deafen: t("common.deafen"),
+                  undeafen: t("common.undeafen"),
+                  pushToTalkTitle: t("call.pushToTalkTitle"),
+                  speaking: t("call.speaking"),
+                  pressToTalk: t("call.pressToTalk"),
+                  voiceActivity: t("call.voiceActivity"),
+                  close: t("common.close")
+                },
+                thread: {
+                  today: t("common.today"),
+                  emptyConversation: t("chat.startOfConversation", {
+                    username: activeDmFriend.username
+                  }),
+                  deletedReply: t("common.deleted"),
+                  deletedMessage: t("chat.deleted"),
+                  message: t("chat.message"),
+                  edited: t("chat.edited"),
+                  download: t("common.download"),
+                  reply: t("common.reply"),
+                  edit: t("chat.editButton"),
+                  delete: t("chat.delete")
+                },
+                composer: {
+                  inputLabel: t("chat.message"),
+                  messagePlaceholder: t("chat.messagePlaceholder"),
+                  editPlaceholder: t("chat.edit"),
+                  fileLabel: t("chat.sendFile"),
+                  clearLabel: t("chat.clearComposerContext"),
+                  dragHint: t("chat.dropFile"),
+                  sendLabel: t("common.send"),
+                  saveLabel: t("common.save")
+                }
+              }}
+              formatDate={(value) =>
+                new Date(value).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")
+              }
+              formatTime={(value) =>
+                new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              }
+              onBack={() => {
+                sendTyping(false);
                 setViewMode("server");
                 setActiveDmFriend(null);
+                setDmText("");
+                setReplyTo(null);
+              }}
+              onSearchQueryChange={setDmSearch}
+              onBlock={() => {
+                if (!socket || !activeDmFriend) return;
+                if (
+                  !window.confirm(t("friends.blockConfirm", { username: activeDmFriend.username }))
+                )
+                  return;
+                socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
+                  if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
+                  setViewMode("server");
+                  setActiveDmFriend(null);
+                  loadFriends();
+                });
+              }}
+              onCall={() => {
+                if (callState === "connected" || callState === "calling") {
+                  stopPrivateCall(true);
+                } else {
+                  callFriend(activeDmFriend);
+                }
+              }}
+              onAddParticipant={activeDmConversationId ? undefined : addParticipantToCall}
+              onToggleMute={toggleMute}
+              onToggleDeafen={toggleDeafen}
+              onTogglePushToTalk={() => setPushToTalk((value) => !value)}
+              onEndCall={() => stopPrivateCall(true)}
+              onReply={setReplyTo}
+              onReact={reactDm}
+              onEdit={editDm}
+              onDelete={deleteDm}
+              onDownloadAttachment={downloadAttachment}
+              onOpenAttachment={(data) => window.open(data, "_blank")}
+              onFileSelected={(file) => void chooseDmFile(file)}
+              onDropFile={(file) => void chooseDmFile(file)}
+              onDragActiveChange={setDmDragActive}
+              onTextChange={setDmText}
+              onTypingChange={sendTyping}
+              onSend={sendDm}
+              onClearContext={() => {
+                setReplyTo(null);
+                setEditingDm(null);
+                setDmAttachment(null);
+                if (editingDm) setDmText("");
+              }}
+            />
+          ) : (
+            <DirectMessageInbox
+              friends={friends}
+              conversations={dmConversations}
+              unread={unreadDm}
+              searchQuery={dmSearch}
+              currentAccountId={account?.id}
+              mentionCount={unreadMentions}
+              labels={{
+                title: t("ui.directMessages"),
+                searchPlaceholder: t("ui.searchConversations"),
+                friends: t("friends.list"),
+                groups: t("friends.groups"),
+                messageRequests: t("friends.messageRequests"),
+                openFriends: t("friends.list"),
+                noFriends: t("ui.noFriendsInInbox"),
+                noConversations: t("ui.noDmConversations"),
+                memberCount: (count) => t("ui.dmMemberCount", { count }),
+                mentions: t("ui.mentions")
+              }}
+              onSearchQueryChange={setDmSearch}
+              onOpenFriends={() => {
                 loadFriends();
-              });
-            }}
-            onCall={() => {
-              if (callState === "connected" || callState === "calling") {
-                stopPrivateCall(true);
-              } else {
-                callFriend(activeDmFriend);
-              }
-            }}
-            onAddParticipant={activeDmConversationId ? undefined : addParticipantToCall}
-            onToggleMute={toggleMute}
-            onToggleDeafen={toggleDeafen}
-            onTogglePushToTalk={() => setPushToTalk((value) => !value)}
-            onEndCall={() => stopPrivateCall(true)}
-            onReply={setReplyTo}
-            onReact={reactDm}
-            onEdit={editDm}
-            onDelete={deleteDm}
-            onDownloadAttachment={downloadAttachment}
-            onOpenAttachment={(data) => window.open(data, "_blank")}
-            onFileSelected={(file) => void chooseDmFile(file)}
-            onDropFile={(file) => void chooseDmFile(file)}
-            onDragActiveChange={setDmDragActive}
-            onTextChange={setDmText}
-            onTypingChange={sendTyping}
-            onSend={sendDm}
-            onClearContext={() => {
-              setReplyTo(null);
-              setEditingDm(null);
-              setDmAttachment(null);
-              if (editingDm) setDmText("");
-            }}
-          />
+                setShowFriends(true);
+              }}
+              onOpenDm={openDm}
+              onOpenConversation={openDmConversation}
+            />
+          )
         ) : (
           <>
             <ServerView

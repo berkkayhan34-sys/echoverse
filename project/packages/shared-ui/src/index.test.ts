@@ -13,6 +13,7 @@ import {
   ChatComposer,
   CreateGuildDialog,
   DirectMessageComposer,
+  DirectMessageInbox,
   DirectMessageHeader,
   DirectMessageThread,
   DirectMessageView,
@@ -874,6 +875,56 @@ describe("shared chat UI", () => {
     const channelButton = buttons.find((button) => buttonText(button).includes("# general"));
     (channelButton?.props.onClick as () => void)();
     expect(onMarkChannelRead).toHaveBeenCalledWith("echoverse:general");
+  });
+});
+
+describe("DM inbox", () => {
+  it("renders searchable friends and group conversations with unread badges", () => {
+    const onOpenDm = vi.fn();
+    const onOpenConversation = vi.fn();
+    const element = DirectMessageInbox({
+      friends: [{ id: "friend-1", username: "Ada", status: "online" }],
+      conversations: [
+        {
+          id: "group-1",
+          kind: "group",
+          name: "Study group",
+          createdBy: "friend-1",
+          createdAt: "2026-08-31T00:00:00.000Z",
+          members: [
+            { accountId: "me", username: "Me", role: "owner" },
+            { accountId: "friend-1", username: "Ada", role: "member" }
+          ]
+        }
+      ],
+      unread: { "friend-1": 2, "group-1": 4 },
+      searchQuery: "",
+      currentAccountId: "me",
+      labels: {
+        title: "Direct messages",
+        searchPlaceholder: "Search conversations",
+        friends: "Friends",
+        groups: "Groups",
+        messageRequests: "Message requests",
+        openFriends: "Friends",
+        noFriends: "No friends",
+        noConversations: "No conversations",
+        memberCount: (count) => `${count} members`,
+        mentions: "Mentions"
+      },
+      onSearchQueryChange: vi.fn(),
+      onOpenFriends: vi.fn(),
+      onOpenDm,
+      onOpenConversation
+    });
+    expect(textContent(element)).toContain("Ada");
+    expect(textContent(element)).toContain("Study group");
+    expect(textContent(element)).toContain("2");
+    const buttons = elementsOfType(element, "button");
+    buttons.find((button) => buttonText(button).includes("Ada"))?.props.onClick();
+    buttons.find((button) => buttonText(button).includes("Study group"))?.props.onClick();
+    expect(onOpenDm).toHaveBeenCalledOnce();
+    expect(onOpenConversation).toHaveBeenCalledOnce();
   });
 });
 
