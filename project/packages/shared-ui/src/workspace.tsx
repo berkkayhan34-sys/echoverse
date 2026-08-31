@@ -9,10 +9,13 @@ import type {
   Guild,
   GuildCategory,
   GuildChannel,
+  GuildChannelType,
+  GuildMember,
   PeerInfo
 } from "@echoverse/contracts";
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
+import { GuildStructurePanel, type GuildStructureLabels } from "./guild-structure.js";
 
 export type WorkspaceSidebarLabels = {
   appName: string;
@@ -43,6 +46,8 @@ export type WorkspaceSidebarLabels = {
   lobbyNamePlaceholder?: string;
   save?: string;
   cancel?: string;
+  manageChannels?: string;
+  structure?: GuildStructureLabels;
 };
 
 type MobileWorkspaceNavigationProps = {
@@ -61,6 +66,14 @@ type MobileWorkspaceNavigationProps = {
   onJoinGuild?: () => void;
   onLeaveGuild?: (guild: Guild) => void;
   onDeleteGuild?: (guild: Guild) => void;
+  channels?: GuildChannel[];
+  categories?: GuildCategory[];
+  guildMembers?: GuildMember[];
+  onCreateCategory?: (name: string) => void;
+  onUpdateCategory?: (categoryId: string, updates: { name?: string; archived?: boolean }) => void;
+  onCreateChannel?: (name: string, type: GuildChannelType, categoryId?: string | null) => void;
+  onUpdateChannel?: (channelId: string, updates: { name?: string; archived?: boolean }) => void;
+  onRoleChange?: (accountId: string, role: Exclude<GuildMember["role"], "owner">) => void;
   brandIconSrc?: string;
   labels: WorkspaceSidebarLabels;
 };
@@ -81,6 +94,14 @@ function MobileWorkspaceNavigation({
   onJoinGuild,
   onLeaveGuild,
   onDeleteGuild,
+  channels,
+  categories,
+  guildMembers,
+  onCreateCategory,
+  onUpdateCategory,
+  onCreateChannel,
+  onUpdateChannel,
+  onRoleChange,
   brandIconSrc,
   labels
 }: MobileWorkspaceNavigationProps) {
@@ -232,6 +253,36 @@ function MobileWorkspaceNavigation({
               </div>
             </div>
           )}
+
+          {activeGuild &&
+            labels.structure &&
+            onCreateCategory &&
+            onUpdateCategory &&
+            onCreateChannel &&
+            onUpdateChannel &&
+            onRoleChange &&
+            (activeGuild.role === "owner" || activeGuild.role === "admin") && (
+              <details className="guild-structure-details mobile-guild-structure-details">
+                <summary className="mobile-action-row guild-manage-button">
+                  ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
+                </summary>
+                <GuildStructurePanel
+                  channels={channels || []}
+                  categories={categories || []}
+                  members={guildMembers || []}
+                  labels={labels.structure}
+                  canManage
+                  onClose={() => {
+                    document.activeElement?.closest("details")?.removeAttribute("open");
+                  }}
+                  onCreateCategory={onCreateCategory}
+                  onUpdateCategory={onUpdateCategory}
+                  onCreateChannel={onCreateChannel}
+                  onUpdateChannel={onUpdateChannel}
+                  onRoleChange={onRoleChange}
+                />
+              </details>
+            )}
 
           <button className="mobile-action-row" onClick={openDms}>
             ✉ <span>{labels.directMessages || "DM"}</span>
@@ -404,7 +455,13 @@ export function WorkspaceSidebar({
   onLogout,
   channels,
   categories,
-  onSelectChannel
+  onSelectChannel,
+  guildMembers,
+  onCreateCategory,
+  onUpdateCategory,
+  onCreateChannel,
+  onUpdateChannel,
+  onRoleChange
 }: {
   guilds: Guild[];
   channels?: GuildChannel[];
@@ -442,6 +499,12 @@ export function WorkspaceSidebar({
   onToggleMute: () => void;
   onLogout: () => void;
   onSelectChannel?: (channel: GuildChannel) => void;
+  guildMembers?: GuildMember[];
+  onCreateCategory?: (name: string) => void;
+  onUpdateCategory?: (categoryId: string, updates: { name?: string; archived?: boolean }) => void;
+  onCreateChannel?: (name: string, type: GuildChannelType, categoryId?: string | null) => void;
+  onUpdateChannel?: (channelId: string, updates: { name?: string; archived?: boolean }) => void;
+  onRoleChange?: (accountId: string, role: Exclude<GuildMember["role"], "owner">) => void;
 }) {
   return (
     <>
@@ -565,6 +628,35 @@ export function WorkspaceSidebar({
                 <span aria-hidden="true">↗</span>
                 <span>{labels.invite}</span>
               </button>
+            )}
+          {activeGuild &&
+            labels.structure &&
+            onCreateCategory &&
+            onUpdateCategory &&
+            onCreateChannel &&
+            onUpdateChannel &&
+            onRoleChange &&
+            (activeGuild.role === "owner" || activeGuild.role === "admin") && (
+              <details className="guild-structure-details">
+                <summary className="guild-manage-button">
+                  ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
+                </summary>
+                <GuildStructurePanel
+                  channels={channels || []}
+                  categories={categories || []}
+                  members={guildMembers || []}
+                  labels={labels.structure}
+                  canManage
+                  onClose={() => {
+                    document.activeElement?.closest("details")?.removeAttribute("open");
+                  }}
+                  onCreateCategory={onCreateCategory}
+                  onUpdateCategory={onUpdateCategory}
+                  onCreateChannel={onCreateChannel}
+                  onUpdateChannel={onUpdateChannel}
+                  onRoleChange={onRoleChange}
+                />
+              </details>
             )}
           {activeGuild &&
             onDeleteGuild &&
@@ -749,6 +841,14 @@ export function WorkspaceSidebar({
         onJoinGuild={onJoinGuild}
         onLeaveGuild={onLeaveGuild}
         onDeleteGuild={onDeleteGuild}
+        channels={channels}
+        categories={categories}
+        guildMembers={guildMembers}
+        onCreateCategory={onCreateCategory}
+        onUpdateCategory={onUpdateCategory}
+        onCreateChannel={onCreateChannel}
+        onUpdateChannel={onUpdateChannel}
+        onRoleChange={onRoleChange}
         brandIconSrc={brandIconSrc}
         labels={labels}
       />

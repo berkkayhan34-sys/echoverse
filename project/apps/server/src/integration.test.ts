@@ -1038,6 +1038,41 @@ describe("server HTTP and Socket.IO boundaries", () => {
     ).toMatchObject({ ok: true, channel: expect.objectContaining({ name: "announcements" }) });
     await emitWithAck(owner.socket, "guild:select", { guildId: created.guild.id });
     await emitWithAck(member.socket, "guild:select", { guildId: created.guild.id });
+    const categoryBroadcast = waitForEvent<any>(member.socket, "guild:channels");
+    const categoryResult = (await emitWithAck(owner.socket, "guild:create-category", {
+      guildId: created.guild.id,
+      name: "Community"
+    })) as any;
+    expect(categoryResult).toMatchObject({ ok: true, category: { name: "Community" } });
+    await expect(categoryBroadcast).resolves.toMatchObject({
+      guildId: created.guild.id,
+      categories: expect.arrayContaining([expect.objectContaining({ name: "Community" })])
+    });
+    const categoryUpdateBroadcast = waitForEvent<any>(member.socket, "guild:channels");
+    expect(
+      await emitWithAck(owner.socket, "guild:update-category", {
+        guildId: created.guild.id,
+        categoryId: categoryResult.category.id,
+        name: "Community & Events"
+      })
+    ).toMatchObject({ ok: true, category: { name: "Community & Events" } });
+    await expect(categoryUpdateBroadcast).resolves.toMatchObject({
+      categories: expect.arrayContaining([expect.objectContaining({ name: "Community & Events" })])
+    });
+    const roleBroadcast = waitForEvent<any>(member.socket, "guild:members");
+    expect(
+      await emitWithAck(owner.socket, "guild:set-role", {
+        guildId: created.guild.id,
+        accountId: member.accountId,
+        role: "moderator"
+      })
+    ).toEqual({ ok: true });
+    await expect(roleBroadcast).resolves.toMatchObject({
+      guildId: created.guild.id,
+      members: expect.arrayContaining([
+        expect.objectContaining({ accountId: member.accountId, role: "moderator" })
+      ])
+    });
     const memberDirectory = (await emitWithAck(owner.socket, "guild:members", {
       guildId: created.guild.id
     })) as any;

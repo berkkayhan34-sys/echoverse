@@ -265,6 +265,19 @@ export function registerGuildHandlers({
         return;
       }
       const changed = await setRole(guildId, accountId, role);
+      if (changed) {
+        const members = await membersFor(guildId);
+        for (const peer of io.sockets.sockets.values()) {
+          const peerAccountId = peer.data.account?.id;
+          if (peerAccountId && isMember(guildId, peerAccountId)) {
+            peer.emit("guild:members", {
+              guildId,
+              members,
+              overrides: listPermissionOverrides(guildId)
+            });
+          }
+        }
+      }
       callback?.(
         changed ? { ok: true } : { ok: false, error: socketError(socket, "server.accountNotFound") }
       );
@@ -355,6 +368,7 @@ export function registerGuildHandlers({
         return;
       }
       const category = await createCategory(guildId, sanitizeName(name, 64));
+      broadcastChannelList(guildId);
       callback?.({ ok: true, category });
     }
   );
@@ -387,6 +401,7 @@ export function registerGuildHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.channelNotFound") });
         return;
       }
+      broadcastChannelList(guildId);
       callback?.({ ok: true, category });
     }
   );
@@ -440,6 +455,7 @@ export function registerGuildHandlers({
           return;
         }
         const result = await reorder(guildId, ids);
+        if (result) broadcastChannelList(guildId);
         callback?.(
           result
             ? {
