@@ -60,6 +60,7 @@ using the owner-managed values (never commit this file):
 
 ```dotenv
 NODE_ENV=production
+HOST=127.0.0.1
 PORT=3001
 DATABASE_URL=postgresql://...
 # The MacBook's local PostgreSQL normally does not need TLS.

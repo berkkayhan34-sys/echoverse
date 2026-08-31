@@ -13,8 +13,8 @@ SPDX-License-Identifier: GPL-3.0-only
 Use a GitHub self-hosted runner on the temporary Intel MacBook Linux host for
 pull-free, push-triggered EchoVerse server deployments. The runner and the
 EchoVerse systemd service run as the non-root `berkkayhan` user. The service
-listens on `0.0.0.0:3001`; Cloudflare Tunnel remains the only intended public
-ingress and maps the hostname to `http://localhost:3001`.
+binds to `127.0.0.1:3001` on the temporary host; Cloudflare Tunnel remains the
+only public ingress and maps the hostname to `http://localhost:3001`.
 
 The hosted runtime uses PostgreSQL through `DATABASE_URL`. Secrets and the
 founder email remain in the user-owned

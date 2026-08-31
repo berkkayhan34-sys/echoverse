@@ -4,6 +4,7 @@
  */
 
 import crypto from "node:crypto";
+import net from "node:net";
 
 const localOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
@@ -32,6 +33,7 @@ function booleanValue(value: string | undefined, fallback: boolean, name: string
 
 export type ServerConfig = {
   nodeEnv: "development" | "test" | "production";
+  host: string;
   port: number;
   databaseUrl?: string;
   sqlitePath?: string;
@@ -50,6 +52,10 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   const nodeEnv =
     env.NODE_ENV === "production" ? "production" : env.NODE_ENV === "test" ? "test" : "development";
   const jwtSecret = env.JWT_SECRET?.trim();
+  const host = (env.HOST || "0.0.0.0").trim();
+  if (!host || (host !== "localhost" && net.isIP(host) === 0)) {
+    throw new Error("HOST must be a valid IP address or localhost");
+  }
   const port = Number(env.PORT || 3001);
   if (!Number.isInteger(port) || port < 1 || port > 65_535)
     throw new Error("PORT must be a valid TCP port");
@@ -90,6 +96,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
 
   return {
     nodeEnv,
+    host,
     port,
     databaseUrl,
     sqlitePath,

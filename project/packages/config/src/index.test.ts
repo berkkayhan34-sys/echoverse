@@ -17,6 +17,7 @@ describe("server configuration", () => {
       CORS_ORIGINS: "https://example.test"
     });
     expect(config.corsOrigins).toEqual(["https://example.test"]);
+    expect(config.host).toBe("0.0.0.0");
     expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
     expect(config.databaseSsl).toBe(false);
     expect(config.databaseSslRejectUnauthorized).toBe(true);
@@ -51,6 +52,12 @@ describe("server configuration", () => {
   it("rejects invalid ports", () => {
     expect(() => loadServerConfig({ PORT: "70000" })).toThrow(/PORT/);
     expect(() => loadServerConfig({ PORT: "0" })).toThrow(/PORT/);
+  });
+
+  it("accepts an explicit bind address and rejects malformed hosts", () => {
+    expect(loadServerConfig({ HOST: "127.0.0.1" }).host).toBe("127.0.0.1");
+    expect(loadServerConfig({ HOST: "localhost" }).host).toBe("localhost");
+    expect(() => loadServerConfig({ HOST: "not a host" })).toThrow(/HOST/);
   });
 
   it("trims database URLs and ignores blank origin entries", () => {

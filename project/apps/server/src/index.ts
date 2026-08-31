@@ -713,9 +713,10 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
       for (const account of accounts) await ensureMainGuildMembership(account);
     })
     .then(() => {
-      httpServer.listen(PORT, "0.0.0.0", () => {
+      httpServer.listen(PORT, config.host, () => {
         serverLogger.info("echoverse.server.listening", {
           version: APP_VERSION,
+          host: config.host,
           port: PORT
         });
       });
