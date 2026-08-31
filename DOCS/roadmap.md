@@ -426,7 +426,7 @@ type: client_media
 sequence: 600
 status: incomplete
 evidence: evidence/PARITY-001.2.md
-blocks_roadmap: true
+blocks_roadmap: false
 depends_on: [CHAT-001, MOD-001]
 ```
 
@@ -582,16 +582,16 @@ are explicitly out of scope for this child and are tracked by the next child.
 id: PARITY-001.2
 type: channel_notifications_and_unread
 sequence: 420
-status: incomplete
-evidence: null
-blocks_roadmap: true
+status: complete
+evidence: evidence/PARITY-001.2.md
+blocks_roadmap: false
 depends_on: [PARITY-001.1]
 ```
 
-[ ] Add server-backed per-channel notification preferences, unread markers,
+[x] Add server-backed per-channel notification preferences, unread markers,
 and cross-device reconciliation without exposing hidden channels or message
-content in logs/notifications. Automated acceptance is implemented; the item
-remains incomplete until authenticated rendered UI evidence is captured.
+content in logs/notifications. Authenticated default and narrow-screen rendered
+evidence is recorded in `evidence/PARITY-001.2.md`.
 
 ### parity-dm-navigation-and-inbox
 
