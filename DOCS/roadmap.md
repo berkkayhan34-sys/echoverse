@@ -229,14 +229,14 @@ changes still require a new shell release.
 id: OPS-005
 type: self_hosted_deployment
 sequence: 910
-status: incomplete
+status: complete
 evidence: evidence/OPS-005.md
 blocks_roadmap: true
 decision: decisions/0024-macbook-self-hosted-deployment.md
 depends_on: [ARCH-001, SEC-001, MOD-001]
 ```
 
-[ ] Provision the temporary Debian/T2 MacBook as a non-root GitHub
+[x] Provision the temporary Debian/T2 MacBook as a non-root GitHub
 self-hosted runner, run the PostgreSQL-backed server through a user systemd
 service on port `3001`, and deploy only after verification gates pass. Keep
 Cloudflare Tunnel as the only public ingress, keep secrets in the host-owned
