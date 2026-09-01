@@ -34,6 +34,13 @@ export type MemoryDmConversation = {
   members: Map<string, MemoryDmConversationMember>;
 };
 
+export type DmMessageSearchOptions = {
+  authorId?: string;
+  from?: string;
+  to?: string;
+  before?: string;
+};
+
 export type FriendServiceDependencies = {
   pool: PersistenceDatabase | null;
   sqliteDatabase: PersistenceDatabase | null;
@@ -781,6 +788,98 @@ export function createFriendService({
     }));
   }
 
+  async function searchDm(
+    accountId: string,
+    target: { friendId?: string; conversationId?: string },
+    query: string,
+    limit = 100,
+    options: DmMessageSearchOptions = {}
+  ) {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const friendId = target.friendId || null;
+    const conversationId = target.conversationId || null;
+    if (!friendId && !conversationId) return [];
+
+    if (!pool) {
+      return memoryDmMessages
+        .filter((message) => {
+          const inScope = conversationId
+            ? message.conversationId === conversationId
+            : !message.conversationId &&
+              ((message.senderId === accountId && message.recipientId === friendId) ||
+                (message.senderId === friendId && message.recipientId === accountId));
+          return (
+            inScope &&
+            !message.deletedAt &&
+            message.body.toLocaleLowerCase().includes(normalizedQuery) &&
+            (!options.authorId || message.senderId === options.authorId) &&
+            (!options.from || message.createdAt >= options.from) &&
+            (!options.to || message.createdAt <= options.to) &&
+            (!options.before || message.createdAt < options.before)
+          );
+        })
+        .sort((a, b) => {
+          const created = b.createdAt.localeCompare(a.createdAt);
+          return created || b.id.localeCompare(a.id);
+        })
+        .slice(0, limit);
+    }
+
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    const add = (clause: string, value: unknown) => {
+      values.push(value);
+      clauses.push(clause.replace("$N", `$${values.length}`));
+    };
+
+    if (conversationId) {
+      add("m.conversation_id=$N", conversationId);
+      add(
+        "EXISTS (SELECT 1 FROM echoverse_dm_members mine WHERE mine.conversation_id=m.conversation_id AND mine.account_id=$N AND mine.left_at IS NULL)",
+        accountId
+      );
+    } else {
+      const accountParam = values.length + 1;
+      values.push(accountId);
+      const friendParam = values.length + 1;
+      values.push(friendId);
+      clauses.push(
+        "m.conversation_id IS NULL",
+        `((m.sender_id=$${accountParam} AND m.recipient_id=$${friendParam}) OR
+          (m.sender_id=$${friendParam} AND m.recipient_id=$${accountParam}))`
+      );
+    }
+    add("LOWER(m.body) LIKE LOWER($N) ESCAPE '\\'", `%${query.trim().replace(/[\\%_]/g, "\\$&")}%`);
+    if (options.authorId) add("m.sender_id=$N", options.authorId);
+    if (options.from) add("m.created_at >= $N", options.from);
+    if (options.to) add("m.created_at <= $N", options.to);
+    if (options.before) add("m.created_at < $N", options.before);
+    values.push(limit);
+    const result = await pool.query(
+      `SELECT m.id,m.sender_id,m.recipient_id,m.conversation_id,m.body,m.created_at,
+              m.reply_to_id,m.edited_at,m.deleted_at,m.attachment_name,m.attachment_mime,
+              m.attachment_data,m.reactions
+       FROM echoverse_dm_messages m WHERE ${clauses.join(" AND ")}
+       ORDER BY m.created_at DESC,m.id DESC LIMIT $${values.length}`,
+      values
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      senderId: row.sender_id,
+      recipientId: row.recipient_id,
+      conversationId: row.conversation_id || null,
+      body: row.deleted_at ? "" : row.body,
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+      replyToId: row.reply_to_id || null,
+      editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+      deletedAt: row.deleted_at?.toISOString?.() || row.deleted_at || null,
+      attachmentName: row.deleted_at ? null : row.attachment_name || null,
+      attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
+      attachmentData: row.deleted_at ? null : row.attachment_data || null,
+      reactions: parseReactions(row.reactions)
+    }));
+  }
+
   async function mutateGroupMember(
     actorId: string,
     conversationId: string,
@@ -936,6 +1035,7 @@ export function createFriendService({
     listDmRequests,
     loadConversationHistory,
     loadDmHistory,
+    searchDm,
     leaveGroupConversation,
     mutateGroupMember,
     createDmRequest,

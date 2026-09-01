@@ -465,6 +465,11 @@ details.guild-options[open] > .guild-options-trigger,
   color: var(--ev-text);
 }
 
+.dm-search-button {
+  min-width: 34px;
+  padding: 8px 10px;
+}
+
 .primary,
 .primary-small,
 .composer .send,

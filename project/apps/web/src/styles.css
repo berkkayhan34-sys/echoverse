@@ -1959,6 +1959,11 @@ button {
   font-size: 11px;
 }
 
+.dm-search-button {
+  min-width: 34px;
+  padding: 8px 10px !important;
+}
+
 .dm-block-button {
   background: #33222a !important;
 }

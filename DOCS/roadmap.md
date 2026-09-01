@@ -622,13 +622,13 @@ path.
 id: PARITY-003
 type: messaging_parity
 sequence: 520
-status: incomplete
-evidence: null
-blocks_roadmap: true
+status: complete
+evidence: evidence/PARITY-003.md
+blocks_roadmap: false
 depends_on: [CHAT-001, ARCH-002]
 ```
 
-[ ] Add channel/DM message search that can scope by author/channel/date,
+[x] Add channel/DM message search that can scope by author/channel/date,
 thread creation and reply context, mention autocomplete and mention events,
 message links that restore the original location, and a documented
 attachment/markdown/embed policy.

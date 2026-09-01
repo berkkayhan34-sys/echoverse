@@ -13,6 +13,7 @@ export type DirectMessageHeaderLabels = {
   calling: string;
   call: string;
   endCall: string;
+  search?: string;
   addParticipant?: string;
 };
 
@@ -25,6 +26,7 @@ export function DirectMessageHeader({
   labels,
   onBack,
   onSearchQueryChange,
+  onSearch,
   onBlock,
   onCall,
   onAddParticipant
@@ -36,6 +38,7 @@ export function DirectMessageHeader({
   labels: DirectMessageHeaderLabels;
   onBack: () => void;
   onSearchQueryChange: (value: string) => void;
+  onSearch?: () => void;
   onBlock: () => void;
   onCall: () => void;
   onAddParticipant?: () => void;
@@ -64,7 +67,15 @@ export function DirectMessageHeader({
           onChange={(event) => onSearchQueryChange(event.target.value)}
           placeholder={labels.searchPlaceholder}
           aria-label={labels.searchPlaceholder}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onSearch?.();
+          }}
         />
+        {onSearch && labels.search && (
+          <button className="dm-search-button" onClick={onSearch} aria-label={labels.search}>
+            🔎
+          </button>
+        )}
         <button
           className="dm-block-button"
           aria-label={labels.block}

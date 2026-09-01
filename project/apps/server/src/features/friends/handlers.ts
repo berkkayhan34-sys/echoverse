@@ -58,6 +58,13 @@ export type FriendHandlerDependencies = {
   friendshipKey(a: string, b: string): string;
   areFriends(a: string, b: string): Promise<boolean>;
   loadDmHistory(a: string, b: string): Promise<StoredDm[]>;
+  searchDm(
+    accountId: string,
+    target: { friendId?: string; conversationId?: string },
+    query: string,
+    limit?: number,
+    options?: { authorId?: string; from?: string; to?: string; before?: string }
+  ): Promise<StoredDm[]>;
   storeDm(
     senderId: string,
     recipientId: string,
@@ -107,6 +114,7 @@ export function registerFriendHandlers({
   friendshipKey,
   areFriends,
   loadDmHistory,
+  searchDm,
   storeDm,
   dmById,
   validateAttachment,
@@ -643,6 +651,52 @@ export function registerFriendHandlers({
 
   onValidatedSocketEvent(
     socket,
+    "dm-search",
+    async ({ friendId, conversationId, query, authorId, from, to, before, limit }, callback) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+        return;
+      }
+      if (conversationId) {
+        if (!(await conversationFor(user.accountId, conversationId))) {
+          callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
+          return;
+        }
+        if (authorId) {
+          const members = await conversationMembers(conversationId);
+          if (!members.some((member: any) => member.accountId === authorId)) {
+            callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+            return;
+          }
+        }
+      } else {
+        const friend = String(friendId || "");
+        if (!(await areFriends(user.accountId, friend))) {
+          callback?.({ ok: false, error: socketError(socket, "server.notFriends") });
+          return;
+        }
+        if (authorId && authorId !== user.accountId && authorId !== friend) {
+          callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+          return;
+        }
+      }
+      const messages = await searchDm(user.accountId, { friendId, conversationId }, query, limit, {
+        authorId,
+        from,
+        to,
+        before
+      });
+      callback?.({
+        ok: true,
+        messages: conversationId ? await decorateGroupMessages(messages) : messages,
+        nextCursor: messages.length === (limit || 100) ? messages.at(-1)?.createdAt || null : null
+      });
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
     "dm:send",
     async ({ friendId, conversationId, body, replyToId, attachment }, callback) => {
       if (!allowSocketEvent(socket.id, "dm:send", 30)) {
@@ -660,6 +714,22 @@ export function registerFriendHandlers({
       if (conversationId && !(await conversationFor(user.accountId, conversationId))) {
         callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
         return;
+      }
+
+      if (replyToId) {
+        const parent = await dmById(String(replyToId));
+        const replyAllowed = conversationId
+          ? parent?.conversationId === conversationId
+          : Boolean(
+              parent &&
+              !parent.conversationId &&
+              ((parent.senderId === user.accountId && parent.recipientId === friend) ||
+                (parent.senderId === friend && parent.recipientId === user.accountId))
+            );
+        if (!replyAllowed) {
+          callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+          return;
+        }
       }
 
       const checkedAttachment = validateAttachment(attachment);

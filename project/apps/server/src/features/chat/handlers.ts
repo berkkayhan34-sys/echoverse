@@ -283,7 +283,7 @@ export function registerChatHandlers({
   onValidatedSocketEvent(
     socket,
     "chat-search",
-    async ({ guildId, channelId, query, limit }, callback) => {
+    async ({ guildId, channelId, query, authorId, from, to, before, limit }, callback) => {
       const user = users.get(socket.id);
       if (
         !user?.accountId ||
@@ -292,9 +292,16 @@ export function registerChatHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
+      const messages = await guildChat.search(channelId, query, limit, {
+        authorId,
+        from,
+        to,
+        before
+      });
       callback?.({
         ok: true,
-        messages: await decorate(await guildChat.search(channelId, query, limit))
+        messages: await decorate(messages),
+        nextCursor: messages.length === (limit || 100) ? messages.at(-1)?.createdAt || null : null
       });
     }
   );

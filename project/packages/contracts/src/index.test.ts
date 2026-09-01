@@ -176,6 +176,7 @@ describe("protocol contracts", () => {
       "friends:block",
       "friends:unblock",
       "dm:history",
+      "dm-search",
       "dm:send",
       "dm:requests",
       "dm:request-respond",
@@ -239,6 +240,24 @@ describe("protocol contracts", () => {
     expect(Object.keys(socketEventPayloadSchemas).sort()).toEqual(expectedEvents.sort());
     expect(
       socketEventPayloadSchemas["friends:search"].safeParse({ query: "ok", extra: true }).success
+    ).toBe(false);
+    expect(
+      socketEventPayloadSchemas["dm-search"].safeParse({ friendId: "friend", query: "hello" })
+        .success
+    ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["dm-search"].safeParse({
+        friendId: "friend",
+        conversationId: "group",
+        query: "hello"
+      }).success
+    ).toBe(false);
+    expect(
+      socketEventPayloadSchemas["dm-search"].safeParse({
+        conversationId: "group",
+        query: "hello",
+        from: "not-a-date"
+      }).success
     ).toBe(false);
     expect(
       socketEventPayloadSchemas["dm:send"].safeParse({ friendId: "x", body: "x", attachment: null })

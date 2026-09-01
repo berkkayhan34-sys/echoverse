@@ -179,9 +179,23 @@ export default function App() {
   const deepLinkMessageRef = useRef("");
 
   useEffect(() => {
-    const messageId = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("message");
-    if (!messageId) {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const guildId = params.get("guild");
+    const channelId = params.get("channel");
+    const messageId = params.get("message");
+    if (!guildId || !channelId || !messageId) {
       deepLinkMessageRef.current = "";
+      return;
+    }
+    if (!socket || !connected || !identified) return;
+    if (activeGuild?.id !== guildId) {
+      const targetGuild = guilds.find((guild) => guild.id === guildId);
+      if (targetGuild) void joinGuild(targetGuild);
+      return;
+    }
+    if (activeChannelId !== channelId) {
+      const targetChannel = guildChannels.find((channel) => channel.id === channelId);
+      if (targetChannel) selectGuildChannel(targetChannel);
       return;
     }
     if (deepLinkMessageRef.current === messageId) return;
@@ -195,7 +209,16 @@ export default function App() {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages]);
+  }, [
+    messages,
+    activeGuild,
+    activeChannelId,
+    guildChannels,
+    guilds,
+    connected,
+    identified,
+    socket
+  ]);
 
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
   const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({});
@@ -257,6 +280,7 @@ export default function App() {
   const [pttPressed, setPttPressed] = useState(false);
 
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
+  const [dmSearchResults, setDmSearchResults] = useState<DmMessage[] | null>(null);
   const [dmText, setDmText] = useState("");
   const [unreadDm, setUnreadDm] = useState<Record<string, number>>({});
   const [unreadMentions, setUnreadMentions] = useState(0);
@@ -404,6 +428,25 @@ export default function App() {
     });
   }
 
+  function searchDmMessages() {
+    const query = dmSearch.trim();
+    if (!socket || !query || (!activeDmConversationId && !activeDmFriend)) {
+      if (!query) setDmSearchResults(null);
+      return;
+    }
+    const payload = activeDmConversationId
+      ? { conversationId: activeDmConversationId, query, limit: 100 }
+      : { friendId: activeDmFriend?.id, query, limit: 100 };
+    socket.emit("dm-search", payload, (result: any) => {
+      if (!result?.ok) {
+        setDmSearchResults(null);
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      setDmSearchResults(result.messages || []);
+    });
+  }
+
   function openDmConversation(conversation: DmConversation) {
     const members = conversation.members.filter((member) => member.accountId !== account?.id);
     const peer: FriendUser = {
@@ -419,6 +462,7 @@ export default function App() {
     setViewMode("dm");
     setShowFriends(false);
     setDmMessages([]);
+    setDmSearchResults(null);
     setUnreadDm((previous) => markDmRead(previous, conversation.id));
     socket?.emit("dm:history", { conversationId: conversation.id }, (result: any) => {
       if (result?.ok) setDmMessages(result.messages || []);
@@ -2921,8 +2965,14 @@ export default function App() {
         dmUnread={unreadDm}
         dmMentionCount={unreadMentions}
         dmSearchQuery={dmSearch}
-        onDmSearchQueryChange={setDmSearch}
-        onOpenDmFriend={openDm}
+        onDmSearchQueryChange={(value) => {
+          setDmSearch(value);
+          if (!value.trim()) setDmSearchResults(null);
+        }}
+        onOpenDmFriend={(friend) => {
+          setDmSearchResults(null);
+          openDm(friend);
+        }}
         onOpenDmConversation={openDmConversation}
       />
 
@@ -2943,13 +2993,13 @@ export default function App() {
                         : t("presence.offline")
               }
               searchQuery={dmSearch}
+              messages={dmSearchResults || dmMessages}
               callState={callState}
               callTime={formatCallTime(callSeconds)}
               muted={muted}
               deafened={deafened}
               pushToTalk={pushToTalk}
               pttPressed={pttPressed}
-              messages={dmMessages}
               currentAccountId={account?.id || ""}
               currentUsername={username}
               currentAvatarData={account?.avatarData}
@@ -2974,6 +3024,7 @@ export default function App() {
                   back: t("common.back"),
                   block: t("friends.block"),
                   searchPlaceholder: t("chat.searchPlaceholder"),
+                  search: t("chat.search"),
                   calling: t("call.ringing"),
                   call: t("friends.call"),
                   endCall: t("call.end"),
@@ -3029,10 +3080,13 @@ export default function App() {
                 sendTyping(false);
                 setViewMode("server");
                 setActiveDmFriend(null);
+                setActiveDmConversationId(null);
+                setDmSearchResults(null);
                 setDmText("");
                 setReplyTo(null);
               }}
               onSearchQueryChange={setDmSearch}
+              onSearch={searchDmMessages}
               onBlock={() => {
                 if (!socket || !activeDmFriend) return;
                 if (

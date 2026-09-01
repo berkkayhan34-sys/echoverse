@@ -369,6 +369,10 @@ export const socketEventPayloadSchemas = {
       guildId: identifierSchema,
       channelId: identifierSchema,
       query: z.string().trim().min(1).max(100),
+      authorId: identifierSchema.optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      before: z.string().datetime().optional(),
       limit: z.number().int().min(1).max(100).optional()
     })
     .strict(),
@@ -408,6 +412,19 @@ export const socketEventPayloadSchemas = {
     .object({ messageId: identifierSchema, emoji: z.string().trim().min(1).max(12) })
     .strict(),
   "dm:conversations": optionalEmptyPayloadSchema,
+  "dm-search": z
+    .object({
+      friendId: identifierSchema.optional(),
+      conversationId: identifierSchema.optional(),
+      query: z.string().trim().min(1).max(100),
+      authorId: identifierSchema.optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      before: z.string().datetime().optional(),
+      limit: z.number().int().min(1).max(100).optional()
+    })
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:group-create": z
     .object({
       memberIds: z.array(identifierSchema).min(1).max(9),
