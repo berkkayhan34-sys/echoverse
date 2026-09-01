@@ -56,6 +56,17 @@ revision: local working tree on codex/parity-001-2-notifications-unread
 - `npm run reuse:check` — unavailable because the required Python/REUSE
   runtime is not installed.
 
+## Tooling follow-up (2026-09-01)
+
+The validation executables were subsequently confirmed on this Windows host,
+and the wrappers were updated to discover PATH and standard per-user install
+locations:
+
+- `npm run secret-scan` — pass with Gitleaks 8.30.1 (141 commits scanned; no
+  leaks found).
+- `npm run reuse:check` — pass with REUSE 6.2.0 (351/351 files covered;
+  GPL-3.0-only; no bad, missing, unused, or unreadable license entries).
+
 ## Security and limitations
 
 - Search authorization is evaluated on the server for every request; filters
