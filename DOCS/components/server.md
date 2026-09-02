@@ -41,6 +41,14 @@ boundary.
 SQLite backups can be restored as the local rollback path; hosted PostgreSQL
 restore remains an operator-controlled deployment action.
 
+Retention is owned by `src/persistence/retention.ts`. After migrations the
+server removes moderation/report records older than 180 days and permanently
+removes only DM or guild messages whose soft-delete tombstone is older than
+180 days. The same pass runs every six hours with an unref'd timer and is
+stopped before database shutdown; failures are surfaced through structured
+diagnostics, while a failed maintenance interval is retried on the next
+interval and a failed startup pass aborts startup.
+
 The `echoverse` main guild is reconciled idempotently at startup and during
 HTTP/socket authentication. `ECHO_VERSE_MAIN_OWNER_EMAIL` identifies the
 founder account from deployment configuration. Existing accounts are backfilled

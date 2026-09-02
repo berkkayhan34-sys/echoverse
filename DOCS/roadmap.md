@@ -546,6 +546,12 @@ Acceptance: authorized owner/admin actions persist and broadcast; members see
 only permitted channels; unauthorized users cannot mutate or enumerate hidden
 channels; keyboard and narrow-screen interactions have rendered evidence.
 
+The desktop/web visual contract is anchored to the approved EchoVerse design
+board: shared dark tokens, typography hierarchy, icon treatment, lobby
+participant stage, activity surface, and media-control strip are implemented
+in `project/packages/shared-ui/`. Mobile layout rules remain unchanged. Local
+rendered evidence is retained under `tmp/test-results/`.
+
 The parent is intentionally split into independently verifiable slices. The
 first slice below covers the durable structure and role-management surface;
 notification preferences and unread reconciliation remain a separate child.
@@ -643,13 +649,13 @@ rich content is rejected; thread/reply state survives reconnect and reload.
 id: PARITY-004
 type: dm_safety
 sequence: 530
-status: incomplete
-evidence: null
-blocks_roadmap: true
+status: complete
+evidence: evidence/PARITY-004.md
+blocks_roadmap: false
 depends_on: [PARITY-002, MOD-001]
 ```
 
-[ ] Add message requests, spam quarantine, block/mute/archive preferences,
+[x] Add message requests, spam quarantine, block/mute/archive preferences,
 per-user DM privacy controls, report intake, and retention/deletion behavior.
 All decisions must be enforced by the server and covered by wrong-user,
 blocked-user, replay, and rate-limit tests.
@@ -658,6 +664,49 @@ blocked-user, replay, and rate-limit tests.
   accept/decline/spam actions, block precedence, and replay-safe friendship
   conversion are complete; see `evidence/CHAT-001.md` and ADR-0023.
 
+- `PARITY-004.2` — server-backed per-account DM privacy plus per-peer mute and
+  reversible archive preferences are complete for web and desktop; application
+  tests/build/type/lint/localization/secret checks, authenticated local web
+  click-through, REUSE, and isolated PostgreSQL-backed execution all pass. See
+  `evidence/PARITY-004.2.md`.
+
+- `PARITY-004.3` — authenticated direct-message report intake is complete;
+  see the independently tracked child below and `evidence/PARITY-004.3.md`.
+- `PARITY-004.4` — 180-day retention and deletion cleanup is complete; see the
+  independently tracked child below and `evidence/PARITY-004.4.md`.
+
+### parity-dm-report-intake
+
+```yaml
+id: PARITY-004.3
+type: dm_report_intake
+status: complete
+evidence: evidence/PARITY-004.3.md
+blocks_roadmap: false
+depends_on: [PARITY-004.1, PARITY-004.2]
+```
+
+[x] Add authenticated, replay-safe direct-message reports with server-side
+validation, privacy-safe persistence, and a ten-distinct-report-per-reporter
+per-hour limit. Reject self/unknown targets, malformed reasons, group-message
+identifiers, and messages outside the reporter's direct conversation.
+
+### parity-dm-retention-and-deletion
+
+```yaml
+id: PARITY-004.4
+type: dm_retention_and_deletion
+status: complete
+evidence: evidence/PARITY-004.4.md
+blocks_roadmap: false
+depends_on: [PARITY-004.3]
+```
+
+[x] Apply the selected 180-day retention window to server-owned report and
+audit records, and permanently remove only soft-deleted DM/guild messages past
+the tombstone window. Run the idempotent cleanup at startup and on a bounded
+maintenance interval, with shutdown-safe timer cleanup and indexed predicates.
+
 ### parity-guild-voice-reliability-gate
 
 ```yaml
@@ -665,7 +714,7 @@ id: PARITY-005
 type: voice_reliability
 sequence: 610
 status: incomplete
-evidence: null
+evidence: evidence/PARITY-005.md
 blocks_roadmap: true
 depends_on: [VOICE-001]
 ```
@@ -675,6 +724,10 @@ authenticated clients must join the same lobby, exchange microphone audio,
 leave, rejoin, and remain isolated from private calls. Cover deterministic
 offer/answer ordering, early ICE, microphone acquisition, reconnect,
 background/foreground transitions, device failure, and explicit disconnect.
+
+Implementation is present in both renderers; authenticated browser audio-path
+and desktop smoke evidence remain a required gate before this item can be
+marked complete.
 
 Acceptance requires a repeatable two-client browser test, a desktop smoke
 check, audio-path evidence (not only a connected badge), and failure evidence

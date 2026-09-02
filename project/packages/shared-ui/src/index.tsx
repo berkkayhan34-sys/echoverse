@@ -35,6 +35,8 @@ export { MembersPanel } from "./members.js";
 export type { MembersPanelLabels } from "./members.js";
 export { VideoStage, VoiceControls } from "./video.js";
 export type { VideoStageLabels, VoiceControlsLabels } from "./video.js";
+export { LobbyStage } from "./lobby-stage.js";
+export type { LobbyStageLabels } from "./lobby-stage.js";
 export { PrivateCallStage } from "./private-call.js";
 export type { PrivateCallStageLabels } from "./private-call.js";
 export { DirectMessageHeader } from "./direct-header.js";

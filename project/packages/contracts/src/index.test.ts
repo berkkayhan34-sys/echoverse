@@ -179,7 +179,11 @@ describe("protocol contracts", () => {
       "dm-search",
       "dm:send",
       "dm:requests",
+      "dm:preferences",
+      "dm:privacy-update",
+      "dm:peer-preference-update",
       "dm:request-respond",
+      "dm:report",
       "dm:edit",
       "dm:delete",
       "call:start",
@@ -270,6 +274,15 @@ describe("protocol contracts", () => {
       }).success
     ).toBe(true);
     expect(
+      socketEventPayloadSchemas["dm:peer-preference-update"].safeParse({
+        peerId: "peer",
+        muted: true
+      }).success
+    ).toBe(true);
+    expect(
+      socketEventPayloadSchemas["dm:peer-preference-update"].safeParse({ peerId: "peer" }).success
+    ).toBe(false);
+    expect(
       socketEventPayloadSchemas["dm:request-respond"].safeParse({
         requestId: "request",
         action: "delete"
@@ -287,5 +300,15 @@ describe("protocol contracts", () => {
         name: ""
       }).success
     ).toBe(false);
+  });
+
+  it("validates privacy-safe DM report payloads", () => {
+    const schema = socketEventPayloadSchemas["dm:report"];
+    expect(schema.safeParse({ targetId: "target", reason: "spam" }).success).toBe(true);
+    expect(schema.safeParse({ targetId: "target", reason: " " }).success).toBe(false);
+    expect(schema.safeParse({ targetId: "target", reason: "x".repeat(501) }).success).toBe(false);
+    expect(schema.safeParse({ targetId: "target", reason: "spam", body: "secret" }).success).toBe(
+      false
+    );
   });
 });

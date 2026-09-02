@@ -57,7 +57,7 @@ export function ScreenPicker({
               onClick={() => onSelectSource(source)}
             >
               <div className="screen-source-preview">
-                {source.thumbnail ? <img src={source.thumbnail} alt="" /> : <span>🖥️</span>}
+                {source.thumbnail ? <img src={source.thumbnail} alt="" /> : <span>▤</span>}
               </div>
               <span>{source.name}</span>
             </button>

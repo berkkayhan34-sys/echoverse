@@ -22,6 +22,16 @@ forever. The hosted `echoverse.borayarkin.net` endpoint uses polling-only
 Socket.IO transport because its Cloudflare Tunnel closes WebSocket upgrades;
 local endpoints retain polling plus WebSocket upgrade support.
 
+Guild voice peer setup is shared in policy even though media lifecycle remains
+renderer-owned: the socket-id ordering helper elects one offerer per pair,
+peer creation is serialized, and ICE candidates received before a remote
+description are queued with a bounded capacity. Renderers request a lobby
+state repair after reconnect or foregrounding and schedule a bounded peer
+recovery when a connection enters `disconnected` or `failed`. A microphone
+track that ends is reacquired and replaced on active senders; teardown clears
+the track callback before stopping media so leaving a lobby cannot start a
+recovery loop.
+
 Feature-state helpers are pure functions. They preserve message ordering,
 reject duplicate guild-chat and DM delivery by message ID, clear deleted
 attachment data, and update only the account or conversation named by an event.

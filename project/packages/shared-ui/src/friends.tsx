@@ -35,6 +35,9 @@ export type FriendsModalLabels = {
   messageRequestAccept?: string;
   messageRequestDecline?: string;
   messageRequestSpam?: string;
+  privacyTitle?: string;
+  allowNonFriendRequests?: string;
+  privacyDescription?: string;
 };
 
 /** Shared friends, request, and direct-message entrypoint modal. */
@@ -64,7 +67,9 @@ export function FriendsModal({
   onGroupPromote,
   onGroupRemove,
   onGroupLeave,
-  onRespondMessageRequest
+  onRespondMessageRequest,
+  allowNonFriendRequests = true,
+  onUpdatePrivacy
 }: {
   friends: FriendUser[];
   incomingRequests: FriendUser[];
@@ -92,6 +97,8 @@ export function FriendsModal({
   onGroupRemove?: (conversationId: string, accountId: string) => void;
   onGroupLeave?: (conversationId: string) => void;
   onRespondMessageRequest?: (requestId: string, action: "accept" | "decline" | "spam") => void;
+  allowNonFriendRequests?: boolean;
+  onUpdatePrivacy?: (allow: boolean) => void;
 }) {
   return (
     <div className="modal-backdrop">
@@ -298,6 +305,23 @@ export function FriendsModal({
                 <small className="friend-pending">{labels.messageRequests || labels.pending}</small>
               </div>
             ))}
+          </div>
+        )}
+
+        {onUpdatePrivacy && (
+          <div className="friend-section dm-privacy-section">
+            <h3>{labels.privacyTitle || "DM privacy"}</h3>
+            <label className="dm-privacy-toggle">
+              <input
+                type="checkbox"
+                checked={allowNonFriendRequests}
+                onChange={(event) => onUpdatePrivacy(event.target.checked)}
+              />
+              <span>
+                <b>{labels.allowNonFriendRequests || "Allow message requests"}</b>
+                {labels.privacyDescription && <small>{labels.privacyDescription}</small>}
+              </span>
+            </label>
           </div>
         )}
 

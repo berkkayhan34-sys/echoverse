@@ -27,6 +27,7 @@ import {
   isLocalAudioEnabled,
   REALTIME_RETRY_POLICY,
   resolveRealtimeTransports,
+  shouldInitiateVoicePeer,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -50,6 +51,13 @@ describe("realtime recovery policy", () => {
     expect(resolveRealtimeTransports("https://echoverse.borayarkin.net")).toEqual(["polling"]);
     expect(resolveRealtimeTransports("http://127.0.0.1:3001")).toEqual(["polling", "websocket"]);
     expect(resolveRealtimeTransports("not a URL")).toEqual(["polling", "websocket"]);
+  });
+
+  it("selects one deterministic guild voice offerer per socket pair", () => {
+    expect(shouldInitiateVoicePeer("socket-a", "socket-b")).toBe(true);
+    expect(shouldInitiateVoicePeer("socket-b", "socket-a")).toBe(false);
+    expect(shouldInitiateVoicePeer("socket-a", "socket-a")).toBe(false);
+    expect(shouldInitiateVoicePeer(undefined, "socket-b")).toBe(false);
   });
 });
 

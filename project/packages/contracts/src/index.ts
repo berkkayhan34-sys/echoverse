@@ -234,10 +234,27 @@ export const socketEventPayloadSchemas = {
     .strict()
     .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:requests": optionalEmptyPayloadSchema,
+  "dm:preferences": optionalEmptyPayloadSchema,
+  "dm:privacy-update": z.object({ allowNonFriendRequests: z.boolean() }).strict(),
+  "dm:peer-preference-update": z
+    .object({
+      peerId: identifierSchema,
+      muted: z.boolean().optional(),
+      archived: z.boolean().optional()
+    })
+    .strict()
+    .refine((value) => value.muted !== undefined || value.archived !== undefined),
   "dm:request-respond": z
     .object({
       requestId: identifierSchema,
       action: z.enum(["accept", "decline", "spam"])
+    })
+    .strict(),
+  "dm:report": z
+    .object({
+      targetId: identifierSchema,
+      messageId: identifierSchema.optional(),
+      reason: z.string().trim().min(1).max(500)
     })
     .strict(),
   "dm:edit": z.object({ messageId: identifierSchema, body: z.string().max(2500) }).strict(),
@@ -491,6 +508,14 @@ export type DmRequest = {
   status: "pending" | "accepted" | "declined" | "spam";
   createdAt: string;
   updatedAt: string;
+};
+export type DmPeerPreference = {
+  peerId: string;
+  muted: boolean;
+  archived: boolean;
+};
+export type DmPrivacySettings = {
+  allowNonFriendRequests: boolean;
 };
 export type DmConversationMember = {
   accountId: string;

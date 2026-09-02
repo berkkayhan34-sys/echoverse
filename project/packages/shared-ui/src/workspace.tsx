@@ -6,6 +6,7 @@
 import type {
   Account,
   DmConversation,
+  DmPeerPreference,
   FriendUser,
   Guild,
   GuildCategory,
@@ -18,7 +19,78 @@ import type {
 import { useEffect, useState } from "react";
 import { displayInitials } from "./text.js";
 import { GuildStructurePanel, type GuildStructureLabels } from "./guild-structure.js";
-import { DirectMessageInbox, type DirectMessageInboxLabels } from "./dm-inbox.js";
+import type { DirectMessageInboxLabels } from "./dm-inbox.js";
+
+type ChannelGlyphKind = "text" | "voice" | "dm";
+
+function ChannelGlyph({ kind }: { kind: ChannelGlyphKind }) {
+  if (kind === "text") {
+    return (
+      <svg className="channel-glyph" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <path d="M9 4 7 20M17 4l-2 16M4 9h16M3 15h16" />
+      </svg>
+    );
+  }
+
+  if (kind === "voice") {
+    return (
+      <svg className="channel-glyph" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="channel-glyph" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3v-3.06A2.5 2.5 0 0 1 4 13.5v-7Z" />
+      <path d="M8 8.5h8M8 12h5" />
+    </svg>
+  );
+}
+
+function NotificationGlyph({ muted }: { muted: boolean }) {
+  return (
+    <svg className="channel-notification-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      {muted ? (
+        <path d="m5 5 14 14M9.5 5.8A5 5 0 0 1 17 10v3l2 2H8M6 15h12M10 19h4" />
+      ) : (
+        <path d="M7 15h10l-1.5-2V9a3.5 3.5 0 0 0-7 0v4L7 15ZM10 18h4" />
+      )}
+    </svg>
+  );
+}
+
+type WorkspaceGlyphName = "settings" | "microphone" | "muted" | "logout";
+
+function WorkspaceGlyph({ name }: { name: WorkspaceGlyphName }) {
+  const path = {
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="m19 12 2-1-2-3-2 1a7 7 0 0 0-2-1l-.3-2h-3.4L11 8a7 7 0 0 0-2 1L7 8l-2 3 2 1a7 7 0 0 0 0 2l-2 1 2 3 2-1a7 7 0 0 0 2 1l.3 2h3.4l.3-2a7 7 0 0 0 2-1l2 1 2-3-2-1a7 7 0 0 0 0-2Z" />
+      </>
+    ),
+    microphone: (
+      <>
+        <rect x="8" y="3" width="8" height="12" rx="4" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+      </>
+    ),
+    muted: (
+      <>
+        <rect x="8" y="3" width="8" height="12" rx="4" />
+        <path d="M5 11a7 7 0 0 0 14 0M4 4l16 16M12 18v3M9 21h6" />
+      </>
+    ),
+    logout: <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M9 12h9" />
+  }[name];
+
+  return (
+    <svg className="workspace-glyph" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      {path}
+    </svg>
+  );
+}
 
 export type WorkspaceSidebarLabels = {
   appName: string;
@@ -274,7 +346,11 @@ function MobileWorkspaceNavigation({
                       setMobileMenuOpen(false);
                     }}
                   >
-                    <span># {channel.name}</span>
+                    <span>
+                      <ChannelGlyph kind="text" />
+                      <span className="sr-only"># {channel.name}</span>
+                      <span className="channel-label">{channel.name}</span>
+                    </span>
                     {(notificationUnread[channel.id] || 0) > 0 && (
                       <span
                         className="channel-unread-badge"
@@ -304,7 +380,7 @@ function MobileWorkspaceNavigation({
                         );
                       }}
                     >
-                      {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+                      <NotificationGlyph muted={notificationLevels[channel.id] === "none"} />
                     </button>
                   )}
                 </div>
@@ -332,7 +408,10 @@ function MobileWorkspaceNavigation({
                       setMobileMenuOpen(false);
                     }}
                   >
-                    🔊 {channel.name}
+                    <span>
+                      <ChannelGlyph kind="voice" />
+                      <span className="channel-label">{channel.name}</span>
+                    </span>
                   </button>
                   {canManageGuild && onRenameLobby && channel.id.endsWith(":lobby") && (
                     <LobbyNameEditor
@@ -360,7 +439,7 @@ function MobileWorkspaceNavigation({
             (activeGuild.role === "owner" || activeGuild.role === "admin") && (
               <details className="guild-structure-details mobile-guild-structure-details">
                 <summary className="mobile-action-row guild-manage-button">
-                  ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
+                  ⚙︎ <span>{labels.manageChannels || labels.structure.title}</span>
                 </summary>
                 <GuildStructurePanel
                   channels={channels || []}
@@ -381,14 +460,14 @@ function MobileWorkspaceNavigation({
             )}
 
           <button className="mobile-action-row" onClick={openDms}>
-            ✉ <span>{labels.directMessages || "DM"}</span>
+            <ChannelGlyph kind="dm" /> <span>{labels.directMessages || "DM"}</span>
           </button>
           <button className="mobile-action-row" onClick={openFriends}>
-            👥 <span>{labels.openDms || labels.directMessages || "Friends"}</span>
+            ♙ <span>{labels.openDms || labels.directMessages || "Friends"}</span>
           </button>
           {onOpenSettings && (
             <button className="mobile-action-row" onClick={openSettings}>
-              ⚙ <span>{labels.settings || "Settings"}</span>
+              ⚙︎ <span>{labels.settings || "Settings"}</span>
             </button>
           )}
           <div className="mobile-server-actions">
@@ -429,16 +508,16 @@ function MobileWorkspaceNavigation({
           aria-current={activeDmFriend ? "page" : undefined}
           onClick={openDms}
         >
-          ✉ <span>{labels.directMessages || "DM"}</span>
+          <ChannelGlyph kind="dm" /> <span>{labels.directMessages || "DM"}</span>
         </button>
         <button onClick={openFriends}>
-          👥 <span>{labels.openDms || "Friends"}</span>
+          ♙ <span>{labels.openDms || "Friends"}</span>
         </button>
         <button
           onClick={() => activeGuild && onJoinVoice?.(activeGuild)}
           disabled={!activeGuild || !onJoinVoice}
         >
-          🔊 <span>{labels.joinVoice || labels.lobby}</span>
+          <ChannelGlyph kind="voice" /> <span>{labels.joinVoice || labels.lobby}</span>
         </button>
       </nav>
     </>
@@ -566,12 +645,14 @@ export function WorkspaceSidebar({
   dmMode,
   dmFriends = [],
   dmConversations = [],
+  dmPreferences = {},
   dmUnread = {},
   dmMentionCount = 0,
   dmSearchQuery = "",
   onDmSearchQueryChange,
   onOpenDmFriend,
-  onOpenDmConversation
+  onOpenDmConversation,
+  onUpdateDmPeerPreference
 }: {
   guilds: Guild[];
   channels?: GuildChannel[];
@@ -623,12 +704,17 @@ export function WorkspaceSidebar({
   dmMode?: boolean;
   dmFriends?: FriendUser[];
   dmConversations?: DmConversation[];
+  dmPreferences?: Record<string, DmPeerPreference>;
   dmUnread?: Record<string, number>;
   dmMentionCount?: number;
   dmSearchQuery?: string;
   onDmSearchQueryChange?: (value: string) => void;
   onOpenDmFriend?: (friend: FriendUser) => void;
   onOpenDmConversation?: (conversation: DmConversation) => void;
+  onUpdateDmPeerPreference?: (
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ) => void;
 }) {
   return (
     <>
@@ -697,7 +783,7 @@ export function WorkspaceSidebar({
           title={labels.directMessages || "Direct messages"}
           onClick={onOpenDms}
         >
-          ✉
+          <ChannelGlyph kind="dm" />
         </button>
 
         <details className="server-add-details">
@@ -736,25 +822,12 @@ export function WorkspaceSidebar({
       </aside>
 
       <aside className={`channels ${dmMode ? "dm-rail-mode" : ""}`}>
-        {dmMode &&
-          labels.dmInbox &&
-          onDmSearchQueryChange &&
-          onOpenDmFriend &&
-          onOpenDmConversation && (
-            <DirectMessageInbox
-              compact
-              friends={dmFriends}
-              conversations={dmConversations}
-              unread={dmUnread}
-              mentionCount={dmMentionCount}
-              searchQuery={dmSearchQuery}
-              labels={labels.dmInbox}
-              onSearchQueryChange={onDmSearchQueryChange}
-              onOpenFriends={onOpenFriends || (() => {})}
-              onOpenDm={onOpenDmFriend}
-              onOpenConversation={onOpenDmConversation}
-            />
-          )}
+        {!dmMode && (
+          <div className="desktop-section-title" aria-hidden="true">
+            <span>◉</span>
+            <b>{labels.servers || labels.appName}</b>
+          </div>
+        )}
         <div className={dmMode ? "hidden" : undefined}>
           <div className="guild-title">
             <div className="guild-heading-copy">
@@ -783,7 +856,7 @@ export function WorkspaceSidebar({
               (activeGuild.role === "owner" || activeGuild.role === "admin") && (
                 <details className="guild-structure-details">
                   <summary className="guild-manage-button">
-                    ⚙ <span>{labels.manageChannels || labels.structure.title}</span>
+                    ⚙︎ <span>{labels.manageChannels || labels.structure.title}</span>
                   </summary>
                   <GuildStructurePanel
                     channels={channels || []}
@@ -837,7 +910,11 @@ export function WorkspaceSidebar({
                     onMarkChannelRead?.(channel.id);
                   }}
                 >
-                  <span># {channel.name}</span>
+                  <span>
+                    <ChannelGlyph kind="text" />
+                    <span className="sr-only"># {channel.name}</span>
+                    <span className="channel-label">{channel.name}</span>
+                  </span>
                   {(notificationUnread[channel.id] || 0) > 0 && (
                     <span
                       className="channel-unread-badge"
@@ -867,7 +944,7 @@ export function WorkspaceSidebar({
                       );
                     }}
                   >
-                    {notificationLevels[channel.id] === "none" ? "🔕" : "🔔"}
+                    <NotificationGlyph muted={notificationLevels[channel.id] === "none"} />
                   </button>
                 )}
               </div>
@@ -891,7 +968,10 @@ export function WorkspaceSidebar({
                     }
                   }}
                 >
-                  🔊 {channel.name}
+                  <span>
+                    <ChannelGlyph kind="voice" />
+                    <span className="channel-label">{channel.name}</span>
+                  </span>
                 </button>
                 {activeGuild &&
                   channel.type === "voice" &&
@@ -941,7 +1021,9 @@ export function WorkspaceSidebar({
                           title={labels.muteOnlyYou}
                           onClick={() => onTogglePeerMute(peer.socketId)}
                         >
-                          {peerMuted[peer.socketId] ? "🔇" : "🔊"}
+                          <WorkspaceGlyph
+                            name={peerMuted[peer.socketId] ? "muted" : "microphone"}
+                          />
                         </button>
                         <input
                           type="range"
@@ -995,15 +1077,15 @@ export function WorkspaceSidebar({
               onClick={onOpenSettings}
               title={labels.settings || "Settings"}
             >
-              ⚙
+              <WorkspaceGlyph name="settings" />
             </button>
           )}
 
           <button aria-label={labels.microphone} onClick={onToggleMute} title={labels.microphone}>
-            {muted ? "🔇" : "🎙️"}
+            <WorkspaceGlyph name={muted ? "muted" : "microphone"} />
           </button>
           <button aria-label={labels.logout} onClick={onLogout} title={labels.logout}>
-            ↪
+            <WorkspaceGlyph name="logout" />
           </button>
         </div>
       </aside>

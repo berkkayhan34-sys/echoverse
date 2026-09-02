@@ -114,6 +114,7 @@ export type { ScreenFps, ScreenQuality } from "./media.js";
 export {
   getLobbyMemberTransition,
   REALTIME_RETRY_POLICY,
-  resolveRealtimeTransports
+  resolveRealtimeTransports,
+  shouldInitiateVoicePeer
 } from "./realtime.js";
 export type { LobbyMemberTransition } from "./realtime.js";

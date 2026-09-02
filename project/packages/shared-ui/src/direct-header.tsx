@@ -96,7 +96,7 @@ export function DirectMessageHeader({
         </button>
         {callState !== "idle" && onAddParticipant && labels.addParticipant && (
           <button className="dm-add-participant-button" onClick={onAddParticipant}>
-            👥 {labels.addParticipant}
+            ♙ {labels.addParticipant}
           </button>
         )}
       </div>

@@ -129,7 +129,7 @@ export function MediaSettingsModal({
         </div>
 
         <div className="screen-share-note">
-          🖥️ {labels.shareProfile(screenQuality, screenFps)}
+          ▤ {labels.shareProfile(screenQuality, screenFps)}
           <small>{labels.changeNotice}</small>
         </div>
 

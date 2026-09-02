@@ -20,6 +20,7 @@ import {
   formatCallTime,
   REALTIME_RETRY_POLICY,
   resolveRealtimeTransports,
+  shouldInitiateVoicePeer,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -43,6 +44,7 @@ import type {
   Account,
   ChatMessage,
   DmConversation,
+  DmPeerPreference,
   DmMessage,
   DmRequest,
   FriendUser,
@@ -255,6 +257,8 @@ export default function App() {
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [dmConversations, setDmConversations] = useState<DmConversation[]>([]);
+  const [dmPreferences, setDmPreferences] = useState<Record<string, DmPeerPreference>>({});
+  const [allowNonFriendRequests, setAllowNonFriendRequests] = useState(true);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [incomingMessageRequests, setIncomingMessageRequests] = useState<DmRequest[]>([]);
@@ -308,6 +312,10 @@ export default function App() {
   }, [activeDmConversationId]);
 
   useEffect(() => {
+    dmPreferencesRef.current = dmPreferences;
+  }, [dmPreferences]);
+
+  useEffect(() => {
     document.documentElement.lang = locale;
     writeClientLocale(localStorage, locale);
     void window.echoverse?.setLocale?.(locale);
@@ -326,6 +334,10 @@ export default function App() {
   const screenTrack = useRef<MediaStreamTrack | null>(null);
   const outgoingVideoTrack = useRef<MediaStreamTrack | null>(null);
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerSetupPromises = useRef<Map<string, Promise<RTCPeerConnection>>>(new Map());
+  const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const peerRecoveryTimers = useRef<Map<string, number>>(new Map());
+  const microphoneRecovery = useRef<Promise<MediaStream> | null>(null);
   const videoSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteAudio = useRef<Map<string, HTMLAudioElement>>(new Map());
   const remoteVideoHost = useRef<HTMLDivElement>(null);
@@ -340,6 +352,7 @@ export default function App() {
   const activeDmConversationRef = useRef<string | null>(null);
   const privateCallPeerIds = useRef<Set<string>>(new Set());
   const accountRef = useRef<Account | null>(null);
+  const dmPreferencesRef = useRef<Record<string, DmPeerPreference>>({});
   const viewModeRef = useRef<"server" | "dm">("server");
   const dmThreadRef = useRef<HTMLDivElement | null>(null);
   const typingStopTimer = useRef<number | null>(null);
@@ -425,6 +438,48 @@ export default function App() {
   function loadDmConversations() {
     socket?.emit("dm:conversations", {}, (result: any) => {
       if (result?.ok) setDmConversations(result.conversations || []);
+    });
+  }
+
+  function loadDmPreferences(activeSocket = socket) {
+    activeSocket?.emit("dm:preferences", {}, (result: any) => {
+      if (!result?.ok) return;
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
+      const next = Object.fromEntries(
+        (result.peers || [])
+          .filter((peer: any) => typeof peer?.peerId === "string")
+          .map((peer: any) => [
+            peer.peerId,
+            { peerId: peer.peerId, muted: Boolean(peer.muted), archived: Boolean(peer.archived) }
+          ])
+      );
+      setDmPreferences(next);
+    });
+  }
+
+  function updateDmPeerPreference(
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ) {
+    socket?.emit("dm:peer-preference-update", { peerId, ...updates }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      const preference = result.preference;
+      if (preference?.peerId) {
+        setDmPreferences((previous) => ({ ...previous, [preference.peerId]: preference }));
+      }
+    });
+  }
+
+  function updateDmPrivacy(value: boolean) {
+    socket?.emit("dm:privacy-update", { allowNonFriendRequests: value }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
     });
   }
 
@@ -753,6 +808,7 @@ export default function App() {
             setIdentified(true);
             loadFriends(s);
             loadDmConversations();
+            loadDmPreferences(s);
             refreshAudioDevices();
 
             const guild = activeGuildRef.current;
@@ -875,6 +931,18 @@ export default function App() {
     s.on("friends:changed", () => {
       loadFriends(s);
       loadDmConversations();
+      loadDmPreferences();
+    });
+    s.on("dm:preferences-changed", (payload: any) => {
+      if (payload?.privacy) {
+        setAllowNonFriendRequests(payload.privacy.allowNonFriendRequests !== false);
+      }
+      if (payload?.preference?.peerId) {
+        setDmPreferences((previous) => ({
+          ...previous,
+          [payload.preference.peerId]: payload.preference
+        }));
+      }
     });
     s.on("dm:requests-changed", () => loadMessageRequests(s));
     s.on("dm:request-received", (request: DmRequest) => {
@@ -961,11 +1029,18 @@ export default function App() {
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
         const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
-        playEvSound("message", volume);
-        if (currentAccount.username && msg.body.includes(`@${currentAccount.username}`)) {
+        const mutedPeer = Boolean(
+          dmPreferencesRef.current[msg.conversationId || msg.senderId]?.muted
+        );
+        if (!mutedPeer) playEvSound("message", volume);
+        if (
+          !mutedPeer &&
+          currentAccount.username &&
+          msg.body.includes(`@${currentAccount.username}`)
+        ) {
           playEvSound("mention", volume);
         }
-        if (!isOpenConversation) {
+        if (!isOpenConversation && !mutedPeer) {
           setUnreadDm((prev) => incrementDmUnread(prev, msg.conversationId || msg.senderId));
 
           window.echoverse?.notify?.({
@@ -1125,7 +1200,7 @@ export default function App() {
       for (const member of next) {
         if (member.socketId === selfId) continue;
         if (!pcs.current.has(member.socketId)) {
-          await createPeer(s, member.socketId, true);
+          await ensurePeer(s, member.socketId, shouldInitiateGuildPeer(s, member.socketId));
         }
       }
 
@@ -1138,12 +1213,12 @@ export default function App() {
 
     s.on("room-peers", async (peers: PeerInfo[]) => {
       for (const peer of peers) {
-        await createPeer(s, peer.socketId, true);
+        await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       }
     });
 
     s.on("peer-joined", async (peer: PeerInfo) => {
-      await createPeer(s, peer.socketId, false);
+      await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       s.emit("voice:sync-request");
     });
 
@@ -1153,37 +1228,72 @@ export default function App() {
     });
 
     s.on("webrtc-offer", async ({ from, sdp }) => {
-      const pc = await createPeer(s, from, false);
+      const pc = await ensurePeer(s, from, false);
+      if (!pc) return;
 
       try {
-        if (pc.signalingState !== "stable") {
+        if (pc.signalingState === "have-local-offer") {
           await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
         }
-      } catch {}
+        if (pc.signalingState !== "stable") return;
+      } catch {
+        return;
+      }
 
-      await pc.setRemoteDescription(sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      s.emit("webrtc-answer", { to: from, sdp: answer });
+      try {
+        await pc.setRemoteDescription(sdp);
+        await flushPendingIceCandidates(from, pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        s.emit("webrtc-answer", { to: from, sdp: answer });
+      } catch (error) {
+        console.warn("[echoverse.webrtc_offer_failed]", from, error);
+      }
     });
 
     s.on("webrtc-answer", async ({ from, sdp }) => {
       const pc = pcs.current.get(from);
       if (pc && pc.signalingState === "have-local-offer") {
-        await pc.setRemoteDescription(sdp);
+        try {
+          await pc.setRemoteDescription(sdp);
+          await flushPendingIceCandidates(from, pc);
+        } catch (error) {
+          console.warn("[echoverse.webrtc_answer_failed]", from, error);
+        }
       }
     });
 
     s.on("webrtc-ice", async ({ from, candidate }) => {
       const pc = pcs.current.get(from);
-      if (!pc) return;
+      if (!pc || !pc.remoteDescription) {
+        const queued = pendingIceCandidates.current.get(from) || [];
+        if (queued.length < 64) queued.push(candidate);
+        pendingIceCandidates.current.set(from, queued);
+        return;
+      }
 
       try {
         await pc.addIceCandidate(candidate);
-      } catch {}
+      } catch (error) {
+        console.warn("[echoverse.webrtc_ice_failed]", from, error);
+      }
     });
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || !joinedRef.current || !s.connected) return;
+      s.emit("voice:sync-request");
+      for (const [peerId, pc] of pcs.current) {
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+          schedulePeerRecovery(s, peerId);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+      peerRecoveryTimers.current.clear();
       s.disconnect();
       stopAllMedia();
     };
@@ -1502,7 +1612,11 @@ export default function App() {
       await leaveVoice();
     }
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
     videoSenders.current.clear();
 
@@ -1610,8 +1724,17 @@ export default function App() {
     playCallEndTone();
   }
 
+  function hasLiveMicrophone(stream: MediaStream | null) {
+    return Boolean(stream?.getAudioTracks().some((track) => track.readyState === "live"));
+  }
+
   async function ensureMicrophone() {
-    if (localStream.current) return localStream.current;
+    if (hasLiveMicrophone(localStream.current)) return localStream.current as MediaStream;
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    localStream.current = null;
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -1624,107 +1747,258 @@ export default function App() {
       video: false
     });
 
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error(t("media.audioTrackMissing"));
+    }
+
     localStream.current = stream;
+    audioTrack.onended = () => {
+      if (localStream.current !== stream) return;
+      localStream.current = null;
+      if (joinedRef.current || privateCallPeerIds.current.size > 0) {
+        void recoverMicrophone().catch((error) => {
+          setError(
+            t("auth.microphoneUnavailable", {
+              reason: error?.message || t("media.micPermissionDenied")
+            })
+          );
+        });
+      }
+    };
     startSpeakingMonitor("local", stream);
     return stream;
   }
 
+  async function recoverMicrophone() {
+    if (microphoneRecovery.current) return microphoneRecovery.current;
+    const recovery = (async () => {
+      const stream = await ensureMicrophone();
+      const track = stream.getAudioTracks()[0];
+      if (!track) throw new Error(t("media.audioTrackMissing"));
+      await Promise.all(
+        [...pcs.current.values()].flatMap((pc) =>
+          pc
+            .getSenders()
+            .filter((sender) => sender.track?.kind === "audio")
+            .map((sender) => sender.replaceTrack(track))
+        )
+      );
+      return stream;
+    })();
+    microphoneRecovery.current = recovery;
+    try {
+      return await recovery;
+    } finally {
+      if (microphoneRecovery.current === recovery) microphoneRecovery.current = null;
+    }
+  }
+
+  function shouldInitiateGuildPeer(s: Socket, peerId: string) {
+    return shouldInitiateVoicePeer(s.id, peerId);
+  }
+
+  async function ensurePeer(s: Socket, peerId: string, initiator: boolean) {
+    try {
+      return await createPeer(s, peerId, initiator);
+    } catch (error: any) {
+      console.warn("[echoverse.voice_peer_setup_failed]", peerId, error);
+      if (joinedRef.current || privateCallPeerIds.current.has(peerId)) {
+        setError(
+          t("auth.microphoneUnavailable", {
+            reason: error?.message || t("media.micPermissionDenied")
+          })
+        );
+      }
+      return null;
+    }
+  }
+
+  async function flushPendingIceCandidates(peerId: string, pc: RTCPeerConnection) {
+    const queued = pendingIceCandidates.current.get(peerId);
+    if (!queued?.length || !pc.remoteDescription) return;
+    pendingIceCandidates.current.delete(peerId);
+    for (const candidate of queued) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.warn("[echoverse.webrtc_queued_ice_failed]", peerId, error);
+      }
+    }
+  }
+
   async function createPeer(s: Socket, peerId: string, initiator: boolean) {
+    const pending = peerSetupPromises.current.get(peerId);
+    if (pending) return pending;
+
     const existing = pcs.current.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS
-    });
-
-    pcs.current.set(peerId, pc);
-
-    const stream = await ensureMicrophone();
-
-    stream.getAudioTracks().forEach((track) => {
-      pc.addTrack(track, stream);
-    });
-
-    const videoTransceiver = pc.addTransceiver("video", {
-      direction: "sendrecv"
-    });
-
-    videoSenders.current.set(peerId, videoTransceiver.sender);
-
-    if (outgoingVideoTrack.current) {
-      await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
-    }
-
-    pc.onicecandidate = (evt) => {
-      if (evt.candidate) {
-        s.emit("webrtc-ice", {
-          to: peerId,
-          candidate: evt.candidate
-        });
-      }
-    };
-
-    pc.ontrack = (evt) => {
-      const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
-
-      if (evt.track.kind === "audio") {
-        let audio = remoteAudio.current.get(peerId);
-
-        if (!audio) {
-          audio = new Audio();
-          audio.autoplay = true;
-          remoteAudio.current.set(peerId, audio);
-        }
-
-        audio.srcObject = streamForTrack;
-
-        const sinkable = audio as HTMLAudioElement & {
-          setSinkId?: (id: string) => Promise<void>;
-        };
-
-        if (selectedOutput && sinkable.setSinkId) {
-          sinkable.setSinkId(selectedOutput).catch(() => {});
-        }
-
-        startSpeakingMonitor(peerId, streamForTrack);
-
-        const volume = peerVolumes[peerId] ?? 100;
-        audio.volume = peerMuted[peerId] ? 0 : volume / 100;
-
-        audio.play().catch(() => {});
-      }
-
-      if (evt.track.kind === "video") {
-        attachRemoteVideo(peerId, evt.track);
-
-        evt.track.onunmute = () => {
-          attachRemoteVideo(peerId, evt.track);
-        };
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (["failed", "closed"].includes(pc.connectionState)) {
-        removePeer(peerId);
-      }
-    };
-
-    if (initiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      s.emit("webrtc-offer", {
-        to: peerId,
-        sdp: offer
+    const setup = (async () => {
+      const pc = new RTCPeerConnection({
+        iceServers: ICE_SERVERS
       });
-    }
 
-    return pc;
+      pcs.current.set(peerId, pc);
+
+      try {
+        const stream = await ensureMicrophone();
+        if (pcs.current.get(peerId) !== pc) {
+          pc.close();
+          throw new Error("peer setup cancelled");
+        }
+
+        stream.getAudioTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+
+        const videoTransceiver = pc.addTransceiver("video", {
+          direction: "sendrecv"
+        });
+
+        videoSenders.current.set(peerId, videoTransceiver.sender);
+
+        if (outgoingVideoTrack.current) {
+          await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
+        }
+
+        pc.onicecandidate = (evt) => {
+          if (evt.candidate) {
+            s.emit("webrtc-ice", {
+              to: peerId,
+              candidate: evt.candidate
+            });
+          }
+        };
+
+        pc.ontrack = (evt) => {
+          const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
+
+          if (evt.track.kind === "audio") {
+            let audio = remoteAudio.current.get(peerId);
+
+            if (!audio) {
+              audio = new Audio();
+              audio.autoplay = true;
+              audio.setAttribute("playsinline", "true");
+              remoteAudio.current.set(peerId, audio);
+            }
+
+            audio.srcObject = streamForTrack;
+
+            const sinkable = audio as HTMLAudioElement & {
+              setSinkId?: (id: string) => Promise<void>;
+            };
+
+            if (selectedOutput && sinkable.setSinkId) {
+              sinkable.setSinkId(selectedOutput).catch(() => {});
+            }
+
+            startSpeakingMonitor(peerId, streamForTrack);
+
+            const volume = peerVolumes[peerId] ?? 100;
+            audio.volume = peerMuted[peerId] ? 0 : volume / 100;
+
+            const playRemoteAudio = () => {
+              void audio?.play().catch(() => {});
+            };
+            playRemoteAudio();
+            if (audio.paused) {
+              window.addEventListener("pointerdown", playRemoteAudio, { once: true });
+              window.addEventListener("keydown", playRemoteAudio, { once: true });
+            }
+          }
+
+          if (evt.track.kind === "video") {
+            attachRemoteVideo(peerId, evt.track);
+
+            evt.track.onunmute = () => {
+              attachRemoteVideo(peerId, evt.track);
+            };
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "closed") {
+            removePeer(peerId);
+            return;
+          }
+          if (["disconnected", "failed"].includes(pc.connectionState)) {
+            schedulePeerRecovery(s, peerId);
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          if (["disconnected", "failed"].includes(pc.iceConnectionState)) {
+            schedulePeerRecovery(s, peerId);
+          }
+        };
+
+        await flushPendingIceCandidates(peerId, pc);
+
+        if (initiator) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          s.emit("webrtc-offer", {
+            to: peerId,
+            sdp: offer
+          });
+        }
+
+        return pc;
+      } catch (error) {
+        if (pcs.current.get(peerId) === pc) {
+          pcs.current.delete(peerId);
+          videoSenders.current.delete(peerId);
+        }
+        pc.close();
+        throw error;
+      }
+    })();
+
+    peerSetupPromises.current.set(peerId, setup);
+    try {
+      return await setup;
+    } finally {
+      if (peerSetupPromises.current.get(peerId) === setup) {
+        peerSetupPromises.current.delete(peerId);
+      }
+    }
+  }
+
+  function schedulePeerRecovery(s: Socket, peerId: string) {
+    if (!joinedRef.current || !s.connected || peerRecoveryTimers.current.has(peerId)) return;
+
+    const timer = window.setTimeout(() => {
+      peerRecoveryTimers.current.delete(peerId);
+      if (!joinedRef.current || !s.connected) return;
+
+      const current = pcs.current.get(peerId);
+      if (current?.connectionState === "connected") return;
+
+      removePeer(peerId);
+      void ensurePeer(s, peerId, shouldInitiateGuildPeer(s, peerId));
+    }, 1_500);
+
+    peerRecoveryTimers.current.set(peerId, timer);
   }
 
   function removePeer(peerId: string) {
+    const recoveryTimer = peerRecoveryTimers.current.get(peerId);
+    if (recoveryTimer !== undefined) {
+      window.clearTimeout(recoveryTimer);
+      peerRecoveryTimers.current.delete(peerId);
+    }
+    pendingIceCandidates.current.delete(peerId);
     stopSpeakingMonitor(peerId);
-    pcs.current.get(peerId)?.close();
+    const peerConnection = pcs.current.get(peerId);
+    if (peerConnection) {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    }
     pcs.current.delete(peerId);
     videoSenders.current.delete(peerId);
 
@@ -2068,8 +2342,25 @@ export default function App() {
     });
   }
 
-  function joinVoiceGuild(guild: Guild) {
-    if (!socket) return;
+  async function joinVoiceGuild(guild: Guild) {
+    if (!socket || !connected || !identified) {
+      setError(t("connection.retrying"));
+      return;
+    }
+
+    try {
+      // Acquire the microphone from the explicit join action so the first
+      // peer always has a live audio sender before signaling starts.
+      await ensureMicrophone();
+    } catch (error: any) {
+      setError(
+        t("auth.microphoneUnavailable", {
+          reason: error?.message || t("media.micPermissionDenied")
+        })
+      );
+      return;
+    }
+
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
       if (!result?.ok) {
         setError(result?.error || t("error.guildJoinFailed"));
@@ -2282,8 +2573,16 @@ export default function App() {
     reconnectingRef.current = false;
     socket?.emit("leave-room");
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
     videoSenders.current.clear();
 
     stopCameraAndScreen();
@@ -2319,7 +2618,22 @@ export default function App() {
 
     stopCameraAndScreen();
 
-    localStream.current?.getTracks().forEach((t) => t.stop());
+    pcs.current.forEach((peerConnection) => {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    });
+    pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
+    videoSenders.current.clear();
+
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
 
     localStream.current = null;
 
@@ -2912,7 +3226,11 @@ export default function App() {
             noFriends: t("ui.noFriendsInInbox"),
             noConversations: t("ui.noDmConversations"),
             memberCount: (count) => t("ui.dmMemberCount", { count }),
-            mentions: t("ui.mentions")
+            mentions: t("ui.mentions"),
+            mute: t("friends.mute"),
+            unmute: t("friends.unmute"),
+            archive: t("friends.archive"),
+            unarchive: t("friends.unarchive")
           }
         }}
         onSelectGuild={joinGuild}
@@ -2962,6 +3280,7 @@ export default function App() {
         dmMode={viewMode === "dm"}
         dmFriends={friends}
         dmConversations={dmConversations}
+        dmPreferences={dmPreferences}
         dmUnread={unreadDm}
         dmMentionCount={unreadMentions}
         dmSearchQuery={dmSearch}
@@ -2974,6 +3293,7 @@ export default function App() {
           openDm(friend);
         }}
         onOpenDmConversation={openDmConversation}
+        onUpdateDmPeerPreference={updateDmPeerPreference}
       />
 
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
@@ -3149,7 +3469,11 @@ export default function App() {
                 noFriends: t("ui.noFriendsInInbox"),
                 noConversations: t("ui.noDmConversations"),
                 memberCount: (count) => t("ui.dmMemberCount", { count }),
-                mentions: t("ui.mentions")
+                mentions: t("ui.mentions"),
+                mute: t("friends.mute"),
+                unmute: t("friends.unmute"),
+                archive: t("friends.archive"),
+                unarchive: t("friends.unarchive")
               }}
               onSearchQueryChange={setDmSearch}
               onOpenFriends={() => {
@@ -3182,6 +3506,16 @@ export default function App() {
               cameraOn={cameraOn}
               screenOn={screenOn}
               connected={connected}
+              voiceParticipants={presence}
+              voiceSocketId={socket?.id}
+              voiceLocalSpeaking={localSpeaking}
+              voiceMuted={muted}
+              voiceSpeakingPeers={speakingPeers}
+              voiceChannelName={activeGuild?.lobbyName || t("guild.lobby")}
+              voiceJoined={joined}
+              voiceStageVisible={
+                activeChannelId.endsWith(":lobby") || activeChannelId === "legacy-lobby"
+              }
               messages={messages}
               searchQuery={chatSearchQuery}
               searchResults={chatSearchResults}
@@ -3243,6 +3577,26 @@ export default function App() {
                   endCall: t("common.endCall"),
                   online: t("connection.online"),
                   offline: t("connection.offline")
+                },
+                lobby: {
+                  subtitle: t("ui.lobbySubtitle"),
+                  participants: (count) => t("ui.lobbyParticipants", { count }),
+                  emptyTitle: t("ui.lobbyEmptyTitle"),
+                  emptyDescription: t("ui.lobbyEmptyDescription"),
+                  speaking: t("call.speaking"),
+                  muted: t("media.mutedShort"),
+                  activityJoined: (username) => t("ui.lobbyJoined", { username }),
+                  controls: {
+                    microphone: t("media.microphone"),
+                    mute: t("common.mute"),
+                    camera: t("media.camera"),
+                    cameraOff: t("media.cameraOff"),
+                    screenShare: t("media.screenShare"),
+                    stopScreenShare: t("media.stopScreenShare"),
+                    endCall: t("common.endCall"),
+                    addParticipant: t("friends.addParticipant"),
+                    mediaSettings: t("media.videoShare")
+                  }
                 }
               }}
               formatDate={(value) => formatLocaleDate(value, locale)}
@@ -3308,6 +3662,8 @@ export default function App() {
         outgoingRequests={outgoingRequests}
         incomingMessageRequests={incomingMessageRequests}
         outgoingMessageRequests={outgoingMessageRequests}
+        allowNonFriendRequests={allowNonFriendRequests}
+        onUpdatePrivacy={updateDmPrivacy}
         friendSearchResults={friendSearchResults}
         conversations={dmConversations}
         unreadDm={unreadDm}
@@ -3386,7 +3742,10 @@ export default function App() {
             openGroup: t("friends.openGroup"),
             promoteGroupAdmin: t("friends.promoteGroupAdmin"),
             removeFromGroup: t("friends.removeFromGroup"),
-            leaveGroup: t("friends.leaveGroup")
+            leaveGroup: t("friends.leaveGroup"),
+            privacyTitle: t("friends.dmPrivacy"),
+            allowNonFriendRequests: t("friends.allowNonFriendRequests"),
+            privacyDescription: t("friends.allowNonFriendRequestsDescription")
           },
           calls: {
             incomingPrivateCall: t("ui.incomingPrivateCall"),

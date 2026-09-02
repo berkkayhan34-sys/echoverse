@@ -20,6 +20,7 @@ import {
   formatCallTime,
   REALTIME_RETRY_POLICY,
   resolveRealtimeTransports,
+  shouldInitiateVoicePeer,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -43,6 +44,7 @@ import type {
   Account,
   ChatMessage,
   DmConversation,
+  DmPeerPreference,
   DmMessage,
   DmRequest,
   FriendUser,
@@ -230,6 +232,8 @@ export default function App() {
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [dmConversations, setDmConversations] = useState<DmConversation[]>([]);
+  const [dmPreferences, setDmPreferences] = useState<Record<string, DmPeerPreference>>({});
+  const [allowNonFriendRequests, setAllowNonFriendRequests] = useState(true);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [incomingMessageRequests, setIncomingMessageRequests] = useState<DmRequest[]>([]);
@@ -280,6 +284,10 @@ export default function App() {
   }, [activeDmConversationId]);
 
   useEffect(() => {
+    dmPreferencesRef.current = dmPreferences;
+  }, [dmPreferences]);
+
+  useEffect(() => {
     document.documentElement.lang = locale;
     writeClientLocale(localStorage, locale);
   }, [locale]);
@@ -302,6 +310,8 @@ export default function App() {
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map());
   const peerSetupPromises = useRef<Map<string, Promise<RTCPeerConnection>>>(new Map());
   const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const peerRecoveryTimers = useRef<Map<string, number>>(new Map());
+  const microphoneRecovery = useRef<Promise<MediaStream> | null>(null);
   const videoSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteAudio = useRef<Map<string, HTMLAudioElement>>(new Map());
   const remoteVideoHost = useRef<HTMLDivElement>(null);
@@ -316,6 +326,7 @@ export default function App() {
   const activeDmConversationRef = useRef<string | null>(null);
   const privateCallPeerIds = useRef<Set<string>>(new Set());
   const accountRef = useRef<Account | null>(null);
+  const dmPreferencesRef = useRef<Record<string, DmPeerPreference>>({});
   const viewModeRef = useRef<"server" | "dm">("server");
   const dmThreadRef = useRef<HTMLDivElement | null>(null);
   const typingStopTimer = useRef<number | null>(null);
@@ -401,6 +412,48 @@ export default function App() {
   function loadDmConversations() {
     socket?.emit("dm:conversations", {}, (result: any) => {
       if (result?.ok) setDmConversations(result.conversations || []);
+    });
+  }
+
+  function loadDmPreferences(activeSocket = socket) {
+    activeSocket?.emit("dm:preferences", {}, (result: any) => {
+      if (!result?.ok) return;
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
+      const next = Object.fromEntries(
+        (result.peers || [])
+          .filter((peer: any) => typeof peer?.peerId === "string")
+          .map((peer: any) => [
+            peer.peerId,
+            { peerId: peer.peerId, muted: Boolean(peer.muted), archived: Boolean(peer.archived) }
+          ])
+      );
+      setDmPreferences(next);
+    });
+  }
+
+  function updateDmPeerPreference(
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ) {
+    socket?.emit("dm:peer-preference-update", { peerId, ...updates }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      const preference = result.preference;
+      if (preference?.peerId) {
+        setDmPreferences((previous) => ({ ...previous, [preference.peerId]: preference }));
+      }
+    });
+  }
+
+  function updateDmPrivacy(value: boolean) {
+    socket?.emit("dm:privacy-update", { allowNonFriendRequests: value }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
     });
   }
 
@@ -685,6 +738,7 @@ export default function App() {
       setIdentified(true);
       loadFriends(s);
       loadDmConversations();
+      loadDmPreferences(s);
       refreshAudioDevices();
 
       const guild = activeGuildRef.current;
@@ -807,6 +861,18 @@ export default function App() {
     s.on("friends:changed", () => {
       loadFriends(s);
       loadDmConversations();
+      loadDmPreferences();
+    });
+    s.on("dm:preferences-changed", (payload: any) => {
+      if (payload?.privacy) {
+        setAllowNonFriendRequests(payload.privacy.allowNonFriendRequests !== false);
+      }
+      if (payload?.preference?.peerId) {
+        setDmPreferences((previous) => ({
+          ...previous,
+          [payload.preference.peerId]: payload.preference
+        }));
+      }
     });
     s.on("dm:requests-changed", () => loadMessageRequests(s));
     s.on("dm:request-received", (request: DmRequest) => {
@@ -892,8 +958,13 @@ export default function App() {
       }
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
-        playEvSound("message", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
-        if (!isOpenConversation) {
+        const mutedPeer = Boolean(
+          dmPreferencesRef.current[msg.conversationId || msg.senderId]?.muted
+        );
+        if (!mutedPeer) {
+          playEvSound("message", Math.max(0, Math.min(1, effectVolumeRef.current / 100)));
+        }
+        if (!isOpenConversation && !mutedPeer) {
           setUnreadDm((prev) => incrementDmUnread(prev, msg.conversationId || msg.senderId));
 
           window.echoverse?.notify?.({
@@ -1134,7 +1205,21 @@ export default function App() {
       }
     });
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || !joinedRef.current || !s.connected) return;
+      s.emit("voice:sync-request");
+      for (const [peerId, pc] of pcs.current) {
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+          schedulePeerRecovery(s, peerId);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+      peerRecoveryTimers.current.clear();
       s.disconnect();
       stopAllMedia();
     };
@@ -1420,10 +1505,16 @@ export default function App() {
       await leaveVoice();
     }
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
     peerSetupPromises.current.clear();
     pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
     videoSenders.current.clear();
 
     remoteAudio.current.forEach((audio) => {
@@ -1530,8 +1621,7 @@ export default function App() {
   }
 
   function shouldInitiateGuildPeer(s: Socket, peerId: string) {
-    const localSocketId = s.id || "";
-    return localSocketId.length > 0 && localSocketId.localeCompare(peerId) < 0;
+    return shouldInitiateVoicePeer(s.id, peerId);
   }
 
   async function ensurePeer(s: Socket, peerId: string, initiator: boolean) {
@@ -1563,8 +1653,17 @@ export default function App() {
     }
   }
 
+  function hasLiveMicrophone(stream: MediaStream | null) {
+    return Boolean(stream?.getAudioTracks().some((track) => track.readyState === "live"));
+  }
+
   async function ensureMicrophone() {
-    if (localStream.current) return localStream.current;
+    if (hasLiveMicrophone(localStream.current)) return localStream.current as MediaStream;
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    localStream.current = null;
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -1577,9 +1676,52 @@ export default function App() {
       video: false
     });
 
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error(t("media.audioTrackMissing"));
+    }
+
     localStream.current = stream;
+    audioTrack.onended = () => {
+      if (localStream.current !== stream) return;
+      localStream.current = null;
+      if (joinedRef.current || privateCallPeerIds.current.size > 0) {
+        void recoverMicrophone().catch((error) => {
+          setError(
+            t("auth.microphoneUnavailable", {
+              reason: error?.message || t("media.micPermissionDenied")
+            })
+          );
+        });
+      }
+    };
     startSpeakingMonitor("local", stream);
     return stream;
+  }
+
+  async function recoverMicrophone() {
+    if (microphoneRecovery.current) return microphoneRecovery.current;
+    const recovery = (async () => {
+      const stream = await ensureMicrophone();
+      const track = stream.getAudioTracks()[0];
+      if (!track) throw new Error(t("media.audioTrackMissing"));
+      await Promise.all(
+        [...pcs.current.values()].flatMap((pc) =>
+          pc
+            .getSenders()
+            .filter((sender) => sender.track?.kind === "audio")
+            .map((sender) => sender.replaceTrack(track))
+        )
+      );
+      return stream;
+    })();
+    microphoneRecovery.current = recovery;
+    try {
+      return await recovery;
+    } finally {
+      if (microphoneRecovery.current === recovery) microphoneRecovery.current = null;
+    }
   }
 
   async function createPeer(s: Socket, peerId: string, initiator: boolean) {
@@ -1674,8 +1816,18 @@ export default function App() {
         };
 
         pc.onconnectionstatechange = () => {
-          if (["failed", "closed"].includes(pc.connectionState)) {
+          if (pc.connectionState === "closed") {
             removePeer(peerId);
+            return;
+          }
+          if (["disconnected", "failed"].includes(pc.connectionState)) {
+            schedulePeerRecovery(s, peerId);
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          if (["disconnected", "failed"].includes(pc.iceConnectionState)) {
+            schedulePeerRecovery(s, peerId);
           }
         };
 
@@ -1712,10 +1864,37 @@ export default function App() {
     }
   }
 
+  function schedulePeerRecovery(s: Socket, peerId: string) {
+    if (!joinedRef.current || !s.connected || peerRecoveryTimers.current.has(peerId)) return;
+
+    const timer = window.setTimeout(() => {
+      peerRecoveryTimers.current.delete(peerId);
+      if (!joinedRef.current || !s.connected) return;
+
+      const current = pcs.current.get(peerId);
+      if (current?.connectionState === "connected") return;
+
+      removePeer(peerId);
+      void ensurePeer(s, peerId, shouldInitiateGuildPeer(s, peerId));
+    }, 1_500);
+
+    peerRecoveryTimers.current.set(peerId, timer);
+  }
+
   function removePeer(peerId: string) {
+    const recoveryTimer = peerRecoveryTimers.current.get(peerId);
+    if (recoveryTimer !== undefined) {
+      window.clearTimeout(recoveryTimer);
+      peerRecoveryTimers.current.delete(peerId);
+    }
     pendingIceCandidates.current.delete(peerId);
     stopSpeakingMonitor(peerId);
-    pcs.current.get(peerId)?.close();
+    const peerConnection = pcs.current.get(peerId);
+    if (peerConnection) {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    }
     pcs.current.delete(peerId);
     videoSenders.current.delete(peerId);
 
@@ -2262,10 +2441,16 @@ export default function App() {
     reconnectingRef.current = false;
     socket?.emit("leave-room");
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
     peerSetupPromises.current.clear();
     pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
     videoSenders.current.clear();
 
     stopCameraAndScreen();
@@ -2301,7 +2486,22 @@ export default function App() {
 
     stopCameraAndScreen();
 
-    localStream.current?.getTracks().forEach((t) => t.stop());
+    pcs.current.forEach((peerConnection) => {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    });
+    pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
+    videoSenders.current.clear();
+
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
 
     localStream.current = null;
 
@@ -2940,7 +3140,11 @@ export default function App() {
             noFriends: t("ui.noFriendsInInbox"),
             noConversations: t("ui.noDmConversations"),
             memberCount: (count) => t("ui.dmMemberCount", { count }),
-            mentions: t("ui.mentions")
+            mentions: t("ui.mentions"),
+            mute: t("friends.mute"),
+            unmute: t("friends.unmute"),
+            archive: t("friends.archive"),
+            unarchive: t("friends.unarchive")
           }
         }}
         onSelectGuild={joinGuild}
@@ -3020,6 +3224,7 @@ export default function App() {
         dmMode={viewMode === "dm"}
         dmFriends={friends}
         dmConversations={dmConversations}
+        dmPreferences={dmPreferences}
         dmUnread={unreadDm}
         dmMentionCount={unreadMentions}
         dmSearchQuery={dmSearch}
@@ -3032,6 +3237,7 @@ export default function App() {
           openDm(friend);
         }}
         onOpenDmConversation={openDmConversation}
+        onUpdateDmPeerPreference={updateDmPeerPreference}
       />
 
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
@@ -3197,6 +3403,7 @@ export default function App() {
               searchQuery={dmSearch}
               currentAccountId={account?.id}
               mentionCount={unreadMentions}
+              preferences={dmPreferences}
               labels={{
                 title: t("ui.directMessages"),
                 searchPlaceholder: t("ui.searchConversations"),
@@ -3207,7 +3414,11 @@ export default function App() {
                 noFriends: t("ui.noFriendsInInbox"),
                 noConversations: t("ui.noDmConversations"),
                 memberCount: (count) => t("ui.dmMemberCount", { count }),
-                mentions: t("ui.mentions")
+                mentions: t("ui.mentions"),
+                mute: t("friends.mute"),
+                unmute: t("friends.unmute"),
+                archive: t("friends.archive"),
+                unarchive: t("friends.unarchive")
               }}
               onSearchQueryChange={setDmSearch}
               onOpenFriends={() => {
@@ -3216,6 +3427,7 @@ export default function App() {
               }}
               onOpenDm={openDm}
               onOpenConversation={openDmConversation}
+              onUpdatePeerPreference={updateDmPeerPreference}
             />
           )
         ) : (
@@ -3240,6 +3452,16 @@ export default function App() {
               cameraOn={cameraOn}
               screenOn={screenOn}
               connected={connected}
+              voiceParticipants={presence}
+              voiceSocketId={socket?.id}
+              voiceLocalSpeaking={localSpeaking}
+              voiceMuted={muted}
+              voiceSpeakingPeers={speakingPeers}
+              voiceChannelName={activeGuild?.lobbyName || t("guild.lobby")}
+              voiceJoined={joined}
+              voiceStageVisible={
+                activeChannelId.endsWith(":lobby") || activeChannelId === "legacy-lobby"
+              }
               messages={messages}
               searchQuery={chatSearchQuery}
               searchResults={chatSearchResults}
@@ -3301,6 +3523,26 @@ export default function App() {
                   endCall: t("common.endCall"),
                   online: t("connection.online"),
                   offline: t("connection.offline")
+                },
+                lobby: {
+                  subtitle: t("ui.lobbySubtitle"),
+                  participants: (count) => t("ui.lobbyParticipants", { count }),
+                  emptyTitle: t("ui.lobbyEmptyTitle"),
+                  emptyDescription: t("ui.lobbyEmptyDescription"),
+                  speaking: t("call.speaking"),
+                  muted: t("media.mutedShort"),
+                  activityJoined: (username) => t("ui.lobbyJoined", { username }),
+                  controls: {
+                    microphone: t("media.microphone"),
+                    mute: t("common.mute"),
+                    camera: t("media.camera"),
+                    cameraOff: t("media.cameraOff"),
+                    screenShare: t("media.screenShare"),
+                    stopScreenShare: t("media.stopScreenShare"),
+                    endCall: t("common.endCall"),
+                    addParticipant: t("friends.addParticipant"),
+                    mediaSettings: t("media.videoShare")
+                  }
                 }
               }}
               formatDate={(value) => formatLocaleDate(value, locale)}
@@ -3366,6 +3608,8 @@ export default function App() {
         outgoingRequests={outgoingRequests}
         incomingMessageRequests={incomingMessageRequests}
         outgoingMessageRequests={outgoingMessageRequests}
+        allowNonFriendRequests={allowNonFriendRequests}
+        onUpdatePrivacy={updateDmPrivacy}
         friendSearchResults={friendSearchResults}
         conversations={dmConversations}
         unreadDm={unreadDm}
@@ -3444,7 +3688,10 @@ export default function App() {
             openGroup: t("friends.openGroup"),
             promoteGroupAdmin: t("friends.promoteGroupAdmin"),
             removeFromGroup: t("friends.removeFromGroup"),
-            leaveGroup: t("friends.leaveGroup")
+            leaveGroup: t("friends.leaveGroup"),
+            privacyTitle: t("friends.dmPrivacy"),
+            allowNonFriendRequests: t("friends.allowNonFriendRequests"),
+            privacyDescription: t("friends.allowNonFriendRequestsDescription")
           },
           calls: {
             incomingPrivateCall: t("ui.incomingPrivateCall"),

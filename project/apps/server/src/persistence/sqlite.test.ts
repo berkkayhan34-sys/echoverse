@@ -15,6 +15,7 @@ import {
   restoreSqliteDatabase,
   type SqliteDatabase
 } from "./sqlite.js";
+import { createRetentionService, RETENTION_DAYS } from "./retention.js";
 
 const databases: SqliteDatabase[] = [];
 const temporaryDirectories: string[] = [];
@@ -49,11 +50,18 @@ describe("SQLite persistence adapter", () => {
       "009_guild_governance",
       "010_group_dms",
       "011_dm_requests",
-      "012_guild_channel_notification_state"
+      "012_dm_preferences",
+      "012_guild_channel_notification_state",
+      "013_dm_reports",
+      "014_retention_indexes"
     ]);
 
     const guildColumns = await database.query("PRAGMA table_info(echoverse_guilds)");
     expect(guildColumns.rows.some((row) => row.name === "lobby_name")).toBe(true);
+    const dmReportColumns = await database.query("PRAGMA table_info(echoverse_dm_reports)");
+    expect(dmReportColumns.rows.map((row) => row.name)).toEqual(
+      expect.arrayContaining(["reporter_id", "target_id", "message_id", "reason", "status"])
+    );
 
     const first = crypto.randomUUID();
     const second = crypto.randomUUID();
@@ -106,6 +114,94 @@ describe("SQLite persistence adapter", () => {
     ).toBe(0);
     expect(
       (await database.query("SELECT COUNT(*) AS count FROM echoverse_dm_messages")).rows[0].count
+    ).toBe(0);
+  });
+
+  it("purges expired reports and deleted message tombstones", async () => {
+    const database = await openSqliteDatabase(":memory:");
+    databases.push(database);
+    await runSqliteMigrations(database);
+    const first = crypto.randomUUID();
+    const second = crypto.randomUUID();
+    const guildId = crypto.randomUUID();
+    const channelId = crypto.randomUUID();
+    const oldDmMessageId = crypto.randomUUID();
+    const oldDmReportId = crypto.randomUUID();
+    const oldGuildReportId = crypto.randomUUID();
+    const oldAuditId = crypto.randomUUID();
+    const oldGuildMessageId = crypto.randomUUID();
+    const now = Date.parse("2026-09-02T00:00:00.000Z");
+    const old = new Date(now - (RETENTION_DAYS + 1) * 86_400_000).toISOString();
+
+    await database.query(
+      "INSERT INTO echoverse_users (id,email,username,password_hash) VALUES ($1,$2,$3,$4),($5,$6,$7,$8)",
+      [
+        first,
+        `${first}@example.test`,
+        `sqlite-retention-${first}`,
+        "hash",
+        second,
+        `${second}@example.test`,
+        `sqlite-retention-${second}`,
+        "hash"
+      ]
+    );
+    await database.query("INSERT INTO echoverse_guilds (id,name,owner_id) VALUES ($1,$2,$3)", [
+      guildId,
+      "Retention Guild",
+      second
+    ]);
+    await database.query(
+      "INSERT INTO echoverse_guild_channels (id,guild_id,name,channel_type,position,archived) VALUES ($1,$2,'general','text',0,0)",
+      [channelId, guildId]
+    );
+    await database.query(
+      "INSERT INTO echoverse_dm_messages (id,sender_id,recipient_id,body,created_at,deleted_at) VALUES ($1,$2,$3,'',$4,$4)",
+      [oldDmMessageId, first, second, old]
+    );
+    await database.query(
+      "INSERT INTO echoverse_dm_reports (id,reporter_id,target_id,message_id,reason,status,created_at) VALUES ($1,$2,$3,$4,'old','open',$5)",
+      [oldDmReportId, first, second, oldDmMessageId, old]
+    );
+    await database.query(
+      "INSERT INTO echoverse_guild_reports (id,guild_id,reporter_id,target_id,reason,status,created_at) VALUES ($1,$2,$3,$4,'old','open',$5)",
+      [oldGuildReportId, guildId, first, second, old]
+    );
+    await database.query(
+      "INSERT INTO echoverse_guild_audit_events (id,guild_id,actor_id,action,target_id,metadata,created_at) VALUES ($1,$2,$3,'kick',$4,'{}',$5)",
+      [oldAuditId, guildId, second, first, old]
+    );
+    await database.query(
+      "INSERT INTO echoverse_guild_messages (id,guild_id,channel_id,sender_id,body,created_at,deleted_at) VALUES ($1,$2,$3,$4,'',$5,$5)",
+      [oldGuildMessageId, guildId, channelId, first, old]
+    );
+
+    const retention = createRetentionService({
+      pool: database,
+      memoryDmMessages: [],
+      memoryDmReports: new Map(),
+      guildAuditEvents: new Map()
+    });
+    await expect(retention.purgeExpiredData(now)).resolves.toMatchObject({
+      dmReports: 1,
+      guildReports: 1,
+      guildAuditEvents: 1,
+      dmMessages: 1,
+      guildMessages: 1
+    });
+    expect(
+      (
+        await database.query("SELECT COUNT(*) AS count FROM echoverse_dm_reports WHERE id=$1", [
+          oldDmReportId
+        ])
+      ).rows[0].count
+    ).toBe(0);
+    expect(
+      (
+        await database.query("SELECT COUNT(*) AS count FROM echoverse_guild_messages WHERE id=$1", [
+          oldGuildMessageId
+        ])
+      ).rows[0].count
     ).toBe(0);
   });
 

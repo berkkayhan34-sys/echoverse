@@ -17,6 +17,7 @@ import {
   type Locale
 } from "@echoverse/contracts";
 import { createPersistenceRuntime } from "./persistence/runtime.js";
+import { createRetentionService } from "./persistence/retention.js";
 import { sanitizeName, sanitizeText } from "./domain/validation.js";
 import type { Account, StoredDm, User } from "./domain/types.js";
 import { registerChatHandlers } from "./features/chat/handlers.js";
@@ -56,6 +57,9 @@ import {
   memoryDmConversations,
   memoryDmMessages,
   memoryDmRequests,
+  memoryDmPeerPreferences,
+  memoryDmPrivacy,
+  memoryDmReports,
   memoryGuildMessages,
   memoryGuildChannelUserState,
   memoryFriendships,
@@ -247,7 +251,18 @@ io.use(async (socket, next) => {
 });
 
 const persistence = createPersistenceRuntime(config);
-const { sqliteDatabase, pool, initDatabase, closeDatabase } = persistence;
+const { sqliteDatabase, pool, initDatabase, closeDatabase: closePersistenceDatabase } = persistence;
+const retention = createRetentionService({
+  pool,
+  memoryDmMessages,
+  memoryDmReports,
+  guildAuditEvents
+});
+
+async function closeDatabase() {
+  retention.stop();
+  await closePersistenceDatabase();
+}
 
 const accountService = createAccountService({ pool, memoryAccounts });
 const {
@@ -268,6 +283,9 @@ const friendService = createFriendService({
   memoryDmConversations,
   memoryDmMessages,
   memoryDmRequests,
+  memoryDmPeerPreferences,
+  memoryDmPrivacy,
+  memoryDmReports,
   publicUserById
 });
 const {
@@ -282,6 +300,10 @@ const {
   friendshipKey,
   listFriendState,
   listConversations,
+  listDmPreferences,
+  getDmPrivacy,
+  updateDmPrivacy,
+  updateDmPeerPreference,
   listDmRequests,
   loadConversationHistory,
   loadDmHistory,
@@ -292,6 +314,7 @@ const {
   dmRequestBetween,
   updateDmRequestStatus,
   storeDm,
+  createDmReport,
   validateAttachment
 } = friendService;
 const guildService = createGuildService({
@@ -631,6 +654,10 @@ io.on("connection", (socket) => {
     findUsersByUsername,
     listFriendState,
     listConversations,
+    listDmPreferences,
+    getDmPrivacy,
+    updateDmPrivacy,
+    updateDmPeerPreference,
     loadConversationHistory,
     friendshipBetween,
     friendshipKey,
@@ -648,6 +675,7 @@ io.on("connection", (socket) => {
     leaveGroupConversation,
     mutateGroupMember,
     storeDm,
+    createDmReport,
     dmById,
     validateAttachment,
     socketForAccount,
@@ -727,6 +755,21 @@ export { app, closeDatabase, httpServer, io, initDatabase };
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   initDatabase()
     .then(async () => {
+      const cleanup = await retention.purgeExpiredData();
+      if (
+        cleanup.dmReports ||
+        cleanup.guildReports ||
+        cleanup.guildAuditEvents ||
+        cleanup.dmMessages ||
+        cleanup.guildMessages
+      ) {
+        serverLogger.info("echoverse.retention.cleaned", cleanup);
+      }
+      retention.start((error) => {
+        serverLogger.error("echoverse.retention.cleanup_failed", {
+          error: error instanceof Error ? error.message : "unknown"
+        });
+      });
       await loadGuilds();
       const accounts = await listAccounts();
       const configuredOwnerEmail =
