@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 id: PARITY-005
 status: in_progress
 date: 2026-09-02
-revision: working-tree (codex/parity-001-2-notifications-unread)
+revision: 5c2d2a6c0a3f259fb2339402888c556cb72597a3 (deployed)
 ```
 
 ## Scope implemented
@@ -41,12 +41,23 @@ revision: working-tree (codex/parity-001-2-notifications-unread)
 | `git diff --check` | pass | No whitespace errors. |
 | `npm run lint` | pre-existing findings | Ten unused-variable findings remain in `project/packages/shared-ui/src/workspace.tsx`; no finding is in the voice changes. |
 
-## Live hosted verification (2026-09-02)
+## Deployment verification (2026-09-02)
+
+The current branch commit `5c2d2a6c0a3f259fb2339402888c556cb72597a3` was
+deployed to the MacBook self-hosted service by workflow run `33670173945`.
+The runner completed dependency installation, server verification, web build,
+service restart, and the local health probe. The health response was
+`ok: true`, `version: 1.9.9`, `protocolVersion: 2`, and `database: postgres`.
+The public web renderer displayed
+`vgit-5c2d2a6c0a3f259fb2339402888c556cb72597a3`, confirming that the hosted
+frontend now serves this commit.
+
+## Live hosted baseline before deployment (2026-09-02)
 
 The selected test target was the MacBook-hosted `https://echoverse.borayarkin.net`
-endpoint. The health endpoint reported server version `1.9.9`; it does not match
-the current working-tree revision, so this run is a hosted baseline rather than
-proof of the local changes above.
+endpoint before workflow run `33670173945`. The health endpoint reported server
+version `1.9.9`, but the renderer served the previous revision, so this run was
+a pre-deployment baseline rather than proof of the changes above.
 
 | Scenario | Result | Observation |
 | --- | --- | --- |
@@ -70,10 +81,10 @@ are retained as prior evidence but are not treated as current acceptance proof.
 The local renderer itself loaded and rendered the sign-in surface; a screenshot
 is retained at `tmp/test-results/PARITY-005-local-renderer-login.png`.
 
-PARITY-005 MUST remain incomplete until the working-tree revision is deployed
-to the selected host and a repeatable two-client test records non-zero inbound
-audio on both clients, distinct identities, leave/rejoin behavior, private-call
-isolation, and the non-member/stale-socket failure cases.
+PARITY-005 MUST remain incomplete until a repeatable two-client test against the
+deployed revision records non-zero inbound audio on both clients, distinct
+identities, leave/rejoin behavior, private-call isolation, and the non-member/
+stale-socket failure cases.
 
 ## Security and recovery notes
 
