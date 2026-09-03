@@ -10,9 +10,6 @@ SPDX-License-Identifier: GPL-3.0-only
 - Fix hosted web and desktop realtime connections by keeping the Cloudflare
   Tunnel endpoint on Socket.IO polling, while local endpoints retain WebSocket
   upgrades.
-
-## Unreleased
-
 - Harden guild voice recovery in web and desktop with deterministic socket-pair
   offer ownership, serialized peer creation, bounded early-ICE queuing,
   foreground/reconnect repair, failed-peer recovery, and microphone-track
