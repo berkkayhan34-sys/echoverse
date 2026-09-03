@@ -33,4 +33,46 @@ describe("guild chat persistence boundary", () => {
     expect(updated).toMatchObject({ body: "Edited", pinned: true, reactions: { "👍": ["a"] } });
     expect((await service.history("g:other"))[0]?.body).toBe("Other");
   });
+
+  it("applies author, date, and cursor filters before limiting results", async () => {
+    const service = createGuildChatService(null, []);
+    const first = await service.store({
+      guildId: "g",
+      channelId: "g:general",
+      senderId: "alice",
+      body: "release note",
+      replyToId: null
+    });
+    const second = await service.store({
+      guildId: "g",
+      channelId: "g:general",
+      senderId: "bob",
+      body: "release follow-up",
+      replyToId: first.id
+    });
+    const third = await service.store({
+      guildId: "g",
+      channelId: "g:general",
+      senderId: "alice",
+      body: "release final",
+      replyToId: second.id
+    });
+    first.createdAt = "2026-01-01T00:00:00.000Z";
+    second.createdAt = "2026-01-02T00:00:00.000Z";
+    third.createdAt = "2026-01-03T00:00:00.000Z";
+
+    expect(
+      (await service.search("g:general", "release", 10, { authorId: "alice" })).map(
+        (message) => message.id
+      )
+    ).toEqual([third.id, first.id]);
+    expect(
+      (await service.search("g:general", "release", 10, { before: second.createdAt })).map(
+        (message) => message.id
+      )
+    ).toEqual([first.id]);
+    expect((await service.search("g:general", "release", 1)).map((message) => message.id)).toEqual([
+      third.id
+    ]);
+  });
 });

@@ -23,6 +23,9 @@ The validation tools are installed with `make tools-install`. On Windows this
 uses the official WinGet Gitleaks package and the repository-pinned Python
 requirements; on macOS it uses Homebrew. The REUSE gate can use Python's
 `py -m reuse` fallback when the Python Scripts directory is not yet on PATH.
+The `secret-scan` and `reuse:check` wrappers also search PATH and the standard
+per-user tool directories on Windows. Set `GITLEAKS_PATH` or `REUSE_PATH` when
+an installation uses a custom location.
 
 ## Current workspaces
 

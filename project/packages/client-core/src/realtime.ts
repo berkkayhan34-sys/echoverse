@@ -24,6 +24,16 @@ export const REALTIME_RETRY_POLICY = {
 } as const;
 
 /**
+ * Selects exactly one offerer for a guild peer pair. Socket ids are server
+ * assigned and unique for the lifetime of a connection, so a stable lexical
+ * ordering avoids simultaneous offers when both clients observe the same
+ * lobby transition.
+ */
+export function shouldInitiateVoicePeer(localSocketId: string | undefined, peerSocketId: string) {
+  return Boolean(localSocketId && peerSocketId && localSocketId < peerSocketId);
+}
+
+/**
  * Cloudflare Tunnel currently terminates the Socket.IO WebSocket upgrade for
  * the hosted EchoVerse endpoint before the polling session is established.
  * Keep that endpoint on polling so web and desktop clients can establish a

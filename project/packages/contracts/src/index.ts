@@ -234,10 +234,27 @@ export const socketEventPayloadSchemas = {
     .strict()
     .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:requests": optionalEmptyPayloadSchema,
+  "dm:preferences": optionalEmptyPayloadSchema,
+  "dm:privacy-update": z.object({ allowNonFriendRequests: z.boolean() }).strict(),
+  "dm:peer-preference-update": z
+    .object({
+      peerId: identifierSchema,
+      muted: z.boolean().optional(),
+      archived: z.boolean().optional()
+    })
+    .strict()
+    .refine((value) => value.muted !== undefined || value.archived !== undefined),
   "dm:request-respond": z
     .object({
       requestId: identifierSchema,
       action: z.enum(["accept", "decline", "spam"])
+    })
+    .strict(),
+  "dm:report": z
+    .object({
+      targetId: identifierSchema,
+      messageId: identifierSchema.optional(),
+      reason: z.string().trim().min(1).max(500)
     })
     .strict(),
   "dm:edit": z.object({ messageId: identifierSchema, body: z.string().max(2500) }).strict(),
@@ -342,6 +359,17 @@ export const socketEventPayloadSchemas = {
   "guild:leave": z.object({ guildId: identifierSchema }).strict(),
   "guild:delete": z.object({ guildId: identifierSchema }).strict(),
   "guild:select": z.object({ guildId: identifierSchema }).strict(),
+  "guild:notification-state": z.object({ guildId: identifierSchema }).strict(),
+  "guild:set-notification-preference": z
+    .object({
+      guildId: identifierSchema,
+      channelId: identifierSchema,
+      level: z.enum(["all", "none"])
+    })
+    .strict(),
+  "guild:mark-channel-read": z
+    .object({ guildId: identifierSchema, channelId: identifierSchema })
+    .strict(),
   "join-room": z.object({ guildId: z.string().trim().min(1).max(80) }).strict(),
   "voice:sync-request": optionalEmptyPayloadSchema,
   "leave-room": optionalEmptyPayloadSchema,
@@ -358,6 +386,10 @@ export const socketEventPayloadSchemas = {
       guildId: identifierSchema,
       channelId: identifierSchema,
       query: z.string().trim().min(1).max(100),
+      authorId: identifierSchema.optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      before: z.string().datetime().optional(),
       limit: z.number().int().min(1).max(100).optional()
     })
     .strict(),
@@ -397,6 +429,19 @@ export const socketEventPayloadSchemas = {
     .object({ messageId: identifierSchema, emoji: z.string().trim().min(1).max(12) })
     .strict(),
   "dm:conversations": optionalEmptyPayloadSchema,
+  "dm-search": z
+    .object({
+      friendId: identifierSchema.optional(),
+      conversationId: identifierSchema.optional(),
+      query: z.string().trim().min(1).max(100),
+      authorId: identifierSchema.optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      before: z.string().datetime().optional(),
+      limit: z.number().int().min(1).max(100).optional()
+    })
+    .strict()
+    .refine((value) => Boolean(value.friendId) !== Boolean(value.conversationId)),
   "dm:group-create": z
     .object({
       memberIds: z.array(identifierSchema).min(1).max(9),
@@ -464,6 +509,14 @@ export type DmRequest = {
   createdAt: string;
   updatedAt: string;
 };
+export type DmPeerPreference = {
+  peerId: string;
+  muted: boolean;
+  archived: boolean;
+};
+export type DmPrivacySettings = {
+  allowNonFriendRequests: boolean;
+};
 export type DmConversationMember = {
   accountId: string;
   username: string;
@@ -528,6 +581,20 @@ export type GuildCategory = {
   position: number;
   archived: boolean;
   createdAt: string;
+};
+export type GuildNotificationLevel = "all" | "none";
+export type GuildNotificationPreference = {
+  channelId: string;
+  level: GuildNotificationLevel;
+};
+export type GuildUnreadChannel = {
+  channelId: string;
+  unreadCount: number;
+};
+export type GuildNotificationState = {
+  guildId: string;
+  preferences: GuildNotificationPreference[];
+  unread: GuildUnreadChannel[];
 };
 export type Guild = {
   id: string;

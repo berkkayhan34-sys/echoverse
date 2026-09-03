@@ -12,6 +12,9 @@ import type {
   GuildCategory,
   GuildRole,
   StoredDm,
+  StoredDmPeerPreference,
+  StoredDmPrivacy,
+  StoredDmReport,
   StoredDmRequest,
   StoredGuildMessage,
   User
@@ -69,10 +72,17 @@ export const memoryFriendships = new Map<
 >();
 export const memoryDmMessages: StoredDm[] = [];
 export const memoryDmRequests = new Map<string, StoredDmRequest>();
+export const memoryDmPeerPreferences = new Map<string, StoredDmPeerPreference>();
+export const memoryDmPrivacy = new Map<string, StoredDmPrivacy>();
+export const memoryDmReports = new Map<string, StoredDmReport>();
 export const memoryDmConversations = new Map<
   string,
   import("../features/friends/service.js").MemoryDmConversation
 >();
 export const memoryGuildMessages: StoredGuildMessage[] = [];
+export const memoryGuildChannelUserState = new Map<
+  string,
+  { notificationLevel: "all" | "none"; lastReadAt: string | null }
+>();
 export const accountPresence = new Map<string, string>();
 export const dmReadAt = new Map<string, number>();

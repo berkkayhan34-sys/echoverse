@@ -14,6 +14,7 @@ import type {
   User
 } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
+import { RETENTION_DAYS } from "../../persistence/retention.js";
 import {
   permissionCan,
   type GuildPermission,
@@ -1015,7 +1016,7 @@ export function createGuildService({
   }
 
   async function auditFor(guildId: string, limit = 100) {
-    const cutoff = new Date(Date.now() - 180 * 86_400_000).toISOString();
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString();
     if (pool)
       await pool.query(
         "DELETE FROM echoverse_guild_audit_events WHERE guild_id=$1 AND created_at < $2",

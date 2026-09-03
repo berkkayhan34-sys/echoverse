@@ -20,6 +20,7 @@ import {
   formatCallTime,
   REALTIME_RETRY_POLICY,
   resolveRealtimeTransports,
+  shouldInitiateVoicePeer,
   updateDmMessage,
   updateFriendPresence,
   updateTypingState,
@@ -28,6 +29,7 @@ import {
 } from "@echoverse/client-core";
 import {
   AuthForm,
+  DirectMessageInbox,
   DirectMessageView,
   GuildPicker,
   LocaleSelect,
@@ -42,6 +44,7 @@ import type {
   Account,
   ChatMessage,
   DmConversation,
+  DmPeerPreference,
   DmMessage,
   DmRequest,
   FriendUser,
@@ -50,6 +53,8 @@ import type {
   GuildCategory,
   GuildChannelType,
   GuildMember,
+  GuildNotificationLevel,
+  GuildNotificationState,
   IncomingCall,
   PeerInfo,
   ScreenSource,
@@ -142,6 +147,12 @@ export default function App() {
   const [guildCategories, setGuildCategories] = useState<GuildCategory[]>([]);
   const [activeGuild, setActiveGuild] = useState<Guild | null>(null);
   const [activeChannelId, setActiveChannelId] = useState("");
+  const [guildNotificationStates, setGuildNotificationStates] = useState<
+    Record<
+      string,
+      { preferences: Record<string, GuildNotificationLevel>; unread: Record<string, number> }
+    >
+  >({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [guildMembers, setGuildMembers] = useState<GuildMember[]>([]);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
@@ -170,9 +181,23 @@ export default function App() {
   const deepLinkMessageRef = useRef("");
 
   useEffect(() => {
-    const messageId = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("message");
-    if (!messageId) {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const guildId = params.get("guild");
+    const channelId = params.get("channel");
+    const messageId = params.get("message");
+    if (!guildId || !channelId || !messageId) {
       deepLinkMessageRef.current = "";
+      return;
+    }
+    if (!socket || !connected || !identified) return;
+    if (activeGuild?.id !== guildId) {
+      const targetGuild = guilds.find((guild) => guild.id === guildId);
+      if (targetGuild) void joinGuild(targetGuild);
+      return;
+    }
+    if (activeChannelId !== channelId) {
+      const targetChannel = guildChannels.find((channel) => channel.id === channelId);
+      if (targetChannel) selectGuildChannel(targetChannel);
       return;
     }
     if (deepLinkMessageRef.current === messageId) return;
@@ -186,7 +211,16 @@ export default function App() {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages]);
+  }, [
+    messages,
+    activeGuild,
+    activeChannelId,
+    guildChannels,
+    guilds,
+    connected,
+    identified,
+    socket
+  ]);
 
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
   const [peerMuted, setPeerMuted] = useState<Record<string, boolean>>({});
@@ -223,6 +257,8 @@ export default function App() {
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<FriendUser[]>([]);
   const [dmConversations, setDmConversations] = useState<DmConversation[]>([]);
+  const [dmPreferences, setDmPreferences] = useState<Record<string, DmPeerPreference>>({});
+  const [allowNonFriendRequests, setAllowNonFriendRequests] = useState(true);
   const [incomingRequests, setIncomingRequests] = useState<FriendUser[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendUser[]>([]);
   const [incomingMessageRequests, setIncomingMessageRequests] = useState<DmRequest[]>([]);
@@ -248,8 +284,10 @@ export default function App() {
   const [pttPressed, setPttPressed] = useState(false);
 
   const [dmMessages, setDmMessages] = useState<DmMessage[]>([]);
+  const [dmSearchResults, setDmSearchResults] = useState<DmMessage[] | null>(null);
   const [dmText, setDmText] = useState("");
   const [unreadDm, setUnreadDm] = useState<Record<string, number>>({});
+  const [unreadMentions, setUnreadMentions] = useState(0);
   const [dmTyping, setDmTyping] = useState<Record<string, boolean>>({});
   const [myStatus, setMyStatus] = useState<"online" | "idle" | "dnd" | "invisible">("online");
   const [dmSearch, setDmSearch] = useState("");
@@ -274,6 +312,10 @@ export default function App() {
   }, [activeDmConversationId]);
 
   useEffect(() => {
+    dmPreferencesRef.current = dmPreferences;
+  }, [dmPreferences]);
+
+  useEffect(() => {
     document.documentElement.lang = locale;
     writeClientLocale(localStorage, locale);
     void window.echoverse?.setLocale?.(locale);
@@ -292,6 +334,10 @@ export default function App() {
   const screenTrack = useRef<MediaStreamTrack | null>(null);
   const outgoingVideoTrack = useRef<MediaStreamTrack | null>(null);
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerSetupPromises = useRef<Map<string, Promise<RTCPeerConnection>>>(new Map());
+  const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const peerRecoveryTimers = useRef<Map<string, number>>(new Map());
+  const microphoneRecovery = useRef<Promise<MediaStream> | null>(null);
   const videoSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteAudio = useRef<Map<string, HTMLAudioElement>>(new Map());
   const remoteVideoHost = useRef<HTMLDivElement>(null);
@@ -306,6 +352,7 @@ export default function App() {
   const activeDmConversationRef = useRef<string | null>(null);
   const privateCallPeerIds = useRef<Set<string>>(new Set());
   const accountRef = useRef<Account | null>(null);
+  const dmPreferencesRef = useRef<Record<string, DmPeerPreference>>({});
   const viewModeRef = useRef<"server" | "dm">("server");
   const dmThreadRef = useRef<HTMLDivElement | null>(null);
   const typingStopTimer = useRef<number | null>(null);
@@ -313,6 +360,13 @@ export default function App() {
   const dmFileInputRef = useRef<HTMLInputElement | null>(null);
   const lobbySoundCooldown = useRef(0);
   const activeGuildRef = useRef<Guild | null>(null);
+  const activeChannelRef = useRef("");
+  const guildNotificationStatesRef = useRef<
+    Record<
+      string,
+      { preferences: Record<string, GuildNotificationLevel>; unread: Record<string, number> }
+    >
+  >({});
   const joinedRef = useRef(false);
   const lobbySoundsEnabledRef = useRef(lobbySoundsEnabled);
   const effectVolumeRef = useRef(effectVolume);
@@ -387,6 +441,67 @@ export default function App() {
     });
   }
 
+  function loadDmPreferences(activeSocket = socket) {
+    activeSocket?.emit("dm:preferences", {}, (result: any) => {
+      if (!result?.ok) return;
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
+      const next = Object.fromEntries(
+        (result.peers || [])
+          .filter((peer: any) => typeof peer?.peerId === "string")
+          .map((peer: any) => [
+            peer.peerId,
+            { peerId: peer.peerId, muted: Boolean(peer.muted), archived: Boolean(peer.archived) }
+          ])
+      );
+      setDmPreferences(next);
+    });
+  }
+
+  function updateDmPeerPreference(
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ) {
+    socket?.emit("dm:peer-preference-update", { peerId, ...updates }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      const preference = result.preference;
+      if (preference?.peerId) {
+        setDmPreferences((previous) => ({ ...previous, [preference.peerId]: preference }));
+      }
+    });
+  }
+
+  function updateDmPrivacy(value: boolean) {
+    socket?.emit("dm:privacy-update", { allowNonFriendRequests: value }, (result: any) => {
+      if (!result?.ok) {
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      setAllowNonFriendRequests(result.privacy?.allowNonFriendRequests !== false);
+    });
+  }
+
+  function searchDmMessages() {
+    const query = dmSearch.trim();
+    if (!socket || !query || (!activeDmConversationId && !activeDmFriend)) {
+      if (!query) setDmSearchResults(null);
+      return;
+    }
+    const payload = activeDmConversationId
+      ? { conversationId: activeDmConversationId, query, limit: 100 }
+      : { friendId: activeDmFriend?.id, query, limit: 100 };
+    socket.emit("dm-search", payload, (result: any) => {
+      if (!result?.ok) {
+        setDmSearchResults(null);
+        setError(result?.error || t("error.requestFailed"));
+        return;
+      }
+      setDmSearchResults(result.messages || []);
+    });
+  }
+
   function openDmConversation(conversation: DmConversation) {
     const members = conversation.members.filter((member) => member.accountId !== account?.id);
     const peer: FriendUser = {
@@ -402,6 +517,8 @@ export default function App() {
     setViewMode("dm");
     setShowFriends(false);
     setDmMessages([]);
+    setDmSearchResults(null);
+    setUnreadDm((previous) => markDmRead(previous, conversation.id));
     socket?.emit("dm:history", { conversationId: conversation.id }, (result: any) => {
       if (result?.ok) setDmMessages(result.messages || []);
       else setError(result?.error || t("error.requestFailed"));
@@ -498,6 +615,14 @@ export default function App() {
     activeGuildRef.current = activeGuild;
     joinedRef.current = joined;
   }, [activeGuild, joined]);
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannelId;
+  }, [activeChannelId]);
+
+  useEffect(() => {
+    guildNotificationStatesRef.current = guildNotificationStates;
+  }, [guildNotificationStates]);
 
   useEffect(() => {
     lobbySoundsEnabledRef.current = lobbySoundsEnabled;
@@ -683,6 +808,7 @@ export default function App() {
             setIdentified(true);
             loadFriends(s);
             loadDmConversations();
+            loadDmPreferences(s);
             refreshAudioDevices();
 
             const guild = activeGuildRef.current;
@@ -758,10 +884,65 @@ export default function App() {
         setGuildCategories(Array.isArray(categories) ? categories : []);
       }
     );
+    const applyNotificationState = (state: GuildNotificationState) => {
+      if (!state?.guildId || !Array.isArray(state.preferences) || !Array.isArray(state.unread))
+        return;
+      const preferences = Object.fromEntries(
+        state.preferences
+          .filter((item) => item?.channelId && (item.level === "all" || item.level === "none"))
+          .map((item) => [item.channelId, item.level])
+      );
+      const unread = Object.fromEntries(
+        state.unread
+          .filter((item) => item?.channelId && Number.isFinite(item.unreadCount))
+          .map((item) => [item.channelId, Math.max(0, Math.min(100_000, Number(item.unreadCount)))])
+      );
+      setGuildNotificationStates((current) => ({
+        ...current,
+        [state.guildId]: { preferences, unread }
+      }));
+    };
+    s.on("guild:notification-state", applyNotificationState);
+    s.on(
+      "guild:unread",
+      (payload: { guildId?: string; channelId?: string; unreadCount?: number }) => {
+        if (!payload?.guildId || !payload.channelId || !Number.isFinite(payload.unreadCount))
+          return;
+        const isOpenChannel =
+          viewModeRef.current === "server" &&
+          activeGuildRef.current?.id === payload.guildId &&
+          activeChannelRef.current === payload.channelId;
+        const unreadCount = isOpenChannel
+          ? 0
+          : Math.max(0, Math.min(100_000, Number(payload.unreadCount)));
+        setGuildNotificationStates((current) => {
+          const state = current[payload.guildId!] || { preferences: {}, unread: {} };
+          return {
+            ...current,
+            [payload.guildId!]: {
+              ...state,
+              unread: { ...state.unread, [payload.channelId!]: unreadCount }
+            }
+          };
+        });
+      }
+    );
 
     s.on("friends:changed", () => {
       loadFriends(s);
       loadDmConversations();
+      loadDmPreferences();
+    });
+    s.on("dm:preferences-changed", (payload: any) => {
+      if (payload?.privacy) {
+        setAllowNonFriendRequests(payload.privacy.allowNonFriendRequests !== false);
+      }
+      if (payload?.preference?.peerId) {
+        setDmPreferences((previous) => ({
+          ...previous,
+          [payload.preference.peerId]: payload.preference
+        }));
+      }
     });
     s.on("dm:requests-changed", () => loadMessageRequests(s));
     s.on("dm:request-received", (request: DmRequest) => {
@@ -848,12 +1029,19 @@ export default function App() {
 
       if (currentAccount && msg.senderId !== currentAccount.id) {
         const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
-        playEvSound("message", volume);
-        if (currentAccount.username && msg.body.includes(`@${currentAccount.username}`)) {
+        const mutedPeer = Boolean(
+          dmPreferencesRef.current[msg.conversationId || msg.senderId]?.muted
+        );
+        if (!mutedPeer) playEvSound("message", volume);
+        if (
+          !mutedPeer &&
+          currentAccount.username &&
+          msg.body.includes(`@${currentAccount.username}`)
+        ) {
           playEvSound("mention", volume);
         }
-        if (!isOpenConversation) {
-          setUnreadDm((prev) => incrementDmUnread(prev, msg.senderId));
+        if (!isOpenConversation && !mutedPeer) {
+          setUnreadDm((prev) => incrementDmUnread(prev, msg.conversationId || msg.senderId));
 
           window.echoverse?.notify?.({
             title: `${translatorRef.current("app.name")} · ${msg.senderUsername || translatorRef.current("notification.newMessageTitle")}`,
@@ -931,9 +1119,22 @@ export default function App() {
     });
 
     s.on("chat-message", (msg: ChatMessage) => {
-      setMessages((prev) => appendChatMessage(prev, msg));
+      const isCurrentChannel =
+        viewModeRef.current === "server" &&
+        msg.guildId === activeGuildRef.current?.id &&
+        (msg.channelId || `${msg.guildId}:general`) === activeChannelRef.current;
+      if (isCurrentChannel) setMessages((prev) => appendChatMessage(prev, msg));
       const currentAccount = accountRef.current;
-      if (currentAccount && msg.username !== currentAccount.username) {
+      const channelId = msg.channelId || `${msg.guildId}:general`;
+      const notificationState = msg.guildId
+        ? guildNotificationStatesRef.current[msg.guildId]
+        : undefined;
+      if (
+        currentAccount &&
+        msg.username !== currentAccount.username &&
+        !isCurrentChannel &&
+        notificationState?.preferences[channelId] !== "none"
+      ) {
         window.echoverse?.notify?.({
           title: `${translatorRef.current("app.name")} · ${msg.username}`,
           body: msg.text,
@@ -953,6 +1154,9 @@ export default function App() {
         text: string;
       }) => {
         if (mention.guildId !== activeGuildRef.current?.id) return;
+        const isOpenChannel =
+          viewModeRef.current === "server" && activeChannelRef.current === mention.channelId;
+        if (!isOpenChannel) setUnreadMentions((count) => Math.min(100_000, count + 1));
         const volume = Math.max(0, Math.min(1, effectVolumeRef.current / 100));
         playEvSound("mention", volume);
         window.echoverse?.notify?.({
@@ -996,7 +1200,7 @@ export default function App() {
       for (const member of next) {
         if (member.socketId === selfId) continue;
         if (!pcs.current.has(member.socketId)) {
-          await createPeer(s, member.socketId, true);
+          await ensurePeer(s, member.socketId, shouldInitiateGuildPeer(s, member.socketId));
         }
       }
 
@@ -1009,12 +1213,12 @@ export default function App() {
 
     s.on("room-peers", async (peers: PeerInfo[]) => {
       for (const peer of peers) {
-        await createPeer(s, peer.socketId, true);
+        await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       }
     });
 
     s.on("peer-joined", async (peer: PeerInfo) => {
-      await createPeer(s, peer.socketId, false);
+      await ensurePeer(s, peer.socketId, shouldInitiateGuildPeer(s, peer.socketId));
       s.emit("voice:sync-request");
     });
 
@@ -1024,37 +1228,72 @@ export default function App() {
     });
 
     s.on("webrtc-offer", async ({ from, sdp }) => {
-      const pc = await createPeer(s, from, false);
+      const pc = await ensurePeer(s, from, false);
+      if (!pc) return;
 
       try {
-        if (pc.signalingState !== "stable") {
+        if (pc.signalingState === "have-local-offer") {
           await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
         }
-      } catch {}
+        if (pc.signalingState !== "stable") return;
+      } catch {
+        return;
+      }
 
-      await pc.setRemoteDescription(sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      s.emit("webrtc-answer", { to: from, sdp: answer });
+      try {
+        await pc.setRemoteDescription(sdp);
+        await flushPendingIceCandidates(from, pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        s.emit("webrtc-answer", { to: from, sdp: answer });
+      } catch (error) {
+        console.warn("[echoverse.webrtc_offer_failed]", from, error);
+      }
     });
 
     s.on("webrtc-answer", async ({ from, sdp }) => {
       const pc = pcs.current.get(from);
       if (pc && pc.signalingState === "have-local-offer") {
-        await pc.setRemoteDescription(sdp);
+        try {
+          await pc.setRemoteDescription(sdp);
+          await flushPendingIceCandidates(from, pc);
+        } catch (error) {
+          console.warn("[echoverse.webrtc_answer_failed]", from, error);
+        }
       }
     });
 
     s.on("webrtc-ice", async ({ from, candidate }) => {
       const pc = pcs.current.get(from);
-      if (!pc) return;
+      if (!pc || !pc.remoteDescription) {
+        const queued = pendingIceCandidates.current.get(from) || [];
+        if (queued.length < 64) queued.push(candidate);
+        pendingIceCandidates.current.set(from, queued);
+        return;
+      }
 
       try {
         await pc.addIceCandidate(candidate);
-      } catch {}
+      } catch (error) {
+        console.warn("[echoverse.webrtc_ice_failed]", from, error);
+      }
     });
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || !joinedRef.current || !s.connected) return;
+      s.emit("voice:sync-request");
+      for (const [peerId, pc] of pcs.current) {
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+          schedulePeerRecovery(s, peerId);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+      peerRecoveryTimers.current.clear();
       s.disconnect();
       stopAllMedia();
     };
@@ -1373,7 +1612,11 @@ export default function App() {
       await leaveVoice();
     }
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
     videoSenders.current.clear();
 
@@ -1481,8 +1724,17 @@ export default function App() {
     playCallEndTone();
   }
 
+  function hasLiveMicrophone(stream: MediaStream | null) {
+    return Boolean(stream?.getAudioTracks().some((track) => track.readyState === "live"));
+  }
+
   async function ensureMicrophone() {
-    if (localStream.current) return localStream.current;
+    if (hasLiveMicrophone(localStream.current)) return localStream.current as MediaStream;
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    localStream.current = null;
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -1495,107 +1747,258 @@ export default function App() {
       video: false
     });
 
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error(t("media.audioTrackMissing"));
+    }
+
     localStream.current = stream;
+    audioTrack.onended = () => {
+      if (localStream.current !== stream) return;
+      localStream.current = null;
+      if (joinedRef.current || privateCallPeerIds.current.size > 0) {
+        void recoverMicrophone().catch((error) => {
+          setError(
+            t("auth.microphoneUnavailable", {
+              reason: error?.message || t("media.micPermissionDenied")
+            })
+          );
+        });
+      }
+    };
     startSpeakingMonitor("local", stream);
     return stream;
   }
 
+  async function recoverMicrophone() {
+    if (microphoneRecovery.current) return microphoneRecovery.current;
+    const recovery = (async () => {
+      const stream = await ensureMicrophone();
+      const track = stream.getAudioTracks()[0];
+      if (!track) throw new Error(t("media.audioTrackMissing"));
+      await Promise.all(
+        [...pcs.current.values()].flatMap((pc) =>
+          pc
+            .getSenders()
+            .filter((sender) => sender.track?.kind === "audio")
+            .map((sender) => sender.replaceTrack(track))
+        )
+      );
+      return stream;
+    })();
+    microphoneRecovery.current = recovery;
+    try {
+      return await recovery;
+    } finally {
+      if (microphoneRecovery.current === recovery) microphoneRecovery.current = null;
+    }
+  }
+
+  function shouldInitiateGuildPeer(s: Socket, peerId: string) {
+    return shouldInitiateVoicePeer(s.id, peerId);
+  }
+
+  async function ensurePeer(s: Socket, peerId: string, initiator: boolean) {
+    try {
+      return await createPeer(s, peerId, initiator);
+    } catch (error: any) {
+      console.warn("[echoverse.voice_peer_setup_failed]", peerId, error);
+      if (joinedRef.current || privateCallPeerIds.current.has(peerId)) {
+        setError(
+          t("auth.microphoneUnavailable", {
+            reason: error?.message || t("media.micPermissionDenied")
+          })
+        );
+      }
+      return null;
+    }
+  }
+
+  async function flushPendingIceCandidates(peerId: string, pc: RTCPeerConnection) {
+    const queued = pendingIceCandidates.current.get(peerId);
+    if (!queued?.length || !pc.remoteDescription) return;
+    pendingIceCandidates.current.delete(peerId);
+    for (const candidate of queued) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.warn("[echoverse.webrtc_queued_ice_failed]", peerId, error);
+      }
+    }
+  }
+
   async function createPeer(s: Socket, peerId: string, initiator: boolean) {
+    const pending = peerSetupPromises.current.get(peerId);
+    if (pending) return pending;
+
     const existing = pcs.current.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS
-    });
-
-    pcs.current.set(peerId, pc);
-
-    const stream = await ensureMicrophone();
-
-    stream.getAudioTracks().forEach((track) => {
-      pc.addTrack(track, stream);
-    });
-
-    const videoTransceiver = pc.addTransceiver("video", {
-      direction: "sendrecv"
-    });
-
-    videoSenders.current.set(peerId, videoTransceiver.sender);
-
-    if (outgoingVideoTrack.current) {
-      await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
-    }
-
-    pc.onicecandidate = (evt) => {
-      if (evt.candidate) {
-        s.emit("webrtc-ice", {
-          to: peerId,
-          candidate: evt.candidate
-        });
-      }
-    };
-
-    pc.ontrack = (evt) => {
-      const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
-
-      if (evt.track.kind === "audio") {
-        let audio = remoteAudio.current.get(peerId);
-
-        if (!audio) {
-          audio = new Audio();
-          audio.autoplay = true;
-          remoteAudio.current.set(peerId, audio);
-        }
-
-        audio.srcObject = streamForTrack;
-
-        const sinkable = audio as HTMLAudioElement & {
-          setSinkId?: (id: string) => Promise<void>;
-        };
-
-        if (selectedOutput && sinkable.setSinkId) {
-          sinkable.setSinkId(selectedOutput).catch(() => {});
-        }
-
-        startSpeakingMonitor(peerId, streamForTrack);
-
-        const volume = peerVolumes[peerId] ?? 100;
-        audio.volume = peerMuted[peerId] ? 0 : volume / 100;
-
-        audio.play().catch(() => {});
-      }
-
-      if (evt.track.kind === "video") {
-        attachRemoteVideo(peerId, evt.track);
-
-        evt.track.onunmute = () => {
-          attachRemoteVideo(peerId, evt.track);
-        };
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (["failed", "closed"].includes(pc.connectionState)) {
-        removePeer(peerId);
-      }
-    };
-
-    if (initiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      s.emit("webrtc-offer", {
-        to: peerId,
-        sdp: offer
+    const setup = (async () => {
+      const pc = new RTCPeerConnection({
+        iceServers: ICE_SERVERS
       });
-    }
 
-    return pc;
+      pcs.current.set(peerId, pc);
+
+      try {
+        const stream = await ensureMicrophone();
+        if (pcs.current.get(peerId) !== pc) {
+          pc.close();
+          throw new Error("peer setup cancelled");
+        }
+
+        stream.getAudioTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+
+        const videoTransceiver = pc.addTransceiver("video", {
+          direction: "sendrecv"
+        });
+
+        videoSenders.current.set(peerId, videoTransceiver.sender);
+
+        if (outgoingVideoTrack.current) {
+          await videoTransceiver.sender.replaceTrack(outgoingVideoTrack.current);
+        }
+
+        pc.onicecandidate = (evt) => {
+          if (evt.candidate) {
+            s.emit("webrtc-ice", {
+              to: peerId,
+              candidate: evt.candidate
+            });
+          }
+        };
+
+        pc.ontrack = (evt) => {
+          const streamForTrack = evt.streams[0] || new MediaStream([evt.track]);
+
+          if (evt.track.kind === "audio") {
+            let audio = remoteAudio.current.get(peerId);
+
+            if (!audio) {
+              audio = new Audio();
+              audio.autoplay = true;
+              audio.setAttribute("playsinline", "true");
+              remoteAudio.current.set(peerId, audio);
+            }
+
+            audio.srcObject = streamForTrack;
+
+            const sinkable = audio as HTMLAudioElement & {
+              setSinkId?: (id: string) => Promise<void>;
+            };
+
+            if (selectedOutput && sinkable.setSinkId) {
+              sinkable.setSinkId(selectedOutput).catch(() => {});
+            }
+
+            startSpeakingMonitor(peerId, streamForTrack);
+
+            const volume = peerVolumes[peerId] ?? 100;
+            audio.volume = peerMuted[peerId] ? 0 : volume / 100;
+
+            const playRemoteAudio = () => {
+              void audio?.play().catch(() => {});
+            };
+            playRemoteAudio();
+            if (audio.paused) {
+              window.addEventListener("pointerdown", playRemoteAudio, { once: true });
+              window.addEventListener("keydown", playRemoteAudio, { once: true });
+            }
+          }
+
+          if (evt.track.kind === "video") {
+            attachRemoteVideo(peerId, evt.track);
+
+            evt.track.onunmute = () => {
+              attachRemoteVideo(peerId, evt.track);
+            };
+          }
+        };
+
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "closed") {
+            removePeer(peerId);
+            return;
+          }
+          if (["disconnected", "failed"].includes(pc.connectionState)) {
+            schedulePeerRecovery(s, peerId);
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          if (["disconnected", "failed"].includes(pc.iceConnectionState)) {
+            schedulePeerRecovery(s, peerId);
+          }
+        };
+
+        await flushPendingIceCandidates(peerId, pc);
+
+        if (initiator) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          s.emit("webrtc-offer", {
+            to: peerId,
+            sdp: offer
+          });
+        }
+
+        return pc;
+      } catch (error) {
+        if (pcs.current.get(peerId) === pc) {
+          pcs.current.delete(peerId);
+          videoSenders.current.delete(peerId);
+        }
+        pc.close();
+        throw error;
+      }
+    })();
+
+    peerSetupPromises.current.set(peerId, setup);
+    try {
+      return await setup;
+    } finally {
+      if (peerSetupPromises.current.get(peerId) === setup) {
+        peerSetupPromises.current.delete(peerId);
+      }
+    }
+  }
+
+  function schedulePeerRecovery(s: Socket, peerId: string) {
+    if (!joinedRef.current || !s.connected || peerRecoveryTimers.current.has(peerId)) return;
+
+    const timer = window.setTimeout(() => {
+      peerRecoveryTimers.current.delete(peerId);
+      if (!joinedRef.current || !s.connected) return;
+
+      const current = pcs.current.get(peerId);
+      if (current?.connectionState === "connected") return;
+
+      removePeer(peerId);
+      void ensurePeer(s, peerId, shouldInitiateGuildPeer(s, peerId));
+    }, 1_500);
+
+    peerRecoveryTimers.current.set(peerId, timer);
   }
 
   function removePeer(peerId: string) {
+    const recoveryTimer = peerRecoveryTimers.current.get(peerId);
+    if (recoveryTimer !== undefined) {
+      window.clearTimeout(recoveryTimer);
+      peerRecoveryTimers.current.delete(peerId);
+    }
+    pendingIceCandidates.current.delete(peerId);
     stopSpeakingMonitor(peerId);
-    pcs.current.get(peerId)?.close();
+    const peerConnection = pcs.current.get(peerId);
+    if (peerConnection) {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    }
     pcs.current.delete(peerId);
     videoSenders.current.delete(peerId);
 
@@ -1856,6 +2259,13 @@ export default function App() {
           Array.isArray(channelsResult.categories) ? channelsResult.categories : []
         );
       });
+      socket.emit("guild:notification-state", { guildId: guild.id }, (stateResult: any) => {
+        if (!stateResult?.ok) return;
+        socket.emit("guild:mark-channel-read", {
+          guildId: guild.id,
+          channelId: `${guild.id}:general`
+        });
+      });
       socket.emit(
         "chat-history",
         { guildId: guild.id, channelId: `${guild.id}:general` },
@@ -1932,8 +2342,25 @@ export default function App() {
     });
   }
 
-  function joinVoiceGuild(guild: Guild) {
-    if (!socket) return;
+  async function joinVoiceGuild(guild: Guild) {
+    if (!socket || !connected || !identified) {
+      setError(t("connection.retrying"));
+      return;
+    }
+
+    try {
+      // Acquire the microphone from the explicit join action so the first
+      // peer always has a live audio sender before signaling starts.
+      await ensureMicrophone();
+    } catch (error: any) {
+      setError(
+        t("auth.microphoneUnavailable", {
+          reason: error?.message || t("media.micPermissionDenied")
+        })
+      );
+      return;
+    }
+
     socket.emit("join-room", { guildId: guild.id }, (result: any) => {
       if (!result?.ok) {
         setError(result?.error || t("error.guildJoinFailed"));
@@ -2073,6 +2500,57 @@ export default function App() {
     });
   }
 
+  function markGuildChannelRead(channelId: string) {
+    const guildId = activeGuildRef.current?.id;
+    if (!socket || !guildId || !channelId.includes(":")) return;
+    setGuildNotificationStates((current) => {
+      const state = current[guildId] || { preferences: {}, unread: {} };
+      return { ...current, [guildId]: { ...state, unread: { ...state.unread, [channelId]: 0 } } };
+    });
+    socket.emit("guild:mark-channel-read", { guildId, channelId });
+  }
+
+  function setGuildChannelNotificationLevel(channelId: string, level: GuildNotificationLevel) {
+    const guildId = activeGuildRef.current?.id;
+    if (!socket || !guildId || !channelId.includes(":")) return;
+    socket.emit("guild:set-notification-preference", { guildId, channelId, level });
+  }
+
+  function selectGuildChannel(channel: GuildChannel) {
+    if (!socket || !activeGuild) return;
+    setUnreadMentions(0);
+    setActiveChannelId(channel.id);
+    setMessages([]);
+    setChatSearchQuery("");
+    setChatSearchResults(null);
+    setChannelReplyTo(null);
+    setChannelThreadRoot(null);
+    socket.emit(
+      "chat-history",
+      { guildId: activeGuild.id, channelId: channel.id },
+      (result: any) => {
+        if (!result?.ok) return;
+        setMessages(
+          (result.messages || []).map((message: any) => ({
+            id: message.id,
+            guildId: message.guildId,
+            channelId: message.channelId,
+            userId: message.senderId || message.userId,
+            username: message.username,
+            avatarData: message.avatarData,
+            text: message.text || message.body,
+            createdAt: message.createdAt,
+            replyToId: message.replyToId,
+            editedAt: message.editedAt,
+            deletedAt: message.deletedAt,
+            pinned: message.pinned,
+            reactions: message.reactions
+          }))
+        );
+      }
+    );
+  }
+
   function joinGuildByCode() {
     const code = joinCode.trim();
     if (!socket || !code) return;
@@ -2095,8 +2573,16 @@ export default function App() {
     reconnectingRef.current = false;
     socket?.emit("leave-room");
 
-    pcs.current.forEach((pc) => pc.close());
+    pcs.current.forEach((pc) => {
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
+      pc.close();
+    });
     pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
     videoSenders.current.clear();
 
     stopCameraAndScreen();
@@ -2132,7 +2618,22 @@ export default function App() {
 
     stopCameraAndScreen();
 
-    localStream.current?.getTracks().forEach((t) => t.stop());
+    pcs.current.forEach((peerConnection) => {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.close();
+    });
+    pcs.current.clear();
+    peerSetupPromises.current.clear();
+    pendingIceCandidates.current.clear();
+    for (const timer of peerRecoveryTimers.current.values()) window.clearTimeout(timer);
+    peerRecoveryTimers.current.clear();
+    videoSenders.current.clear();
+
+    localStream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
 
     localStream.current = null;
 
@@ -2631,7 +3132,18 @@ export default function App() {
       )}
       <WorkspaceSidebar
         guilds={guilds}
+        channels={guildChannels}
+        categories={guildCategories}
         activeGuild={activeGuild}
+        activeChannelId={activeChannelId}
+        notificationUnread={
+          activeGuild ? guildNotificationStates[activeGuild.id]?.unread : undefined
+        }
+        notificationLevels={
+          activeGuild ? guildNotificationStates[activeGuild.id]?.preferences : undefined
+        }
+        onSetNotificationLevel={setGuildChannelNotificationLevel}
+        onMarkChannelRead={markGuildChannelRead}
         presence={presence}
         socketId={socket?.id}
         localSpeaking={localSpeaking}
@@ -2672,6 +3184,9 @@ export default function App() {
           lobbyNamePlaceholder: t("guild.lobbyNamePlaceholder"),
           save: t("common.save"),
           cancel: t("common.cancel"),
+          muteChannel: t("notification.muteChannel"),
+          unmuteChannel: t("notification.unmuteChannel"),
+          unread: t("notification.unread"),
           manageChannels: t("guild.manageChannels"),
           structure: {
             title: t("guild.structureTitle"),
@@ -2700,17 +3215,35 @@ export default function App() {
               member: t("guild.role.member")
             },
             noChannels: t("guild.noChannels")
+          },
+          dmInbox: {
+            title: t("ui.directMessages"),
+            searchPlaceholder: t("ui.searchConversations"),
+            friends: t("friends.list"),
+            groups: t("friends.groups"),
+            messageRequests: t("friends.messageRequests"),
+            openFriends: t("friends.list"),
+            noFriends: t("ui.noFriendsInInbox"),
+            noConversations: t("ui.noDmConversations"),
+            memberCount: (count) => t("ui.dmMemberCount", { count }),
+            mentions: t("ui.mentions"),
+            mute: t("friends.mute"),
+            unmute: t("friends.unmute"),
+            archive: t("friends.archive"),
+            unarchive: t("friends.unarchive")
           }
         }}
         onSelectGuild={joinGuild}
+        onSelectChannel={selectGuildChannel}
         onJoinVoice={joinVoiceGuild}
         lobbyName={activeGuild?.lobbyName}
         canManageGuild={activeGuild?.role === "owner" || activeGuild?.role === "admin"}
         onRenameLobby={renameLobby}
         activeDmFriend={activeDmFriend}
         onOpenDms={() => {
+          loadDmConversations();
           setViewMode("dm");
-          setShowFriends(true);
+          setShowFriends(false);
         }}
         onOpenFriends={() => {
           setViewMode("server");
@@ -2744,155 +3277,213 @@ export default function App() {
         onChangeAvatar={changeAvatar}
         onToggleMute={toggleMute}
         onLogout={logout}
+        dmMode={viewMode === "dm"}
+        dmFriends={friends}
+        dmConversations={dmConversations}
+        dmPreferences={dmPreferences}
+        dmUnread={unreadDm}
+        dmMentionCount={unreadMentions}
+        dmSearchQuery={dmSearch}
+        onDmSearchQueryChange={(value) => {
+          setDmSearch(value);
+          if (!value.trim()) setDmSearchResults(null);
+        }}
+        onOpenDmFriend={(friend) => {
+          setDmSearchResults(null);
+          openDm(friend);
+        }}
+        onOpenDmConversation={openDmConversation}
+        onUpdateDmPeerPreference={updateDmPeerPreference}
       />
 
       <main className={`content ${viewMode === "dm" ? "dm-mode" : ""}`}>
-        {viewMode === "dm" && activeDmFriend ? (
-          <DirectMessageView
-            peer={activeDmFriend}
-            statusLabel={
-              dmTyping[activeDmFriend.id]
-                ? t("chat.typing")
-                : activeDmFriend.status === "online"
-                  ? t("presence.online")
-                  : activeDmFriend.status === "idle"
-                    ? t("presence.idle")
-                    : activeDmFriend.status === "dnd"
-                      ? t("presence.dnd")
-                      : t("presence.offline")
-            }
-            searchQuery={dmSearch}
-            callState={callState}
-            callTime={formatCallTime(callSeconds)}
-            muted={muted}
-            deafened={deafened}
-            pushToTalk={pushToTalk}
-            pttPressed={pttPressed}
-            messages={dmMessages}
-            currentAccountId={account?.id || ""}
-            currentUsername={username}
-            currentAvatarData={account?.avatarData}
-            text={dmText}
-            editingLabel={editingDm ? `✏ ${t("chat.editing")}` : undefined}
-            replyingLabel={
-              replyTo && !editingDm
-                ? `↩ ${t("chat.replyingTo", {
-                    username: replyTo.senderId === account?.id ? username : activeDmFriend.username
-                  })}`
-                : undefined
-            }
-            attachmentReadyLabel={
-              dmAttachment ? `📎 ${dmAttachment.name} · ${t("chat.attachmentReady")}` : undefined
-            }
-            dragActive={dmDragActive}
-            threadRef={dmThreadRef}
-            fileInputRef={dmFileInputRef}
-            labels={{
-              header: {
-                back: t("common.back"),
-                block: t("friends.block"),
-                searchPlaceholder: t("chat.searchPlaceholder"),
-                calling: t("call.ringing"),
-                call: t("friends.call"),
-                endCall: t("call.end"),
-                addParticipant: t("friends.addParticipant")
-              },
-              call: {
-                incoming: t("call.incoming"),
-                ringing: t("call.ringing"),
-                privateConversation: (time) => t("call.privateConversation", { time }),
-                microphone: t("media.microphone"),
-                mute: t("common.mute"),
-                unmute: t("common.unmute"),
-                deafen: t("common.deafen"),
-                undeafen: t("common.undeafen"),
-                pushToTalkTitle: t("call.pushToTalkTitle"),
-                speaking: t("call.speaking"),
-                pressToTalk: t("call.pressToTalk"),
-                voiceActivity: t("call.voiceActivity"),
-                close: t("common.close")
-              },
-              thread: {
-                today: t("common.today"),
-                emptyConversation: t("chat.startOfConversation", {
-                  username: activeDmFriend.username
-                }),
-                deletedReply: t("common.deleted"),
-                deletedMessage: t("chat.deleted"),
-                message: t("chat.message"),
-                edited: t("chat.edited"),
-                download: t("common.download"),
-                reply: t("common.reply"),
-                edit: t("chat.editButton"),
-                delete: t("chat.delete")
-              },
-              composer: {
-                inputLabel: t("chat.message"),
-                messagePlaceholder: t("chat.messagePlaceholder"),
-                editPlaceholder: t("chat.edit"),
-                fileLabel: t("chat.sendFile"),
-                clearLabel: t("chat.clearComposerContext"),
-                dragHint: t("chat.dropFile"),
-                sendLabel: t("common.send"),
-                saveLabel: t("common.save")
+        {viewMode === "dm" ? (
+          activeDmFriend ? (
+            <DirectMessageView
+              peer={activeDmFriend}
+              statusLabel={
+                dmTyping[activeDmFriend.id]
+                  ? t("chat.typing")
+                  : activeDmFriend.status === "online"
+                    ? t("presence.online")
+                    : activeDmFriend.status === "idle"
+                      ? t("presence.idle")
+                      : activeDmFriend.status === "dnd"
+                        ? t("presence.dnd")
+                        : t("presence.offline")
               }
-            }}
-            formatDate={(value) =>
-              new Date(value).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")
-            }
-            formatTime={(value) =>
-              new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            }
-            onBack={() => {
-              sendTyping(false);
-              setViewMode("server");
-              setActiveDmFriend(null);
-              setDmText("");
-              setReplyTo(null);
-            }}
-            onSearchQueryChange={setDmSearch}
-            onBlock={() => {
-              if (!socket || !activeDmFriend) return;
-              if (!window.confirm(t("friends.blockConfirm", { username: activeDmFriend.username })))
-                return;
-              socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
-                if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
+              searchQuery={dmSearch}
+              messages={dmSearchResults || dmMessages}
+              callState={callState}
+              callTime={formatCallTime(callSeconds)}
+              muted={muted}
+              deafened={deafened}
+              pushToTalk={pushToTalk}
+              pttPressed={pttPressed}
+              currentAccountId={account?.id || ""}
+              currentUsername={username}
+              currentAvatarData={account?.avatarData}
+              text={dmText}
+              editingLabel={editingDm ? `✏ ${t("chat.editing")}` : undefined}
+              replyingLabel={
+                replyTo && !editingDm
+                  ? `↩ ${t("chat.replyingTo", {
+                      username:
+                        replyTo.senderId === account?.id ? username : activeDmFriend.username
+                    })}`
+                  : undefined
+              }
+              attachmentReadyLabel={
+                dmAttachment ? `📎 ${dmAttachment.name} · ${t("chat.attachmentReady")}` : undefined
+              }
+              dragActive={dmDragActive}
+              threadRef={dmThreadRef}
+              fileInputRef={dmFileInputRef}
+              labels={{
+                header: {
+                  back: t("common.back"),
+                  block: t("friends.block"),
+                  searchPlaceholder: t("chat.searchPlaceholder"),
+                  search: t("chat.search"),
+                  calling: t("call.ringing"),
+                  call: t("friends.call"),
+                  endCall: t("call.end"),
+                  addParticipant: t("friends.addParticipant")
+                },
+                call: {
+                  incoming: t("call.incoming"),
+                  ringing: t("call.ringing"),
+                  privateConversation: (time) => t("call.privateConversation", { time }),
+                  microphone: t("media.microphone"),
+                  mute: t("common.mute"),
+                  unmute: t("common.unmute"),
+                  deafen: t("common.deafen"),
+                  undeafen: t("common.undeafen"),
+                  pushToTalkTitle: t("call.pushToTalkTitle"),
+                  speaking: t("call.speaking"),
+                  pressToTalk: t("call.pressToTalk"),
+                  voiceActivity: t("call.voiceActivity"),
+                  close: t("common.close")
+                },
+                thread: {
+                  today: t("common.today"),
+                  emptyConversation: t("chat.startOfConversation", {
+                    username: activeDmFriend.username
+                  }),
+                  deletedReply: t("common.deleted"),
+                  deletedMessage: t("chat.deleted"),
+                  message: t("chat.message"),
+                  edited: t("chat.edited"),
+                  download: t("common.download"),
+                  reply: t("common.reply"),
+                  edit: t("chat.editButton"),
+                  delete: t("chat.delete")
+                },
+                composer: {
+                  inputLabel: t("chat.message"),
+                  messagePlaceholder: t("chat.messagePlaceholder"),
+                  editPlaceholder: t("chat.edit"),
+                  fileLabel: t("chat.sendFile"),
+                  clearLabel: t("chat.clearComposerContext"),
+                  dragHint: t("chat.dropFile"),
+                  sendLabel: t("common.send"),
+                  saveLabel: t("common.save")
+                }
+              }}
+              formatDate={(value) =>
+                new Date(value).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")
+              }
+              formatTime={(value) =>
+                new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              }
+              onBack={() => {
+                sendTyping(false);
                 setViewMode("server");
                 setActiveDmFriend(null);
+                setActiveDmConversationId(null);
+                setDmSearchResults(null);
+                setDmText("");
+                setReplyTo(null);
+              }}
+              onSearchQueryChange={setDmSearch}
+              onSearch={searchDmMessages}
+              onBlock={() => {
+                if (!socket || !activeDmFriend) return;
+                if (
+                  !window.confirm(t("friends.blockConfirm", { username: activeDmFriend.username }))
+                )
+                  return;
+                socket.emit("friends:block", { targetId: activeDmFriend.id }, (result: any) => {
+                  if (!result?.ok) return setError(result?.error || t("friends.blockFailed"));
+                  setViewMode("server");
+                  setActiveDmFriend(null);
+                  loadFriends();
+                });
+              }}
+              onCall={() => {
+                if (callState === "connected" || callState === "calling") {
+                  stopPrivateCall(true);
+                } else {
+                  callFriend(activeDmFriend);
+                }
+              }}
+              onAddParticipant={activeDmConversationId ? undefined : addParticipantToCall}
+              onToggleMute={toggleMute}
+              onToggleDeafen={toggleDeafen}
+              onTogglePushToTalk={() => setPushToTalk((value) => !value)}
+              onEndCall={() => stopPrivateCall(true)}
+              onReply={setReplyTo}
+              onReact={reactDm}
+              onEdit={editDm}
+              onDelete={deleteDm}
+              onDownloadAttachment={downloadAttachment}
+              onOpenAttachment={(data) => window.open(data, "_blank")}
+              onFileSelected={(file) => void chooseDmFile(file)}
+              onDropFile={(file) => void chooseDmFile(file)}
+              onDragActiveChange={setDmDragActive}
+              onTextChange={setDmText}
+              onTypingChange={sendTyping}
+              onSend={sendDm}
+              onClearContext={() => {
+                setReplyTo(null);
+                setEditingDm(null);
+                setDmAttachment(null);
+                if (editingDm) setDmText("");
+              }}
+            />
+          ) : (
+            <DirectMessageInbox
+              friends={friends}
+              conversations={dmConversations}
+              unread={unreadDm}
+              searchQuery={dmSearch}
+              currentAccountId={account?.id}
+              mentionCount={unreadMentions}
+              labels={{
+                title: t("ui.directMessages"),
+                searchPlaceholder: t("ui.searchConversations"),
+                friends: t("friends.list"),
+                groups: t("friends.groups"),
+                messageRequests: t("friends.messageRequests"),
+                openFriends: t("friends.list"),
+                noFriends: t("ui.noFriendsInInbox"),
+                noConversations: t("ui.noDmConversations"),
+                memberCount: (count) => t("ui.dmMemberCount", { count }),
+                mentions: t("ui.mentions"),
+                mute: t("friends.mute"),
+                unmute: t("friends.unmute"),
+                archive: t("friends.archive"),
+                unarchive: t("friends.unarchive")
+              }}
+              onSearchQueryChange={setDmSearch}
+              onOpenFriends={() => {
                 loadFriends();
-              });
-            }}
-            onCall={() => {
-              if (callState === "connected" || callState === "calling") {
-                stopPrivateCall(true);
-              } else {
-                callFriend(activeDmFriend);
-              }
-            }}
-            onAddParticipant={activeDmConversationId ? undefined : addParticipantToCall}
-            onToggleMute={toggleMute}
-            onToggleDeafen={toggleDeafen}
-            onTogglePushToTalk={() => setPushToTalk((value) => !value)}
-            onEndCall={() => stopPrivateCall(true)}
-            onReply={setReplyTo}
-            onReact={reactDm}
-            onEdit={editDm}
-            onDelete={deleteDm}
-            onDownloadAttachment={downloadAttachment}
-            onOpenAttachment={(data) => window.open(data, "_blank")}
-            onFileSelected={(file) => void chooseDmFile(file)}
-            onDropFile={(file) => void chooseDmFile(file)}
-            onDragActiveChange={setDmDragActive}
-            onTextChange={setDmText}
-            onTypingChange={sendTyping}
-            onSend={sendDm}
-            onClearContext={() => {
-              setReplyTo(null);
-              setEditingDm(null);
-              setDmAttachment(null);
-              if (editingDm) setDmText("");
-            }}
-          />
+                setShowFriends(true);
+              }}
+              onOpenDm={openDm}
+              onOpenConversation={openDmConversation}
+            />
+          )
         ) : (
           <>
             <ServerView
@@ -2915,6 +3506,16 @@ export default function App() {
               cameraOn={cameraOn}
               screenOn={screenOn}
               connected={connected}
+              voiceParticipants={presence}
+              voiceSocketId={socket?.id}
+              voiceLocalSpeaking={localSpeaking}
+              voiceMuted={muted}
+              voiceSpeakingPeers={speakingPeers}
+              voiceChannelName={activeGuild?.lobbyName || t("guild.lobby")}
+              voiceJoined={joined}
+              voiceStageVisible={
+                activeChannelId.endsWith(":lobby") || activeChannelId === "legacy-lobby"
+              }
               messages={messages}
               searchQuery={chatSearchQuery}
               searchResults={chatSearchResults}
@@ -2976,6 +3577,26 @@ export default function App() {
                   endCall: t("common.endCall"),
                   online: t("connection.online"),
                   offline: t("connection.offline")
+                },
+                lobby: {
+                  subtitle: t("ui.lobbySubtitle"),
+                  participants: (count) => t("ui.lobbyParticipants", { count }),
+                  emptyTitle: t("ui.lobbyEmptyTitle"),
+                  emptyDescription: t("ui.lobbyEmptyDescription"),
+                  speaking: t("call.speaking"),
+                  muted: t("media.mutedShort"),
+                  activityJoined: (username) => t("ui.lobbyJoined", { username }),
+                  controls: {
+                    microphone: t("media.microphone"),
+                    mute: t("common.mute"),
+                    camera: t("media.camera"),
+                    cameraOff: t("media.cameraOff"),
+                    screenShare: t("media.screenShare"),
+                    stopScreenShare: t("media.stopScreenShare"),
+                    endCall: t("common.endCall"),
+                    addParticipant: t("friends.addParticipant"),
+                    mediaSettings: t("media.videoShare")
+                  }
                 }
               }}
               formatDate={(value) => formatLocaleDate(value, locale)}
@@ -3041,6 +3662,8 @@ export default function App() {
         outgoingRequests={outgoingRequests}
         incomingMessageRequests={incomingMessageRequests}
         outgoingMessageRequests={outgoingMessageRequests}
+        allowNonFriendRequests={allowNonFriendRequests}
+        onUpdatePrivacy={updateDmPrivacy}
         friendSearchResults={friendSearchResults}
         conversations={dmConversations}
         unreadDm={unreadDm}
@@ -3119,7 +3742,10 @@ export default function App() {
             openGroup: t("friends.openGroup"),
             promoteGroupAdmin: t("friends.promoteGroupAdmin"),
             removeFromGroup: t("friends.removeFromGroup"),
-            leaveGroup: t("friends.leaveGroup")
+            leaveGroup: t("friends.leaveGroup"),
+            privacyTitle: t("friends.dmPrivacy"),
+            allowNonFriendRequests: t("friends.allowNonFriendRequests"),
+            privacyDescription: t("friends.allowNonFriendRequestsDescription")
           },
           calls: {
             incomingPrivateCall: t("ui.incomingPrivateCall"),

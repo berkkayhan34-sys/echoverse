@@ -13,12 +13,14 @@ import {
   ChatComposer,
   CreateGuildDialog,
   DirectMessageComposer,
+  DirectMessageInbox,
   DirectMessageHeader,
   DirectMessageThread,
   DirectMessageView,
   FriendsModal,
   GuildPicker,
   InviteDialog,
+  LobbyStage,
   MediaSettingsModal,
   MembersPanel,
   PrivateCallStage,
@@ -164,8 +166,31 @@ describe("shared chat UI", () => {
     expect(input?.props["aria-label"]).toBe("Message");
     expect(emoji?.props["aria-label"]).toBe("Add emoji");
     expect(send).toBeDefined();
+    expect(send?.props.disabled).toBe(false);
     (send?.props.onClick as () => void)();
     expect(onSend).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the send action inactive for an empty message", () => {
+    const onSend = vi.fn();
+    const element = ChatComposer({
+      text: "   ",
+      inputLabel: "Message",
+      placeholder: "Write a message",
+      emojiLabel: "Add emoji",
+      sendLabel: "Send",
+      onTextChange: vi.fn(),
+      onAddEmoji: vi.fn(),
+      onSend
+    });
+    const input = elementsOfType(element, "input")[0];
+    const send = elementsOfType(element, ActionButton).find(
+      (button) => buttonText(button) === "Send"
+    );
+
+    expect(send?.props.disabled).toBe(true);
+    (input?.props.onKeyDown as (event: { key: string }) => void)({ key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("offers authorized member suggestions for a trailing mention", () => {
@@ -757,6 +782,8 @@ describe("shared chat UI", () => {
     const onOpenSettings = vi.fn();
     const onTogglePeerMute = vi.fn();
     const onPeerVolumeChange = vi.fn();
+    const onSetNotificationLevel = vi.fn();
+    const onMarkChannelRead = vi.fn();
     const guild = { id: "echoverse", name: "EchoVerse", createdBy: "account-1", createdAt: "now" };
     const privateGuild = {
       id: "guild-1",
@@ -802,6 +829,22 @@ describe("shared chat UI", () => {
       onSelectGuild,
       onCreateGuild,
       onLeaveGuild,
+      channels: [
+        {
+          id: "echoverse:general",
+          guildId: "echoverse",
+          name: "general",
+          type: "text",
+          categoryId: null,
+          position: 0,
+          archived: false,
+          createdAt: "now"
+        }
+      ],
+      notificationUnread: { "echoverse:general": 4 },
+      notificationLevels: { "echoverse:general": "all" },
+      onSetNotificationLevel,
+      onMarkChannelRead,
       onTogglePeerMute,
       onPeerVolumeChange,
       onChangeAvatar: vi.fn(),
@@ -842,6 +885,172 @@ describe("shared chat UI", () => {
     });
     expect(removeAttribute).toHaveBeenCalledWith("open");
     expect(onLeaveGuild).toHaveBeenCalledWith(privateGuild);
+    const unread = elementsOfType(element, "span").find(
+      (span) => span.props.className === "channel-unread-badge"
+    );
+    expect(unread?.props.children).toBe(4);
+    const notificationButton = buttons.find(
+      (button) => button.props.className === "channel-notification-toggle"
+    );
+    (notificationButton?.props.onClick as (event: { stopPropagation: () => void }) => void)({
+      stopPropagation: vi.fn()
+    });
+    expect(onSetNotificationLevel).toHaveBeenCalledWith("echoverse:general", "none");
+    const channelButton = buttons.find((button) => buttonText(button).includes("# general"));
+    (channelButton?.props.onClick as () => void)();
+    expect(onMarkChannelRead).toHaveBeenCalledWith("echoverse:general");
+  });
+
+  it("renders the server-backed DM privacy toggle", () => {
+    const onUpdatePrivacy = vi.fn();
+    const element = FriendsModal({
+      friends: [],
+      incomingRequests: [],
+      outgoingRequests: [],
+      friendSearchResults: [],
+      unreadDm: {},
+      searchQuery: "",
+      allowNonFriendRequests: true,
+      labels: {
+        title: "Friends",
+        close: "Close",
+        searchPlaceholder: "Search",
+        search: "Search",
+        searchResults: "Results",
+        incomingRequests: "Incoming",
+        outgoingRequests: "Outgoing",
+        myFriends: "Friends",
+        noFriends: "No friends",
+        add: "Add",
+        accept: "Accept",
+        decline: "Decline",
+        openDirectMessage: "Open direct message",
+        call: "Call",
+        remove: "Remove",
+        privacyTitle: "DM privacy",
+        allowNonFriendRequests: "Allow requests",
+        privacyDescription: "Quarantine strangers"
+      },
+      onClose: vi.fn(),
+      onSearchQueryChange: vi.fn(),
+      onSearch: vi.fn(),
+      onSendFriendRequest: vi.fn(),
+      onRespondFriendRequest: vi.fn(),
+      onCancelFriendRequest: vi.fn(),
+      onOpenDm: vi.fn(),
+      onCallFriend: vi.fn(),
+      onRemoveFriend: vi.fn(),
+      onUpdatePrivacy
+    });
+    const inputs = elementsOfType(element, "input");
+    const toggle = inputs.find((input) => input.props.type === "checkbox");
+    expect(toggle?.props.checked).toBe(true);
+    (toggle?.props.onChange as (event: { target: { checked: boolean } }) => void)({
+      target: { checked: false }
+    });
+    expect(onUpdatePrivacy).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("DM inbox", () => {
+  it("renders searchable friends and group conversations with unread badges", () => {
+    const onOpenDm = vi.fn();
+    const onOpenConversation = vi.fn();
+    const element = DirectMessageInbox({
+      friends: [{ id: "friend-1", username: "Ada", status: "online" }],
+      conversations: [
+        {
+          id: "group-1",
+          kind: "group",
+          name: "Study group",
+          createdBy: "friend-1",
+          createdAt: "2026-08-31T00:00:00.000Z",
+          members: [
+            { accountId: "me", username: "Me", role: "owner" },
+            { accountId: "friend-1", username: "Ada", role: "member" }
+          ]
+        }
+      ],
+      unread: { "friend-1": 2, "group-1": 4 },
+      searchQuery: "",
+      currentAccountId: "me",
+      labels: {
+        title: "Direct messages",
+        searchPlaceholder: "Search conversations",
+        friends: "Friends",
+        groups: "Groups",
+        messageRequests: "Message requests",
+        openFriends: "Friends",
+        noFriends: "No friends",
+        noConversations: "No conversations",
+        memberCount: (count) => `${count} members`,
+        mentions: "Mentions"
+      },
+      onSearchQueryChange: vi.fn(),
+      onOpenFriends: vi.fn(),
+      onOpenDm,
+      onOpenConversation
+    });
+    expect(textContent(element)).toContain("Ada");
+    expect(textContent(element)).toContain("Study group");
+    expect(textContent(element)).toContain("2");
+    const buttons = elementsOfType(element, "button");
+    buttons.find((button) => buttonText(button).includes("Ada"))?.props.onClick();
+    buttons.find((button) => buttonText(button).includes("Study group"))?.props.onClick();
+    expect(onOpenDm).toHaveBeenCalledOnce();
+    expect(onOpenConversation).toHaveBeenCalledOnce();
+  });
+
+  it("exposes peer mute and archive controls without changing conversation navigation", () => {
+    const onOpenDm = vi.fn();
+    const onUpdatePeerPreference = vi.fn();
+    const element = DirectMessageInbox({
+      friends: [{ id: "friend-1", username: "Ada", status: "online" }],
+      conversations: [],
+      unread: {},
+      preferences: { "friend-1": { peerId: "friend-1", muted: false, archived: true } },
+      searchQuery: "",
+      labels: {
+        title: "Direct messages",
+        searchPlaceholder: "Search conversations",
+        friends: "Friends",
+        groups: "Groups",
+        messageRequests: "Message requests",
+        openFriends: "Friends",
+        noFriends: "No friends",
+        noConversations: "No conversations",
+        memberCount: (count) => `${count} members`,
+        mentions: "Mentions",
+        mute: "Mute notifications",
+        unmute: "Unmute notifications",
+        archive: "Archive conversation",
+        unarchive: "Unarchive conversation"
+      },
+      onSearchQueryChange: vi.fn(),
+      onOpenFriends: vi.fn(),
+      onOpenDm,
+      onOpenConversation: vi.fn(),
+      onUpdatePeerPreference
+    });
+
+    const buttons = elementsOfType(element, "button");
+    expect(buttons.some((button) => button.props["aria-label"] === "Mute notifications")).toBe(
+      true
+    );
+    expect(buttons.some((button) => button.props["aria-label"] === "Unarchive conversation")).toBe(
+      true
+    );
+    const unmute = buttons.find((button) => button.props["aria-label"] === "Mute notifications");
+    const unarchive = buttons.find(
+      (button) => button.props["aria-label"] === "Unarchive conversation"
+    );
+    (unmute?.props.onClick as () => void)();
+    (unarchive?.props.onClick as () => void)();
+    expect(onUpdatePeerPreference).toHaveBeenNthCalledWith(1, "friend-1", { muted: true });
+    expect(onUpdatePeerPreference).toHaveBeenNthCalledWith(2, "friend-1", { archived: false });
+    const row = buttons.find((button) => buttonText(button).includes("Ada"));
+    (row?.props.onClick as () => void)();
+    expect(onOpenDm).toHaveBeenCalledWith(expect.objectContaining({ id: "friend-1" }));
   });
 });
 
@@ -1011,6 +1220,131 @@ describe("shared video controls", () => {
     expect(onToggleCamera).toHaveBeenCalledOnce();
     expect(onToggleScreen).toHaveBeenCalledOnce();
     expect(onEndCall).toHaveBeenCalledOnce();
+  });
+});
+
+describe("shared lobby stage", () => {
+  it("renders an empty state and live participant cards from voice presence", () => {
+    const labels = {
+      subtitle: "Talk together",
+      participants: (count: number) => `${count} participants`,
+      emptyTitle: "No one is here yet",
+      emptyDescription: "Join the voice channel",
+      speaking: "Speaking",
+      muted: "Muted"
+    };
+    const empty = LobbyStage({
+      channelName: "Lobby",
+      presence: [],
+      localSpeaking: false,
+      muted: false,
+      speakingPeers: {},
+      labels
+    });
+
+    expect(textContent(empty)).toContain("No one is here yet");
+
+    const live = LobbyStage({
+      channelName: "Lobby",
+      presence: [
+        { socketId: "socket-1", userId: "account-1", username: "Ada", avatarData: null },
+        { socketId: "socket-2", userId: "account-2", username: "Lin", avatarData: null }
+      ],
+      socketId: "socket-1",
+      localSpeaking: true,
+      muted: false,
+      speakingPeers: {},
+      labels
+    });
+
+    expect(textContent(live)).toContain("2 participants");
+    expect(textContent(live)).toContain("Ada");
+    expect(textContent(live)).toContain("Speaking");
+  });
+
+  it("renders lobby media controls through renderer-owned callbacks", () => {
+    const onToggleMute = vi.fn();
+    const onToggleCamera = vi.fn();
+    const onToggleScreen = vi.fn();
+    const onEndCall = vi.fn();
+    const element = LobbyStage({
+      channelName: "Lobby",
+      presence: [],
+      localSpeaking: false,
+      muted: false,
+      speakingPeers: {},
+      connected: true,
+      controlsVisible: true,
+      cameraOn: false,
+      screenOn: false,
+      onToggleMute,
+      onToggleCamera,
+      onToggleScreen,
+      onEndCall,
+      labels: {
+        subtitle: "Talk together",
+        participants: (count: number) => `${count} participants`,
+        emptyTitle: "No one is here yet",
+        emptyDescription: "Join the voice channel",
+        speaking: "Speaking",
+        muted: "Muted",
+        controls: {
+          microphone: "Microphone",
+          mute: "Mute",
+          camera: "Camera",
+          cameraOff: "Camera off",
+          screenShare: "Share screen",
+          stopScreenShare: "Stop sharing",
+          endCall: "End call",
+          addParticipant: "Add participant",
+          mediaSettings: "Audio settings"
+        }
+      }
+    });
+    const buttons = elementsOfType(element, "button");
+    buttons.forEach((button) => (button.props.onClick as () => void)());
+    expect(buttons).toHaveLength(4);
+    expect(onToggleMute).toHaveBeenCalledOnce();
+    expect(onToggleCamera).toHaveBeenCalledOnce();
+    expect(onToggleScreen).toHaveBeenCalledOnce();
+    expect(onEndCall).toHaveBeenCalledOnce();
+  });
+
+  it("hides lobby media controls until the user joins the voice channel", () => {
+    const element = LobbyStage({
+      channelName: "Lobby",
+      presence: [],
+      localSpeaking: false,
+      muted: false,
+      speakingPeers: {},
+      connected: true,
+      controlsVisible: false,
+      onToggleMute: vi.fn(),
+      onToggleCamera: vi.fn(),
+      onToggleScreen: vi.fn(),
+      onEndCall: vi.fn(),
+      labels: {
+        subtitle: "Talk together",
+        participants: (count: number) => `${count} participants`,
+        emptyTitle: "No one is here yet",
+        emptyDescription: "Join the voice channel",
+        speaking: "Speaking",
+        muted: "Muted",
+        controls: {
+          microphone: "Microphone",
+          mute: "Mute",
+          camera: "Camera",
+          cameraOff: "Camera off",
+          screenShare: "Share screen",
+          stopScreenShare: "Stop sharing",
+          endCall: "End call",
+          addParticipant: "Add participant",
+          mediaSettings: "Audio settings"
+        }
+      }
+    });
+
+    expect(elementsOfType(element, "button")).toHaveLength(0);
   });
 });
 
@@ -1192,6 +1526,7 @@ describe("shared server chrome", () => {
       cameraOn: false,
       screenOn: false,
       connected: true,
+      voiceJoined: true,
       messages: [],
       text: "hello",
       error: "",
@@ -1352,6 +1687,7 @@ describe("shared server chrome", () => {
     expect(onSearch).toHaveBeenCalledOnce();
     expect(onClearSearch).toHaveBeenCalledOnce();
     expect(textContent(element)).toContain("No messages");
+    expect(elementsOfType(element, VoiceControls)).toHaveLength(0);
   });
 
   it("keeps workspace overlays catalog-driven and effect-free", () => {

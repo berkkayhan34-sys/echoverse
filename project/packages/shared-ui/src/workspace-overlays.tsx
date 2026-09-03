@@ -61,6 +61,7 @@ export function WorkspaceOverlays({
   outgoingRequests,
   incomingMessageRequests,
   outgoingMessageRequests,
+  allowNonFriendRequests,
   friendSearchResults,
   conversations,
   unreadDm,
@@ -106,6 +107,7 @@ export function WorkspaceOverlays({
   onGroupRemove,
   onGroupLeave,
   onRespondMessageRequest,
+  onUpdatePrivacy,
   onAnswerCall,
   onEndCall,
   onCloseScreenPicker,
@@ -144,6 +146,7 @@ export function WorkspaceOverlays({
   outgoingRequests: FriendUser[];
   incomingMessageRequests?: DmRequest[];
   outgoingMessageRequests?: DmRequest[];
+  allowNonFriendRequests?: boolean;
   friendSearchResults: FriendUser[];
   conversations?: DmConversation[];
   unreadDm: Record<string, number>;
@@ -189,6 +192,7 @@ export function WorkspaceOverlays({
   onGroupRemove?: (conversationId: string, accountId: string) => void;
   onGroupLeave?: (conversationId: string) => void;
   onRespondMessageRequest?: (requestId: string, action: "accept" | "decline" | "spam") => void;
+  onUpdatePrivacy?: (allow: boolean) => void;
   onAnswerCall: (accepted: boolean) => void | Promise<void>;
   onEndCall: () => void | Promise<void>;
   onCloseScreenPicker: () => void;
@@ -270,6 +274,8 @@ export function WorkspaceOverlays({
           onGroupRemove={onGroupRemove}
           onGroupLeave={onGroupLeave}
           onRespondMessageRequest={onRespondMessageRequest}
+          allowNonFriendRequests={allowNonFriendRequests}
+          onUpdatePrivacy={onUpdatePrivacy}
         />
       )}
 

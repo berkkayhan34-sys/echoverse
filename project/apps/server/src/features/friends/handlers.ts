@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { socketEventPayloadSchemas, type Locale } from "@echoverse/contracts";
-import type { Account, StoredDm, StoredDmRequest, User } from "../../domain/types.js";
+import type { Account, StoredDm, StoredDmReport, StoredDmRequest, User } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 import type { MemoryFriendship } from "./service.js";
 import { serverLogger } from "../../runtime/observability.js";
@@ -24,6 +24,20 @@ export type FriendHandlerDependencies = {
   findUsersByUsername(query: string, selfId: string, locale: Locale): Promise<unknown[]>;
   listFriendState(accountId: string): Promise<unknown>;
   listConversations(accountId: string): Promise<unknown>;
+  listDmPreferences(accountId: string): Promise<{
+    privacy: { allowNonFriendRequests: boolean };
+    peers: Array<{ peerId: string; muted: boolean; archived: boolean }>;
+  }>;
+  getDmPrivacy(accountId: string): Promise<{ allowNonFriendRequests: boolean }>;
+  updateDmPrivacy(
+    accountId: string,
+    allowNonFriendRequests: boolean
+  ): Promise<{ accountId: string; allowNonFriendRequests: boolean; updatedAt: string }>;
+  updateDmPeerPreference(
+    accountId: string,
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ): Promise<{ peerId: string; muted: boolean; archived: boolean } | null>;
   listDmRequests(accountId: string): Promise<{ incoming: any[]; outgoing: any[] }>;
   createDmRequest(
     senderId: string,
@@ -58,6 +72,13 @@ export type FriendHandlerDependencies = {
   friendshipKey(a: string, b: string): string;
   areFriends(a: string, b: string): Promise<boolean>;
   loadDmHistory(a: string, b: string): Promise<StoredDm[]>;
+  searchDm(
+    accountId: string,
+    target: { friendId?: string; conversationId?: string },
+    query: string,
+    limit?: number,
+    options?: { authorId?: string; from?: string; to?: string; before?: string }
+  ): Promise<StoredDm[]>;
   storeDm(
     senderId: string,
     recipientId: string,
@@ -65,6 +86,12 @@ export type FriendHandlerDependencies = {
     options?: Record<string, unknown>
   ): Promise<StoredDm>;
   dmById(messageId: string): Promise<StoredDm | null>;
+  createDmReport(
+    reporterId: string,
+    targetId: string,
+    messageId: string | null,
+    reason: string
+  ): Promise<{ created: boolean; report: StoredDmReport } | null>;
   validateAttachment(input: any): any;
   socketForAccount(accountId: string): User | undefined;
   emitToAccount(accountId: string, event: string, payload: any): void;
@@ -92,6 +119,10 @@ export function registerFriendHandlers({
   findUsersByUsername,
   listFriendState,
   listConversations,
+  listDmPreferences,
+  getDmPrivacy,
+  updateDmPrivacy,
+  updateDmPeerPreference,
   listDmRequests,
   createDmRequest,
   dmRequestBetween,
@@ -107,7 +138,9 @@ export function registerFriendHandlers({
   friendshipKey,
   areFriends,
   loadDmHistory,
+  searchDm,
   storeDm,
+  createDmReport,
   dmById,
   validateAttachment,
   socketForAccount,
@@ -458,6 +491,67 @@ export function registerFriendHandlers({
     }
   });
 
+  onValidatedSocketEvent(socket, "dm:preferences", async (_payload, callback) => {
+    const account = socket.data.account;
+    if (!account)
+      return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+    try {
+      callback?.({ ok: true, ...(await listDmPreferences(account.id)) });
+    } catch (error) {
+      serverLogger.error("echoverse.dm.preferences_list_failed", {
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+    }
+  });
+
+  onValidatedSocketEvent(
+    socket,
+    "dm:privacy-update",
+    async ({ allowNonFriendRequests }, callback) => {
+      const account = socket.data.account;
+      if (!account)
+        return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      try {
+        const privacy = await updateDmPrivacy(account.id, allowNonFriendRequests);
+        socket.emit("dm:preferences-changed", { privacy });
+        callback?.({ ok: true, privacy });
+      } catch (error) {
+        serverLogger.error("echoverse.dm.privacy_update_failed", {
+          error: error instanceof Error ? error.message : "unknown"
+        });
+        callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+      }
+    }
+  );
+
+  onValidatedSocketEvent(
+    socket,
+    "dm:peer-preference-update",
+    async ({ peerId, muted, archived }, callback) => {
+      const account = socket.data.account;
+      if (!account)
+        return callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      if (peerId === account.id || !(await accountById(peerId))) {
+        return callback?.({ ok: false, error: socketError(socket, "server.userNotFound") });
+      }
+      try {
+        const preference = await updateDmPeerPreference(account.id, peerId, { muted, archived });
+        if (!preference) {
+          callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+          return;
+        }
+        socket.emit("dm:preferences-changed", { preference });
+        callback?.({ ok: true, preference });
+      } catch (error) {
+        serverLogger.error("echoverse.dm.peer_preference_update_failed", {
+          error: error instanceof Error ? error.message : "unknown"
+        });
+        callback?.({ ok: false, error: socketError(socket, "server.requestFailed") });
+      }
+    }
+  );
+
   onValidatedSocketEvent(socket, "dm:request-respond", async ({ requestId, action }, callback) => {
     const account = socket.data.account;
     if (!account)
@@ -643,6 +737,86 @@ export function registerFriendHandlers({
 
   onValidatedSocketEvent(
     socket,
+    "dm-search",
+    async ({ friendId, conversationId, query, authorId, from, to, before, limit }, callback) => {
+      const user = users.get(socket.id);
+      if (!user?.accountId) {
+        callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+        return;
+      }
+      if (conversationId) {
+        if (!(await conversationFor(user.accountId, conversationId))) {
+          callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
+          return;
+        }
+        if (authorId) {
+          const members = await conversationMembers(conversationId);
+          if (!members.some((member: any) => member.accountId === authorId)) {
+            callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+            return;
+          }
+        }
+      } else {
+        const friend = String(friendId || "");
+        if (!(await areFriends(user.accountId, friend))) {
+          callback?.({ ok: false, error: socketError(socket, "server.notFriends") });
+          return;
+        }
+        if (authorId && authorId !== user.accountId && authorId !== friend) {
+          callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+          return;
+        }
+      }
+      const messages = await searchDm(user.accountId, { friendId, conversationId }, query, limit, {
+        authorId,
+        from,
+        to,
+        before
+      });
+      callback?.({
+        ok: true,
+        messages: conversationId ? await decorateGroupMessages(messages) : messages,
+        nextCursor: messages.length === (limit || 100) ? messages.at(-1)?.createdAt || null : null
+      });
+    }
+  );
+
+  onValidatedSocketEvent(socket, "dm:report", async ({ targetId, messageId, reason }, callback) => {
+    const account = socket.data.account;
+    if (!account) {
+      callback?.({ ok: false, error: socketError(socket, "server.sessionRequired") });
+      return;
+    }
+    const target = await accountById(String(targetId));
+    if (!target || target.id === account.id) {
+      callback?.({ ok: false, error: socketError(socket, "server.dmReportTargetInvalid") });
+      return;
+    }
+
+    const linkedMessageId: string | null = messageId ? String(messageId) : null;
+    if (linkedMessageId) {
+      const message = await dmById(linkedMessageId);
+      const isDirectMessage =
+        Boolean(message) &&
+        !message?.conversationId &&
+        ((message?.senderId === account.id && message?.recipientId === target.id) ||
+          (message?.senderId === target.id && message?.recipientId === account.id));
+      if (!isDirectMessage) {
+        callback?.({ ok: false, error: socketError(socket, "server.dmReportMessageAccessDenied") });
+        return;
+      }
+    }
+
+    const report = await createDmReport(account.id, target.id, linkedMessageId, reason);
+    if (!report) {
+      callback?.({ ok: false, error: socketError(socket, "server.dmReportRateLimited") });
+      return;
+    }
+    callback?.({ ok: true, created: report.created, report: report.report });
+  });
+
+  onValidatedSocketEvent(
+    socket,
     "dm:send",
     async ({ friendId, conversationId, body, replyToId, attachment }, callback) => {
       if (!allowSocketEvent(socket.id, "dm:send", 30)) {
@@ -660,6 +834,22 @@ export function registerFriendHandlers({
       if (conversationId && !(await conversationFor(user.accountId, conversationId))) {
         callback?.({ ok: false, error: socketError(socket, "server.notGroupMember") });
         return;
+      }
+
+      if (replyToId) {
+        const parent = await dmById(String(replyToId));
+        const replyAllowed = conversationId
+          ? parent?.conversationId === conversationId
+          : Boolean(
+              parent &&
+              !parent.conversationId &&
+              ((parent.senderId === user.accountId && parent.recipientId === friend) ||
+                (parent.senderId === friend && parent.recipientId === user.accountId))
+            );
+        if (!replyAllowed) {
+          callback?.({ ok: false, error: socketError(socket, "server.messageAccessDenied") });
+          return;
+        }
       }
 
       const checkedAttachment = validateAttachment(attachment);
@@ -686,6 +876,11 @@ export function registerFriendHandlers({
           return;
         }
         if (!isAcceptedFriend) {
+          const recipientPrivacy = await getDmPrivacy(friend);
+          if (!recipientPrivacy.allowNonFriendRequests) {
+            callback?.({ ok: false, error: socketError(socket, "server.messageRequestsDisabled") });
+            return;
+          }
           if (checkedAttachment.value) {
             callback?.({
               ok: false,

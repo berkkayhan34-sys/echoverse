@@ -140,4 +140,78 @@ describe("chat handler persistence boundary", () => {
     );
     expect(outsiderPeer.emit).not.toHaveBeenCalled();
   });
+
+  it("publishes unread counts to active authorized peers without message content", async () => {
+    let chatHandler: ((payload: unknown, callback: (response: unknown) => void) => unknown) | null =
+      null;
+    const socket = { id: "socket-owner", data: { locale: "en" } };
+    const peer = { id: "socket-peer", emit: vi.fn() };
+    const users = new Map([
+      [
+        socket.id,
+        {
+          socketId: socket.id,
+          userId: "account-owner",
+          accountId: "account-owner",
+          username: "Owner",
+          avatarData: null,
+          activeGuildId: "echoverse"
+        }
+      ],
+      [
+        peer.id,
+        {
+          socketId: peer.id,
+          userId: "account-peer",
+          accountId: "account-peer",
+          username: "Peer",
+          avatarData: null,
+          activeGuildId: "echoverse"
+        }
+      ]
+    ]);
+    const broadcast = { emit: vi.fn() };
+    const notificationService = {
+      getUnreadCount: vi.fn().mockResolvedValue(3),
+      getLevel: vi.fn().mockResolvedValue("all")
+    };
+    registerChatHandlers({
+      socket,
+      io: { to: vi.fn(() => broadcast), sockets: { sockets: new Map([[peer.id, peer]]) } },
+      users,
+      guildChat: {
+        store: vi.fn().mockResolvedValue({ id: "message-2", replyToId: null, createdAt: "now" })
+      } as any,
+      isMember: () => true,
+      membersFor: async () => [],
+      listChannels: () => [{ id: "echoverse:general", categoryId: null }],
+      hasScopedPermission: () => true,
+      socketError: () => "message send failed",
+      accountById: vi.fn(),
+      resolveRequestLocale: () => "en",
+      notificationService,
+      onValidatedSocketEvent: (_socket, event, handler) => {
+        if (event === "chat-message") chatHandler = handler;
+      }
+    });
+
+    await chatHandler!(
+      { guildId: "echoverse", channelId: "echoverse:general", text: "hello" },
+      vi.fn()
+    );
+    expect(notificationService.getUnreadCount).toHaveBeenCalledWith(
+      "account-peer",
+      "echoverse",
+      "echoverse:general"
+    );
+    expect(peer.emit).toHaveBeenCalledWith("guild:unread", {
+      guildId: "echoverse",
+      channelId: "echoverse:general",
+      unreadCount: 3
+    });
+    expect(peer.emit).not.toHaveBeenCalledWith(
+      "guild:unread",
+      expect.objectContaining({ text: expect.anything() })
+    );
+  });
 });

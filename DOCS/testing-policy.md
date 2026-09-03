@@ -106,6 +106,8 @@ not installed. Install both through the approved platform package path
 documented by the development workflow, or use the CI action. The local REUSE
 wrapper stages Git-tracked and non-ignored working-tree files under `tmp/` so
 workspace dependencies and generated files cannot enter the license scope.
+The wrappers discover PATH and standard per-user installations; custom
+locations may be supplied with `REUSE_PATH` and `GITLEAKS_PATH`.
 Coverage reports
 are written under the ignored `tmp/coverage/` directory. The linter emits
 JSON so CI can retain machine-readable diagnostics when a runner collects

@@ -478,7 +478,7 @@ export function ChatComposer({
           value={text}
           onChange={(event) => onTextChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") onSend();
+            if (event.key === "Enter" && text.trim()) onSend();
           }}
           placeholder={placeholder}
         />
@@ -510,7 +510,10 @@ export function ChatComposer({
 
         <details className="emoji-picker-wrap" aria-label={emojiLabel}>
           <summary className="emoji-trigger" aria-label={emojiLabel} title={emojiLabel}>
-            😊
+            <svg aria-hidden="true" className="emoji-trigger-icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M8.7 10h.01M15.3 10h.01M8.5 14.2a5 5 0 0 0 7 0" />
+            </svg>
           </summary>
           <div className="emoji-picker" role="dialog" aria-label={emojiLabel}>
             <input
@@ -563,8 +566,12 @@ export function ChatComposer({
           </div>
         </details>
 
-        <ActionButton className="send composer-send" onClick={onSend}>
-          {sendLabel}
+        <ActionButton className="send composer-send" onClick={onSend} disabled={!text.trim()}>
+          <svg aria-hidden="true" className="composer-send-icon" viewBox="0 0 24 24" fill="none">
+            <path d="m4 12 16-8-5.5 16-3.2-6.1L4 12Z" />
+            <path d="m11.3 13.9 4.7-5" />
+          </svg>
+          <span className="sr-only">{sendLabel}</span>
         </ActionButton>
       </div>
     </div>

@@ -7,6 +7,13 @@ import crypto from "node:crypto";
 import type { StoredGuildMessage } from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 
+export type GuildMessageSearchOptions = {
+  authorId?: string;
+  from?: string;
+  to?: string;
+  before?: string;
+};
+
 export function createGuildChatService(
   pool: PersistenceDatabase | null,
   memoryMessages: StoredGuildMessage[] = []
@@ -89,19 +96,49 @@ export function createGuildChatService(
     return result.rows.reverse().map(fromRow);
   }
 
-  async function search(channelId: string, query: string, limit = 100) {
+  async function search(
+    channelId: string,
+    query: string,
+    limit = 100,
+    options: GuildMessageSearchOptions = {}
+  ) {
     if (!pool)
       return memoryMessages
         .filter(
           (m) =>
             m.channelId === channelId &&
-            m.body.toLocaleLowerCase().includes(query.toLocaleLowerCase())
+            !m.deletedAt &&
+            m.body.toLocaleLowerCase().includes(query.toLocaleLowerCase()) &&
+            (!options.authorId || m.senderId === options.authorId) &&
+            (!options.from || m.createdAt >= options.from) &&
+            (!options.to || m.createdAt <= options.to) &&
+            (!options.before || m.createdAt < options.before)
         )
-        .slice(-limit);
+        .sort((a, b) => {
+          const created = b.createdAt.localeCompare(a.createdAt);
+          return created || b.id.localeCompare(a.id);
+        })
+        .slice(0, limit);
+    const values: unknown[] = [channelId, `%${query.trim().replace(/[\\%_]/g, "\\$&")}%`];
+    const clauses = [
+      "channel_id=$1",
+      "deleted_at IS NULL",
+      "LOWER(body) LIKE LOWER($2) ESCAPE '\\'"
+    ];
+    const add = (clause: string, value: unknown) => {
+      values.push(value);
+      clauses.push(clause.replace("$N", `$${values.length}`));
+    };
+    if (options.authorId) add("sender_id=$N", options.authorId);
+    if (options.from) add("created_at >= $N", options.from);
+    if (options.to) add("created_at <= $N", options.to);
+    if (options.before) add("created_at < $N", options.before);
+    values.push(limit);
     const result = await pool.query(
       `SELECT id,guild_id,channel_id,sender_id,body,created_at,reply_to_id,edited_at,deleted_at,pinned,reactions
-       FROM echoverse_guild_messages WHERE channel_id=$1 AND LOWER(body) LIKE LOWER($2) ESCAPE '\\' ORDER BY created_at DESC LIMIT $3`,
-      [channelId, `%${query.replace(/[\\%_]/g, "\\$&")}%`, limit]
+       FROM echoverse_guild_messages WHERE ${clauses.join(" AND ")}
+       ORDER BY created_at DESC, id DESC LIMIT $${values.length}`,
+      values
     );
     return result.rows.map(fromRow);
   }

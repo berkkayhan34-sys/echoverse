@@ -178,6 +178,11 @@ least-privilege and server-authorized. Retention is the minimum needed for that
 purpose, and deletion covers primary storage, derived data, media, exports,
 backups, caches, and logs where applicable.
 
+The current server-side moderation/report records and deleted-message tombstones
+use a 180-day retention window. An idempotent startup and maintenance cleanup
+removes only records past that window; active messages are not eligible. Account,
+backup, export, and host-log deletion remain separate controlled procedures.
+
 | Data class                     | Current storage                                                                          | Required retention/deletion rule                                                                                                         | Test and release evidence owner                                                    |
 | ------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Credentials and account data   | Password hash and account profile in PostgreSQL; memory fallback locally                 | Never retain plaintext passwords. Delete account data through an authorized, auditable request path and invalidate sessions.             | `CODE-001`, `CODE-005`, `CODE-003`; release evidence in the completed child record |

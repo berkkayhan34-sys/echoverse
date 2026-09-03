@@ -76,7 +76,7 @@ export function MembersPanel({
                   onClick={() => onTogglePeerMute(peer.socketId)}
                   title={labels.muteOnlyYou}
                 >
-                  {peerMuted[peer.socketId] ? "🔇" : "🔊"}
+                  {peerMuted[peer.socketId] ? "◌" : "◖"}
                 </button>
 
                 <input

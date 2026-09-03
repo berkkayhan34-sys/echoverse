@@ -11,6 +11,48 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const stagingRoot = path.join(repositoryRoot, "tmp", "reuse-source");
 
+function pathEntries() {
+  return (process.env.PATH || process.env.Path || "").split(path.delimiter).filter(Boolean);
+}
+
+function existingFile(candidate) {
+  return candidate && fs.existsSync(candidate) ? candidate : null;
+}
+
+function reuseCandidates() {
+  const candidates = [];
+  if (process.env.REUSE_PATH) candidates.push(process.env.REUSE_PATH);
+  for (const directory of pathEntries()) {
+    candidates.push(path.join(directory, process.platform === "win32" ? "reuse.exe" : "reuse"));
+    if (process.platform === "win32") candidates.push(path.join(directory, "reuse.cmd"));
+  }
+  if (process.platform === "win32") {
+    for (const root of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
+      if (!root || !fs.existsSync(root)) continue;
+      for (const relative of ["Python", path.join("Programs", "Python")]) {
+        const pythonRoot = path.join(root, relative);
+        if (!fs.existsSync(pythonRoot)) continue;
+        for (const version of fs.readdirSync(pythonRoot, { withFileTypes: true })) {
+          if (!version.isDirectory() || !/^Python\d+$/.test(version.name)) continue;
+          const scripts = path.join(pythonRoot, version.name, "Scripts");
+          candidates.push(path.join(scripts, "reuse.exe"), path.join(scripts, "reuse.cmd"));
+        }
+      }
+    }
+  }
+  return [...new Set(candidates)];
+}
+
+function pythonCandidates() {
+  const candidates = [];
+  for (const directory of pathEntries()) {
+    candidates.push(path.join(directory, process.platform === "win32" ? "python.exe" : "python"));
+    candidates.push(path.join(directory, process.platform === "win32" ? "python3.exe" : "python3"));
+  }
+  if (process.platform === "win32") candidates.push("py", "python", "python3");
+  return [...new Set(candidates)];
+}
+
 function gitFiles() {
   const result = spawnSync(
     "git",
@@ -42,29 +84,36 @@ function stageRepository() {
 }
 
 stageRepository();
-// Node does not resolve a .cmd shim when spawning without a shell on Windows.
-// Prefer a PATH-installed CLI, then use the pinned Python module so the local
-// gate also works on Windows hosts where Python's Scripts directory is not on
-// PATH yet.
-const reuseOnPath =
-  process.platform === "win32"
-    ? spawnSync("reuse.cmd", ["--version"], { stdio: "ignore" }).status === 0
-    : spawnSync("reuse", ["--version"], { stdio: "ignore" }).status === 0;
-const reuseCommand = reuseOnPath
-  ? process.platform === "win32"
-    ? process.env.ComSpec || "cmd.exe"
-    : "reuse"
-  : process.platform === "win32"
-    ? "py"
-    : "reuse";
-const reuseArgs = reuseOnPath
-  ? process.platform === "win32"
-    ? ["/d", "/s", "/c", "reuse.cmd lint"]
-    : ["lint"]
-  : ["-m", "reuse", "lint"];
+const directReuse = reuseCandidates().map(existingFile).find(Boolean);
+let reuseCommand = directReuse;
+let reuseArgs = ["lint"];
+if (directReuse?.toLowerCase().endsWith(".cmd")) {
+  reuseCommand = process.env.ComSpec || "cmd.exe";
+  const quoted = `"${directReuse.replaceAll('"', '""')}"`;
+  reuseArgs = ["/d", "/s", "/c", `${quoted} lint`];
+}
+if (!reuseCommand) {
+  const python = pythonCandidates().find((candidate) => {
+    if (path.isAbsolute(candidate)) return fs.existsSync(candidate);
+    return spawnSync(candidate, ["--version"], { stdio: "ignore" }).status === 0;
+  });
+  if (python) {
+    reuseCommand = python;
+    reuseArgs = ["-m", "reuse", "lint"];
+  }
+}
+if (!reuseCommand) {
+  console.error(
+    "REUSE is required; install it with the repository tooling instructions or set REUSE_PATH."
+  );
+  process.exitCode = 1;
+  process.exit();
+}
 const result = spawnSync(reuseCommand, reuseArgs, { cwd: stagingRoot, stdio: "inherit" });
 if (result.error) {
-  console.error("REUSE is required; install it with the repository tooling instructions.");
+  console.error(
+    "REUSE is required; install it with the repository tooling instructions or set REUSE_PATH."
+  );
   process.exitCode = 1;
 } else {
   process.exitCode = result.status ?? 1;

@@ -116,3 +116,27 @@ export type StoredDmRequest = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type StoredDmPeerPreference = {
+  accountId: string;
+  peerId: string;
+  muted: boolean;
+  archived: boolean;
+  updatedAt: string;
+};
+
+export type StoredDmPrivacy = {
+  accountId: string;
+  allowNonFriendRequests: boolean;
+  updatedAt: string;
+};
+
+export type StoredDmReport = {
+  id: string;
+  reporterId: string;
+  targetId: string;
+  messageId?: string | null;
+  reason: string;
+  status: "open" | "resolved" | "dismissed";
+  createdAt: string;
+};

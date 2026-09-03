@@ -16,6 +16,7 @@ export type DirectMessageViewLabels = {
     calling: string;
     call: string;
     endCall: string;
+    search?: string;
     addParticipant?: string;
   };
   call: {
@@ -88,6 +89,7 @@ export function DirectMessageView({
   formatTime,
   onBack,
   onSearchQueryChange,
+  onSearch,
   onBlock,
   onCall,
   onAddParticipant,
@@ -134,6 +136,7 @@ export function DirectMessageView({
   formatTime: (value: string) => string;
   onBack: () => void;
   onSearchQueryChange: (value: string) => void;
+  onSearch?: () => void;
   onBlock: () => void;
   onCall: () => void;
   onAddParticipant?: () => void;
@@ -165,6 +168,7 @@ export function DirectMessageView({
         labels={labels.header}
         onBack={onBack}
         onSearchQueryChange={onSearchQueryChange}
+        onSearch={onSearch}
         onBlock={onBlock}
         onCall={onCall}
         onAddParticipant={onAddParticipant}

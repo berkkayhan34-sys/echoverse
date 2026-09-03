@@ -5,7 +5,14 @@
 
 import crypto from "node:crypto";
 import { attachmentSchema, truncateGraphemes, type Locale } from "@echoverse/contracts";
-import type { Account, StoredDm, StoredDmRequest } from "../../domain/types.js";
+import type {
+  Account,
+  StoredDm,
+  StoredDmPeerPreference,
+  StoredDmPrivacy,
+  StoredDmReport,
+  StoredDmRequest
+} from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 
 export type MemoryFriendship = {
@@ -34,6 +41,13 @@ export type MemoryDmConversation = {
   members: Map<string, MemoryDmConversationMember>;
 };
 
+export type DmMessageSearchOptions = {
+  authorId?: string;
+  from?: string;
+  to?: string;
+  before?: string;
+};
+
 export type FriendServiceDependencies = {
   pool: PersistenceDatabase | null;
   sqliteDatabase: PersistenceDatabase | null;
@@ -41,6 +55,9 @@ export type FriendServiceDependencies = {
   memoryFriendships: Map<string, MemoryFriendship>;
   memoryDmMessages: StoredDm[];
   memoryDmRequests: Map<string, StoredDmRequest>;
+  memoryDmPeerPreferences: Map<string, StoredDmPeerPreference>;
+  memoryDmPrivacy: Map<string, StoredDmPrivacy>;
+  memoryDmReports?: Map<string, StoredDmReport>;
   memoryDmConversations: Map<string, MemoryDmConversation>;
   publicUserById(id: string): Promise<{
     id: string;
@@ -56,9 +73,14 @@ export function createFriendService({
   memoryFriendships,
   memoryDmMessages,
   memoryDmRequests,
+  memoryDmPeerPreferences,
+  memoryDmPrivacy,
+  memoryDmReports,
   memoryDmConversations,
   publicUserById
 }: FriendServiceDependencies) {
+  const dmReportAttempts = new Map<string, number[]>();
+  const reportStore = memoryDmReports || new Map<string, StoredDmReport>();
   function friendshipKey(a: string, b: string) {
     return [a, b].sort().join(":");
   }
@@ -270,6 +292,157 @@ export function createFriendService({
 
   function dmRequestKey(senderId: string, recipientId: string) {
     return `${senderId}:${recipientId}`;
+  }
+
+  function dmPeerPreferenceKey(accountId: string, peerId: string) {
+    return `${accountId}:${peerId}`;
+  }
+
+  function defaultDmPrivacy(accountId: string): StoredDmPrivacy {
+    return {
+      accountId,
+      // The owner-selected default allows discovery while keeping first
+      // contact quarantined as a message request.
+      allowNonFriendRequests: true,
+      updatedAt: new Date(0).toISOString()
+    };
+  }
+
+  function mapDmPeerPreference(row: any): StoredDmPeerPreference {
+    return {
+      accountId: String(row.account_id ?? row.accountId),
+      peerId: String(row.peer_id ?? row.peerId),
+      muted: row.muted === true || row.muted === 1,
+      archived: row.archived === true || row.archived === 1,
+      updatedAt: row.updated_at?.toISOString?.() || String(row.updated_at || row.updatedAt)
+    };
+  }
+
+  async function getDmPrivacy(accountId: string): Promise<StoredDmPrivacy> {
+    if (!pool) return memoryDmPrivacy.get(accountId) || defaultDmPrivacy(accountId);
+    const result = await pool.query(
+      `SELECT account_id, allow_non_friend_requests, updated_at
+       FROM echoverse_dm_privacy WHERE account_id=$1 LIMIT 1`,
+      [accountId]
+    );
+    const row = result.rows[0];
+    if (!row) return defaultDmPrivacy(accountId);
+    return {
+      accountId: String(row.account_id),
+      allowNonFriendRequests:
+        row.allow_non_friend_requests === true || row.allow_non_friend_requests === 1,
+      updatedAt: row.updated_at?.toISOString?.() || String(row.updated_at)
+    };
+  }
+
+  async function listDmPreferences(accountId: string) {
+    if (!pool) {
+      return {
+        privacy: await getDmPrivacy(accountId),
+        peers: [...memoryDmPeerPreferences.values()]
+          .filter((preference) => preference.accountId === accountId)
+          .map(({ peerId, muted, archived }) => ({ peerId, muted, archived }))
+      };
+    }
+    const [privacy, peers] = await Promise.all([
+      getDmPrivacy(accountId),
+      pool.query(
+        `SELECT account_id, peer_id, muted, archived, updated_at
+         FROM echoverse_dm_preferences WHERE account_id=$1 ORDER BY peer_id`,
+        [accountId]
+      )
+    ]);
+    return {
+      privacy,
+      peers: peers.rows.map((row) => {
+        const preference = mapDmPeerPreference(row);
+        return {
+          peerId: preference.peerId,
+          muted: preference.muted,
+          archived: preference.archived
+        };
+      })
+    };
+  }
+
+  async function updateDmPrivacy(accountId: string, allowNonFriendRequests: boolean) {
+    const updatedAt = new Date().toISOString();
+    if (!pool) {
+      const value = { accountId, allowNonFriendRequests, updatedAt };
+      memoryDmPrivacy.set(accountId, value);
+      return value;
+    }
+    const result = await pool.query(
+      `INSERT INTO echoverse_dm_privacy(account_id, allow_non_friend_requests, updated_at)
+       VALUES ($1,$2,NOW())
+       ON CONFLICT (account_id) DO UPDATE
+       SET allow_non_friend_requests=EXCLUDED.allow_non_friend_requests, updated_at=NOW()
+       RETURNING account_id, allow_non_friend_requests, updated_at`,
+      [accountId, allowNonFriendRequests]
+    );
+    const row = result.rows[0];
+    return {
+      accountId: String(row.account_id),
+      allowNonFriendRequests:
+        row.allow_non_friend_requests === true || row.allow_non_friend_requests === 1,
+      updatedAt: row.updated_at?.toISOString?.() || String(row.updated_at)
+    };
+  }
+
+  async function getDmPeerPreference(accountId: string, peerId: string) {
+    if (!pool) {
+      const preference = memoryDmPeerPreferences.get(dmPeerPreferenceKey(accountId, peerId));
+      return preference
+        ? { peerId, muted: preference.muted, archived: preference.archived }
+        : { peerId, muted: false, archived: false };
+    }
+    const result = await pool.query(
+      `SELECT account_id, peer_id, muted, archived, updated_at
+       FROM echoverse_dm_preferences WHERE account_id=$1 AND peer_id=$2 LIMIT 1`,
+      [accountId, peerId]
+    );
+    const row = result.rows[0];
+    if (!row) return { peerId, muted: false, archived: false };
+    const preference = mapDmPeerPreference(row);
+    return { peerId, muted: preference.muted, archived: preference.archived };
+  }
+
+  async function updateDmPeerPreference(
+    accountId: string,
+    peerId: string,
+    updates: { muted?: boolean; archived?: boolean }
+  ) {
+    if (accountId === peerId) return null;
+    if (!pool) {
+      const key = dmPeerPreferenceKey(accountId, peerId);
+      const current = memoryDmPeerPreferences.get(key) || {
+        accountId,
+        peerId,
+        muted: false,
+        archived: false,
+        updatedAt: new Date().toISOString()
+      };
+      const next = {
+        ...current,
+        ...(updates.muted === undefined ? {} : { muted: updates.muted }),
+        ...(updates.archived === undefined ? {} : { archived: updates.archived }),
+        updatedAt: new Date().toISOString()
+      };
+      memoryDmPeerPreferences.set(key, next);
+      return { peerId, muted: next.muted, archived: next.archived };
+    }
+    const result = await pool.query(
+      `INSERT INTO echoverse_dm_preferences(account_id, peer_id, muted, archived, updated_at)
+       VALUES ($1,$2,COALESCE($3,FALSE),COALESCE($4,FALSE),NOW())
+       ON CONFLICT (account_id, peer_id) DO UPDATE SET
+         muted=COALESCE($3, echoverse_dm_preferences.muted),
+         archived=COALESCE($4, echoverse_dm_preferences.archived),
+         updated_at=NOW()
+       RETURNING account_id, peer_id, muted, archived, updated_at`,
+      [accountId, peerId, updates.muted ?? null, updates.archived ?? null]
+    );
+    const preference = mapDmPeerPreference(result.rows[0]);
+    return { peerId: preference.peerId, muted: preference.muted, archived: preference.archived };
   }
 
   function mapDmRequest(row: any): StoredDmRequest {
@@ -573,6 +746,92 @@ export function createFriendService({
     return message;
   }
 
+  async function createDmReport(
+    reporterId: string,
+    targetId: string,
+    messageId: string | null,
+    reason: string
+  ): Promise<{ created: boolean; report: StoredDmReport } | null> {
+    const existing: any = !pool
+      ? [...reportStore.values()].find(
+          (report) =>
+            report.reporterId === reporterId &&
+            report.targetId === targetId &&
+            (report.messageId || null) === messageId
+        )
+      : (
+          await pool.query(
+            pool === sqliteDatabase
+              ? `SELECT id,reporter_id,target_id,message_id,reason,status,created_at
+                 FROM echoverse_dm_reports
+                 WHERE reporter_id=$1 AND target_id=$2
+                   AND ((message_id=$3) OR (message_id IS NULL AND $3 IS NULL))
+                 LIMIT 1`
+              : `SELECT id,reporter_id,target_id,message_id,reason,status,created_at
+                 FROM echoverse_dm_reports
+                 WHERE reporter_id=$1 AND target_id=$2
+                   AND message_id IS NOT DISTINCT FROM $3
+                 LIMIT 1`,
+            [reporterId, targetId, messageId]
+          )
+        ).rows[0];
+
+    if (existing) {
+      return {
+        created: false,
+        report: !pool
+          ? existing
+          : {
+              id: String(existing.id),
+              reporterId: String(existing.reporter_id),
+              targetId: String(existing.target_id),
+              messageId: existing.message_id ? String(existing.message_id) : null,
+              reason: String(existing.reason),
+              status: String(existing.status) as StoredDmReport["status"],
+              createdAt: existing.created_at?.toISOString?.() || String(existing.created_at)
+            }
+      };
+    }
+
+    const now = Date.now();
+    const recent = (dmReportAttempts.get(reporterId) || []).filter(
+      (timestamp) => now - timestamp < 3_600_000
+    );
+    if (recent.length >= 10) return null;
+    recent.push(now);
+    dmReportAttempts.set(reporterId, recent);
+
+    const report: StoredDmReport = {
+      id: crypto.randomUUID(),
+      reporterId,
+      targetId,
+      messageId,
+      reason: truncateGraphemes(reason.trim(), 500),
+      status: "open",
+      createdAt: new Date(now).toISOString()
+    };
+    if (!pool) {
+      reportStore.set(report.id, report);
+      return { created: true, report };
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO echoverse_dm_reports
+         (id,reporter_id,target_id,message_id,reason,status,created_at)
+         VALUES ($1,$2,$3,$4,$5,'open',$6)`,
+        [report.id, reporterId, targetId, messageId, report.reason, report.createdAt]
+      );
+    } catch (error) {
+      const code = String((error as { code?: unknown })?.code || "");
+      if (code !== "23505" && !/unique|duplicate/i.test(String(error))) throw error;
+      const replay = await createDmReport(reporterId, targetId, messageId, report.reason);
+      if (replay) return replay;
+      throw error;
+    }
+    return { created: true, report };
+  }
+
   async function loadDmHistory(a: string, b: string) {
     if (!pool) {
       return memoryDmMessages
@@ -781,6 +1040,98 @@ export function createFriendService({
     }));
   }
 
+  async function searchDm(
+    accountId: string,
+    target: { friendId?: string; conversationId?: string },
+    query: string,
+    limit = 100,
+    options: DmMessageSearchOptions = {}
+  ) {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const friendId = target.friendId || null;
+    const conversationId = target.conversationId || null;
+    if (!friendId && !conversationId) return [];
+
+    if (!pool) {
+      return memoryDmMessages
+        .filter((message) => {
+          const inScope = conversationId
+            ? message.conversationId === conversationId
+            : !message.conversationId &&
+              ((message.senderId === accountId && message.recipientId === friendId) ||
+                (message.senderId === friendId && message.recipientId === accountId));
+          return (
+            inScope &&
+            !message.deletedAt &&
+            message.body.toLocaleLowerCase().includes(normalizedQuery) &&
+            (!options.authorId || message.senderId === options.authorId) &&
+            (!options.from || message.createdAt >= options.from) &&
+            (!options.to || message.createdAt <= options.to) &&
+            (!options.before || message.createdAt < options.before)
+          );
+        })
+        .sort((a, b) => {
+          const created = b.createdAt.localeCompare(a.createdAt);
+          return created || b.id.localeCompare(a.id);
+        })
+        .slice(0, limit);
+    }
+
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    const add = (clause: string, value: unknown) => {
+      values.push(value);
+      clauses.push(clause.replace("$N", `$${values.length}`));
+    };
+
+    if (conversationId) {
+      add("m.conversation_id=$N", conversationId);
+      add(
+        "EXISTS (SELECT 1 FROM echoverse_dm_members mine WHERE mine.conversation_id=m.conversation_id AND mine.account_id=$N AND mine.left_at IS NULL)",
+        accountId
+      );
+    } else {
+      const accountParam = values.length + 1;
+      values.push(accountId);
+      const friendParam = values.length + 1;
+      values.push(friendId);
+      clauses.push(
+        "m.conversation_id IS NULL",
+        `((m.sender_id=$${accountParam} AND m.recipient_id=$${friendParam}) OR
+          (m.sender_id=$${friendParam} AND m.recipient_id=$${accountParam}))`
+      );
+    }
+    add("LOWER(m.body) LIKE LOWER($N) ESCAPE '\\'", `%${query.trim().replace(/[\\%_]/g, "\\$&")}%`);
+    if (options.authorId) add("m.sender_id=$N", options.authorId);
+    if (options.from) add("m.created_at >= $N", options.from);
+    if (options.to) add("m.created_at <= $N", options.to);
+    if (options.before) add("m.created_at < $N", options.before);
+    values.push(limit);
+    const result = await pool.query(
+      `SELECT m.id,m.sender_id,m.recipient_id,m.conversation_id,m.body,m.created_at,
+              m.reply_to_id,m.edited_at,m.deleted_at,m.attachment_name,m.attachment_mime,
+              m.attachment_data,m.reactions
+       FROM echoverse_dm_messages m WHERE ${clauses.join(" AND ")}
+       ORDER BY m.created_at DESC,m.id DESC LIMIT $${values.length}`,
+      values
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      senderId: row.sender_id,
+      recipientId: row.recipient_id,
+      conversationId: row.conversation_id || null,
+      body: row.deleted_at ? "" : row.body,
+      createdAt: row.created_at?.toISOString?.() || String(row.created_at),
+      replyToId: row.reply_to_id || null,
+      editedAt: row.edited_at?.toISOString?.() || row.edited_at || null,
+      deletedAt: row.deleted_at?.toISOString?.() || row.deleted_at || null,
+      attachmentName: row.deleted_at ? null : row.attachment_name || null,
+      attachmentMime: row.deleted_at ? null : row.attachment_mime || null,
+      attachmentData: row.deleted_at ? null : row.attachment_data || null,
+      reactions: parseReactions(row.reactions)
+    }));
+  }
+
   async function mutateGroupMember(
     actorId: string,
     conversationId: string,
@@ -933,9 +1284,15 @@ export function createFriendService({
     relationshipFor,
     listFriendState,
     listConversations,
+    listDmPreferences,
+    getDmPrivacy,
+    getDmPeerPreference,
+    updateDmPrivacy,
+    updateDmPeerPreference,
     listDmRequests,
     loadConversationHistory,
     loadDmHistory,
+    searchDm,
     leaveGroupConversation,
     mutateGroupMember,
     createDmRequest,
@@ -943,6 +1300,7 @@ export function createFriendService({
     updateDmRequestStatus,
     parseReactions,
     storeDm,
+    createDmReport,
     validateAttachment
   };
 }

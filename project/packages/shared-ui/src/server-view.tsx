@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-import type { ChatMessage } from "@echoverse/contracts";
+import type { ChatMessage, PeerInfo } from "@echoverse/contracts";
 import type { RefObject } from "react";
 import {
   ChannelMessageList,
@@ -19,6 +19,7 @@ import {
   type VideoStageLabels,
   type VoiceControlsLabels
 } from "./video.js";
+import { LobbyStage, type LobbyStageLabels } from "./lobby-stage.js";
 
 export type ServerViewLabels = {
   topbar: ServerTopbarLabels;
@@ -43,6 +44,7 @@ export type ServerViewLabels = {
     noThreadReplies?: string;
   };
   voice: VoiceControlsLabels;
+  lobby?: LobbyStageLabels;
 };
 
 /** Shared server channel composition; renderers retain state, transport, and media effects. */
@@ -60,6 +62,14 @@ export function ServerView({
   cameraOn,
   screenOn,
   connected,
+  voiceParticipants = [],
+  voiceSocketId,
+  voiceLocalSpeaking = false,
+  voiceMuted = false,
+  voiceSpeakingPeers = {},
+  voiceChannelName,
+  voiceJoined = false,
+  voiceStageVisible = false,
   messages,
   searchQuery,
   searchResults,
@@ -106,6 +116,14 @@ export function ServerView({
   cameraOn: boolean;
   screenOn: boolean;
   connected: boolean;
+  voiceParticipants?: PeerInfo[];
+  voiceSocketId?: string;
+  voiceLocalSpeaking?: boolean;
+  voiceMuted?: boolean;
+  voiceSpeakingPeers?: Record<string, boolean>;
+  voiceChannelName?: string;
+  voiceJoined?: boolean;
+  voiceStageVisible?: boolean;
   messages: ChatMessage[];
   searchQuery?: string;
   searchResults?: ChatMessage[] | null;
@@ -142,7 +160,8 @@ export function ServerView({
   return (
     <>
       <ServerTopbar
-        guildName={guildName}
+        guildName={voiceStageVisible ? labels.lobby?.subtitle : guildName}
+        channelName={voiceStageVisible ? voiceChannelName : undefined}
         incomingRequestCount={incomingRequestCount}
         status={status}
         labels={labels.topbar}
@@ -150,6 +169,28 @@ export function ServerView({
         onOpenFriends={onOpenFriends}
         onStatusChange={onStatusChange}
       />
+
+      {labels.lobby && voiceChannelName && voiceStageVisible && (
+        <LobbyStage
+          channelName={voiceChannelName}
+          presence={voiceParticipants}
+          socketId={voiceSocketId}
+          localSpeaking={voiceLocalSpeaking}
+          muted={voiceMuted}
+          speakingPeers={voiceSpeakingPeers}
+          cameraOn={cameraOn}
+          screenOn={screenOn}
+          connected={connected}
+          controlsVisible={voiceJoined}
+          onToggleMute={onToggleMute}
+          onToggleCamera={onToggleCamera}
+          onToggleScreen={onToggleScreen}
+          onEndCall={onEndCall}
+          onOpenFriends={onOpenFriends}
+          onOpenMediaSettings={onOpenMediaSettings}
+          labels={labels.lobby}
+        />
+      )}
 
       <VideoStage
         layout={videoLayout}
@@ -162,6 +203,20 @@ export function ServerView({
         labels={labels.video}
         onLayoutChange={onVideoLayoutChange}
       />
+
+      {voiceJoined && !voiceStageVisible && (
+        <VoiceControls
+          muted={muted}
+          cameraOn={cameraOn}
+          screenOn={screenOn}
+          connected={connected}
+          labels={labels.voice}
+          onToggleMute={onToggleMute}
+          onToggleCamera={onToggleCamera}
+          onToggleScreen={onToggleScreen}
+          onEndCall={onEndCall}
+        />
+      )}
 
       {onSearchQueryChange && onSearch && labels.chat && (
         <div className="chat-search-bar">
@@ -236,18 +291,6 @@ export function ServerView({
         mentionCandidates={mentionCandidates}
         mentionLabel={labels.composer.mentionLabel}
         onSend={onSendMessage}
-      />
-
-      <VoiceControls
-        muted={muted}
-        cameraOn={cameraOn}
-        screenOn={screenOn}
-        connected={connected}
-        labels={labels.voice}
-        onToggleMute={onToggleMute}
-        onToggleCamera={onToggleCamera}
-        onToggleScreen={onToggleScreen}
-        onEndCall={onEndCall}
       />
 
       {error && (

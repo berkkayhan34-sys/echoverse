@@ -75,6 +75,9 @@ authorization is evaluated on every event. The protocol keeps legacy
 clients migrate to channel IDs. Provider-specific SFU, native mobile binaries,
 and automatic voice joining are non-goals for this phase.
 
+Message body, attachment, search, reply, mention, and deep-link rules are
+defined in the canonical [message content policy](message-content-policy.md).
+
 ## Channel and space model (ARCH-002)
 
 `echoverse_guild_categories` and `echoverse_guild_channels` are the durable

@@ -13,6 +13,17 @@ SPDX-License-Identifier: GPL-3.0-only
 
 ## Unreleased
 
+- Harden guild voice recovery in web and desktop with deterministic socket-pair
+  offer ownership, serialized peer creation, bounded early-ICE queuing,
+  foreground/reconnect repair, failed-peer recovery, and microphone-track
+  reacquisition. Live two-client audio evidence is still required before the
+  `PARITY-005` roadmap gate can close.
+- Add server-authoritative direct-message report intake with privacy-safe
+  persistence, replay protection, message ownership checks, and a bounded
+  per-reporter rate limit, with PostgreSQL-backed integration coverage.
+- Add the selected 180-day retention cleanup for moderation/report records
+  and soft-deleted DM/guild message tombstones across PostgreSQL and SQLite.
+
 ## 1.9.8
 
 - Point packaged desktop clients and hosted browser fallbacks at the

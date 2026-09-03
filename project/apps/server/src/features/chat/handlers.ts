@@ -31,6 +31,10 @@ export type ChatHandlerDependencies = {
   socketError(socket: any, key: string): string;
   accountById(id: string): Promise<{ username: string; avatarData: string | null } | null>;
   resolveRequestLocale(value: unknown): Locale;
+  notificationService?: {
+    getLevel(accountId: string, guildId: string, channelId: string): Promise<"all" | "none">;
+    getUnreadCount(accountId: string, guildId: string, channelId: string): Promise<number>;
+  };
   onValidatedSocketEvent(
     socket: any,
     event: SocketEventName,
@@ -50,6 +54,7 @@ export function registerChatHandlers({
   socketError,
   accountById,
   resolveRequestLocale,
+  notificationService,
   onValidatedSocketEvent
 }: ChatHandlerDependencies) {
   function channelFor(guildId: string, channelId: string) {
@@ -155,6 +160,34 @@ export function registerChatHandlers({
     io.to(`guild:${guildId}:text`).emit("chat-message", message);
     callback?.({ ok: true, message });
 
+    if (notificationService) {
+      for (const peer of io.sockets.sockets.values()) {
+        const peerUser = users.get(peer.id);
+        if (
+          !peerUser?.accountId ||
+          peerUser.accountId === user.accountId ||
+          peerUser.activeGuildId !== guildId ||
+          !canAccessChannel(guildId, peerUser.accountId, "channel:view", channelId)
+        ) {
+          continue;
+        }
+        try {
+          const unreadCount = await notificationService.getUnreadCount(
+            peerUser.accountId,
+            guildId,
+            channelId
+          );
+          peer.emit("guild:unread", { guildId, channelId, unreadCount });
+        } catch (error) {
+          serverLogger.error("echoverse.chat.unread_delivery_failed", {
+            guildId,
+            channelId,
+            error: error instanceof Error ? error.message : "unknown"
+          });
+        }
+      }
+    }
+
     const mentionNames = new Set<string>();
     for (const match of safeText.matchAll(/(^|\s)@([^\s@]{1,80})/gu)) {
       const username = match[2]?.trim().toLocaleLowerCase();
@@ -175,6 +208,23 @@ export function registerChatHandlers({
             !canAccessChannel(guildId, peerUser.accountId, "channel:view", channelId)
           ) {
             continue;
+          }
+          if (notificationService) {
+            try {
+              if (
+                (await notificationService.getLevel(peerUser.accountId, guildId, channelId)) ===
+                "none"
+              ) {
+                continue;
+              }
+            } catch (error) {
+              serverLogger.error("echoverse.chat.mention_preference_failed", {
+                guildId,
+                channelId,
+                error: error instanceof Error ? error.message : "unknown"
+              });
+              continue;
+            }
           }
           peer.emit("chat:mention", {
             guildId,
@@ -233,7 +283,7 @@ export function registerChatHandlers({
   onValidatedSocketEvent(
     socket,
     "chat-search",
-    async ({ guildId, channelId, query, limit }, callback) => {
+    async ({ guildId, channelId, query, authorId, from, to, before, limit }, callback) => {
       const user = users.get(socket.id);
       if (
         !user?.accountId ||
@@ -242,9 +292,16 @@ export function registerChatHandlers({
         callback?.({ ok: false, error: socketError(socket, "server.guildMembershipRequired") });
         return;
       }
+      const messages = await guildChat.search(channelId, query, limit, {
+        authorId,
+        from,
+        to,
+        before
+      });
       callback?.({
         ok: true,
-        messages: await decorate(await guildChat.search(channelId, query, limit))
+        messages: await decorate(messages),
+        nextCursor: messages.length === (limit || 100) ? messages.at(-1)?.createdAt || null : null
       });
     }
   );

@@ -537,6 +537,101 @@ describe("server HTTP and Socket.IO boundaries", () => {
     });
   });
 
+  it("enforces DM privacy and persists per-peer mute and archive preferences", async () => {
+    const sender = await registerClient(await connectClient(), "dms");
+    const recipient = await registerClient(await connectClient(), "dmt");
+
+    const defaults = await emitWithAck(recipient.socket, "dm:preferences", {});
+    expect(defaults).toMatchObject({
+      ok: true,
+      privacy: { allowNonFriendRequests: true },
+      peers: []
+    });
+
+    const disabled = await emitWithAck(recipient.socket, "dm:privacy-update", {
+      allowNonFriendRequests: false
+    });
+    expect(disabled).toMatchObject({ ok: true, privacy: { allowNonFriendRequests: false } });
+    expect(
+      await emitWithAck(sender.socket, "dm:send", {
+        friendId: recipient.accountId,
+        body: "should be rejected"
+      })
+    ).toEqual({ ok: false, error: tr("server.messageRequestsDisabled") });
+
+    const enabled = await emitWithAck(recipient.socket, "dm:privacy-update", {
+      allowNonFriendRequests: true
+    });
+    expect(enabled).toMatchObject({ ok: true, privacy: { allowNonFriendRequests: true } });
+
+    const preference = await emitWithAck(recipient.socket, "dm:peer-preference-update", {
+      peerId: sender.accountId,
+      muted: true,
+      archived: true
+    });
+    expect(preference).toEqual({
+      ok: true,
+      preference: { peerId: sender.accountId, muted: true, archived: true }
+    });
+
+    const stored = await emitWithAck(recipient.socket, "dm:preferences", {});
+    expect(stored).toMatchObject({
+      ok: true,
+      privacy: { allowNonFriendRequests: true },
+      peers: [{ peerId: sender.accountId, muted: true, archived: true }]
+    });
+
+    expect(
+      await emitWithAck(recipient.socket, "dm:peer-preference-update", {
+        peerId: recipient.accountId,
+        muted: true
+      })
+    ).toEqual({ ok: false, error: tr("server.userNotFound") });
+  });
+
+  it("accepts authenticated direct-message reports without exposing message content", async () => {
+    const reporter = await registerClient(await connectClient(), "reporter");
+    const target = await registerClient(await connectClient(), "report-target");
+
+    const report = await emitWithAck(reporter.socket, "dm:report", {
+      targetId: target.accountId,
+      reason: "unwanted contact"
+    });
+    expect(report).toMatchObject({
+      ok: true,
+      created: true,
+      report: {
+        reporterId: reporter.accountId,
+        targetId: target.accountId,
+        messageId: null,
+        reason: "unwanted contact",
+        status: "open"
+      }
+    });
+    expect(report.report).not.toHaveProperty("body");
+
+    const replay = await emitWithAck(reporter.socket, "dm:report", {
+      targetId: target.accountId,
+      reason: "changed reason"
+    });
+    expect(replay).toEqual({ ok: true, created: false, report: report.report });
+
+    expect(
+      await emitWithAck(reporter.socket, "dm:report", {
+        targetId: reporter.accountId,
+        reason: "self report"
+      })
+    ).toEqual({ ok: false, error: tr("server.dmReportTargetInvalid") });
+
+    expect(
+      await emitWithAck(reporter.socket, "dm:report", {
+        targetId: target.accountId,
+        messageId: "not-a-real-message",
+        reason: "bad reference"
+      })
+    ).toEqual({ ok: false, error: tr("server.dmReportMessageAccessDenied") });
+  });
+
   it("does not deliver quarantined messages after a recipient marks the request as spam", async () => {
     const sender = await registerClient(await connectClient(), "spam-sender");
     const recipient = await registerClient(await connectClient(), "spam-target");
@@ -646,6 +741,13 @@ describe("server HTTP and Socket.IO boundaries", () => {
     });
     expect(sent).toMatchObject({ ok: true, message: { conversationId: conversation.id } });
     await expect(delivered).resolves.toMatchObject({ body: "hello group" });
+    expect(
+      await emitWithAck(first.socket, "dm:report", {
+        targetId: owner.accountId,
+        messageId: (sent.message as { id: string }).id,
+        reason: "group message"
+      })
+    ).toEqual({ ok: false, error: tr("server.dmReportMessageAccessDenied") });
   });
 
   it("enforces group roles and starts a bounded group call", async () => {
