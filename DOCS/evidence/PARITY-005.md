@@ -29,17 +29,17 @@ revision: 5c2d2a6c0a3f259fb2339402888c556cb72597a3 (deployed)
 
 ## Automated verification
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| `npm test` | pass | 27 test files, 154 tests; includes deterministic offerer policy and server WebRTC authorization/stale-signal coverage. |
-| `npm run typecheck` | pass | All workspace packages typechecked. |
-| `npm run build` | pass | Web, Electron renderer/preload, server, and shared packages built. |
-| `npm run localization:check` | pass | 423 localization keys verified. |
-| `npm run reuse:check` | pass | 364/364 files compliant with GPL-3.0-only metadata. |
-| `npm run secret-scan` | pass | 142 commits scanned; no leaks found. |
-| `node DOCS/tools/validate-roadmap.mjs` | pass | Roadmap/evidence links and status structure verified. |
-| `git diff --check` | pass | No whitespace errors. |
-| `npm run lint` | pre-existing findings | Ten unused-variable findings remain in `project/packages/shared-ui/src/workspace.tsx`; no finding is in the voice changes. |
+| Check                                  | Result                | Evidence                                                                                                                   |
+| -------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`                             | pass                  | 27 test files, 154 tests; includes deterministic offerer policy and server WebRTC authorization/stale-signal coverage.     |
+| `npm run typecheck`                    | pass                  | All workspace packages typechecked.                                                                                        |
+| `npm run build`                        | pass                  | Web, Electron renderer/preload, server, and shared packages built.                                                         |
+| `npm run localization:check`           | pass                  | 423 localization keys verified.                                                                                            |
+| `npm run reuse:check`                  | pass                  | 364/364 files compliant with GPL-3.0-only metadata.                                                                        |
+| `npm run secret-scan`                  | pass                  | 142 commits scanned; no leaks found.                                                                                       |
+| `node DOCS/tools/validate-roadmap.mjs` | pass                  | Roadmap/evidence links and status structure verified.                                                                      |
+| `git diff --check`                     | pass                  | No whitespace errors.                                                                                                      |
+| `npm run lint`                         | pre-existing findings | Ten unused-variable findings remain in `project/packages/shared-ui/src/workspace.tsx`; no finding is in the voice changes. |
 
 ## Deployment verification (2026-09-02)
 
@@ -59,13 +59,13 @@ endpoint before workflow run `33670173945`. The health endpoint reported server
 version `1.9.9`, but the renderer served the previous revision, so this run was
 a pre-deployment baseline rather than proof of the changes above.
 
-| Scenario | Result | Observation |
-| --- | --- | --- |
-| Two independent authenticated sessions | pass | `test` (in-app browser) and `test2` (Edge) reached the EchoVerse main guild. |
-| Same-lobby join | partial | Edge showed `ÇEVRİMİÇİ — 2`; the first session did not receive the matching participant update and showed `ÇEVRİMİÇİ — 0`. |
-| Identity rendering | fail | The Edge participant list rendered the remote and local entries as `test2`/`test2 (sen)` instead of distinct identities. |
-| Inbound media | fail / unverified | The Edge page exposed a remote video stream with one video track and zero audio tracks; the first session exposed no media stream. No non-zero inbound audio was observed. |
-| Chat cross-client delivery | fail | A message entered in the first session remained in the composer after clicking `Gönder` and appeared in neither client; the earlier pre-transition smoke message is not reused as acceptance proof. |
+| Scenario                               | Result            | Observation                                                                                                                                                                                         |
+| -------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two independent authenticated sessions | pass              | `test` (in-app browser) and `test2` (Edge) reached the EchoVerse main guild.                                                                                                                        |
+| Same-lobby join                        | partial           | Edge showed `ÇEVRİMİÇİ — 2`; the first session did not receive the matching participant update and showed `ÇEVRİMİÇİ — 0`.                                                                          |
+| Identity rendering                     | fail              | The Edge participant list rendered the remote and local entries as `test2`/`test2 (sen)` instead of distinct identities.                                                                            |
+| Inbound media                          | fail / unverified | The Edge page exposed a remote video stream with one video track and zero audio tracks; the first session exposed no media stream. No non-zero inbound audio was observed.                          |
+| Chat cross-client delivery             | fail              | A message entered in the first session remained in the composer after clicking `Gönder` and appeared in neither client; the earlier pre-transition smoke message is not reused as acceptance proof. |
 
 Screenshots of both live sessions were displayed during the test and retained
 at `tmp/test-results/PARITY-005-hosted-test.png` and

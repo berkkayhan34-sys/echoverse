@@ -5,6 +5,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # Changelog
 
+## 2.0.0
+
+- Promote the current parity, messaging safety, retention, and guild-voice
+  recovery work to the 2.0.0 product release line. PARITY-005 remains gated on
+  authenticated two-client audio evidence.
+
 ## 1.9.9
 
 - Fix hosted web and desktop realtime connections by keeping the Cloudflare

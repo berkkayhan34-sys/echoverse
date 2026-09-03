@@ -5,7 +5,13 @@
 
 import crypto from "node:crypto";
 import { socketEventPayloadSchemas, type Locale } from "@echoverse/contracts";
-import type { Account, StoredDm, StoredDmReport, StoredDmRequest, User } from "../../domain/types.js";
+import type {
+  Account,
+  StoredDm,
+  StoredDmReport,
+  StoredDmRequest,
+  User
+} from "../../domain/types.js";
 import type { PersistenceDatabase } from "../../persistence/sqlite.js";
 import type { MemoryFriendship } from "./service.js";
 import { serverLogger } from "../../runtime/observability.js";

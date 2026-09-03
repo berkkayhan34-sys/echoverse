@@ -66,13 +66,21 @@ describe("direct-message report intake", () => {
   it("is replay-safe and rate-limits each reporter", async () => {
     const { service } = createMemoryService();
     const first = await service.createDmReport("alice", "bob", null, "unwanted contact");
-    expect(first).toMatchObject({ created: true, report: { reporterId: "alice", targetId: "bob" } });
+    expect(first).toMatchObject({
+      created: true,
+      report: { reporterId: "alice", targetId: "bob" }
+    });
 
     const replay = await service.createDmReport("alice", "bob", null, "different reason");
     expect(replay).toEqual({ created: false, report: first?.report });
 
     for (let index = 0; index < 9; index += 1) {
-      const result = await service.createDmReport("alice", `target-${index}`, `message-${index}`, "spam");
+      const result = await service.createDmReport(
+        "alice",
+        `target-${index}`,
+        `message-${index}`,
+        "spam"
+      );
       expect(result?.created).toBe(true);
     }
     expect(await service.createDmReport("alice", "one-more", "message-more", "spam")).toBeNull();
