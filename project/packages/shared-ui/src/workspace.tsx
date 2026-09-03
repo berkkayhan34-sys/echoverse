@@ -642,17 +642,7 @@ export function WorkspaceSidebar({
   onCreateChannel,
   onUpdateChannel,
   onRoleChange,
-  dmMode,
-  dmFriends = [],
-  dmConversations = [],
-  dmPreferences = {},
-  dmUnread = {},
-  dmMentionCount = 0,
-  dmSearchQuery = "",
-  onDmSearchQueryChange,
-  onOpenDmFriend,
-  onOpenDmConversation,
-  onUpdateDmPeerPreference
+  dmMode
 }: {
   guilds: Guild[];
   channels?: GuildChannel[];
